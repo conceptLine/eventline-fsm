@@ -24,8 +24,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-const ARCHIVE_PAGE_SIZE = 100;
-const ACTIVE_PAGE_SIZE = 100;
+// Kleinere Page-Size = "Mehr laden" wird sichtbar, schnellerer initial-Load.
+// Beide Listen jetzt server-seitig nach start_date sortiert damit Pagination
+// bei wachsendem Datenvolumen die Datums-Reihenfolge nicht durcheinanderbringt.
+const ARCHIVE_PAGE_SIZE = 30;
+const ACTIVE_PAGE_SIZE = 30;
 // Location wird mit dem Verwaltungs-Kunden gejoint, sodass Standort-Auftraege
 // (jobs.customer_id = null) trotzdem einen Kundennamen anzeigen koennen.
 // Room wird ebenfalls gejoint fuer extern-Auftraege mit bekanntem Raum.
@@ -174,9 +177,10 @@ export default function AuftraegePage() {
     };
   }
 
-  // Active-Query: cursor-basiert (created_at) wie das Archive. ACTIVE_PAGE_SIZE+1
-  // damit hasMore ueber den (n+1)-Trick erkannt wird ohne Extra-Count-Query.
-  const buildActiveQuery = useCallback((cursor: string | null) => {
+  // Active-Query: cursor-basiert auf start_date ASC (älteste/heute zuerst,
+  // dann weiter in die Zukunft). Composite cursor (start_date, id) gegen
+  // doppelte Datums-Werte. ACTIVE_PAGE_SIZE+1 fuer hasMore via n+1-Trick.
+  const buildActiveQuery = useCallback((cursor: { start_date: string | null; id: string } | null) => {
     const cancelledFilter = "cancelled_as_anfrage.is.null,cancelled_as_anfrage.eq.false";
     let q = supabase
       .from("jobs")
@@ -184,8 +188,19 @@ export default function AuftraegePage() {
       .neq("is_deleted", true)
       .or(cancelledFilter)
       .not("status", "in", '("abgeschlossen","storniert")');
-    if (cursor !== null) q = q.lt("created_at", cursor);
-    return q.order("created_at", { ascending: false }).limit(ACTIVE_PAGE_SIZE + 1);
+    if (cursor !== null) {
+      // Composite-cursor: (start_date > c.start) OR (start_date = c.start AND id > c.id).
+      // start_date null = Entwuerfe ohne Datum — kommen zuletzt (NULLS LAST).
+      if (cursor.start_date) {
+        q = q.or(`start_date.gt.${cursor.start_date},and(start_date.eq.${cursor.start_date},id.gt.${cursor.id})`);
+      } else {
+        q = q.is("start_date", null).gt("id", cursor.id);
+      }
+    }
+    return q
+      .order("start_date", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(ACTIVE_PAGE_SIZE + 1);
   }, [supabase]);
 
   async function loadActiveAndCounts() {
@@ -207,8 +222,8 @@ export default function AuftraegePage() {
   async function loadActiveMore() {
     if (activeLoadingMore || activeJobs.length === 0) return;
     setActiveLoadingMore(true);
-    const cursor = activeJobs[activeJobs.length - 1].created_at;
-    const { data } = await buildActiveQuery(cursor);
+    const last = activeJobs[activeJobs.length - 1];
+    const { data } = await buildActiveQuery({ start_date: last.start_date, id: last.id });
     if (data) {
       const rows = data as unknown as JobWithRelations[];
       setActiveHasMore(rows.length > ACTIVE_PAGE_SIZE);
@@ -221,7 +236,8 @@ export default function AuftraegePage() {
   // Location bleibt client-seitig (joined-table-Filter wuerde die Datenform aendern).
   // job_number ist Integer — partial-Match nicht via PostgREST moeglich, daher
   // nur bei vollstaendiger Eingabe (6 Ziffern) als exact-Filter.
-  const buildArchiveQuery = useCallback((cursor: string | null) => {
+  // Sort: start_date DESC (juengste-past zuerst), composite cursor (start_date, id).
+  const buildArchiveQuery = useCallback((cursor: { start_date: string | null; id: string } | null) => {
     const cancelledFilter = "cancelled_as_anfrage.is.null,cancelled_as_anfrage.eq.false";
     let q = supabase
       .from("jobs")
@@ -243,8 +259,17 @@ export default function AuftraegePage() {
       q = q.eq("job_number", parseInt(numQ, 10));
     }
 
-    if (cursor !== null) q = q.lt("created_at", cursor);
-    return q.order("created_at", { ascending: false }).limit(ARCHIVE_PAGE_SIZE + 1);
+    if (cursor !== null) {
+      if (cursor.start_date) {
+        q = q.or(`start_date.lt.${cursor.start_date},and(start_date.eq.${cursor.start_date},id.gt.${cursor.id})`);
+      } else {
+        q = q.is("start_date", null).gt("id", cursor.id);
+      }
+    }
+    return q
+      .order("start_date", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(ARCHIVE_PAGE_SIZE + 1);
   }, [supabase, filterStatus, searchTitle, searchNumber]);
 
   const reloadArchive = useCallback(async () => {
@@ -276,8 +301,8 @@ export default function AuftraegePage() {
   async function loadArchiveMore() {
     if (archiveLoadingMore || archiveJobs.length === 0) return;
     setArchiveLoadingMore(true);
-    const cursor = archiveJobs[archiveJobs.length - 1].created_at;
-    const { data } = await buildArchiveQuery(cursor);
+    const last = archiveJobs[archiveJobs.length - 1];
+    const { data } = await buildArchiveQuery({ start_date: last.start_date, id: last.id });
     if (data) {
       const rows = data as unknown as JobWithRelations[];
       setArchiveHasMore(rows.length > ARCHIVE_PAGE_SIZE);
