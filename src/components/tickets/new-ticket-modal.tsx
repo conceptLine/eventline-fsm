@@ -85,7 +85,7 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
     beschreibung: "",
     grund: "",
   });
-  const [jobs, setJobs] = useState<{ id: string; job_number: number; title: string }[]>([]);
+  const [jobs, setJobs] = useState<{ id: string; job_number: number; title: string; start_date: string | null; end_date: string | null }[]>([]);
 
   // Material-spezifisch — pro Anfrage koennen mehrere Positionen rein
   // (Warenkorb mit mehreren Artikeln). Mindestens 1 leeres Item beim
@@ -203,7 +203,7 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
     (async () => {
       const { data } = await supabase
         .from("jobs")
-        .select("id, job_number, title")
+        .select("id, job_number, title, start_date, end_date")
         .in("status", ["offen", "anfrage", "entwurf"])
         .order("start_date", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -791,13 +791,26 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
                     <SearchableSelect
                       value={stempel.job_id}
                       onChange={(v) => setStempel({ ...stempel, job_id: v })}
-                      items={[
-                        // Andere Arbeit zuerst — sonst wird's bei vielen
-                        // Auftraegen abgeschnitten (SearchableSelect zeigt
-                        // nur die ersten 8 Items wenn search leer).
-                        { id: "ANDERE_ARBEIT", label: "Keinem Auftrag (Andere Arbeit)" },
-                        ...jobs.map((j) => ({ id: j.id, label: `INT-${j.job_number} — ${j.title}` })),
-                      ]}
+                      items={(() => {
+                        // Filter Auftraege auf solche die am Stempel-Datum
+                        // laufen (start_date <= datum <= end_date). So muss
+                        // der User nicht durch alle Auftraege scrollen.
+                        // Auftraege ohne start_date bleiben drin (Default-
+                        // sicher). Wenn kein Stempel-Datum getippt: alle.
+                        const stempelDate = dtDate(stempel.neu_start);
+                        const relevant = stempelDate
+                          ? jobs.filter((j) => {
+                              if (!j.start_date) return true;
+                              const start = j.start_date.slice(0, 10);
+                              const end = (j.end_date ?? j.start_date).slice(0, 10);
+                              return start <= stempelDate && stempelDate <= end;
+                            })
+                          : jobs;
+                        return [
+                          { id: "ANDERE_ARBEIT", label: "Keinem Auftrag (Andere Arbeit)" },
+                          ...relevant.map((j) => ({ id: j.id, label: `INT-${j.job_number} — ${j.title}` })),
+                        ];
+                      })()}
                       placeholder="Auftrag oder 'Andere Arbeit' auswählen…"
                       clearable={false}
                     />
