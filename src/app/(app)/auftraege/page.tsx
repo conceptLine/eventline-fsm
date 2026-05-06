@@ -260,14 +260,18 @@ export default function AuftraegePage() {
 
   // Archive: erst-laden bei Mount/Modus-Wechsel; bei Filter/Suche-Aenderung
   // mit 250ms Debounce neu ziehen (nicht jeden Tastenanschlag).
+  // Auch in der Aktiv-Ansicht laden wenn Such-Term getippt wurde — dann
+  // werden archivierte Auftraege im Resultat mitgemixt damit man sie nicht
+  // verpasst (Leo-Anfrage 2026-05-06).
+  const hasSearchTerm = searchTitle.trim().length > 0 || searchNumber.trim().length > 0;
   useEffect(() => {
-    if (!showArchive) return;
+    if (!showArchive && !hasSearchTerm) return;
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => { reloadArchive(); }, 250);
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [showArchive, reloadArchive]);
+  }, [showArchive, hasSearchTerm, reloadArchive]);
 
   async function loadArchiveMore() {
     if (archiveLoadingMore || archiveJobs.length === 0) return;
@@ -286,7 +290,13 @@ export default function AuftraegePage() {
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayMs = todayStart.getTime();
   // Quelle haengt vom Modus ab — Active ist voll geladen, Archive ist paginiert.
-  const sourceJobs = showArchive ? archiveJobs : activeJobs;
+  // Wenn ein Such-Term aktiv ist, mixen wir auch im Aktiv-Modus die archivierten
+  // Auftraege rein damit der User nicht aktiv vs archiv toggeln muss.
+  const sourceJobs = showArchive
+    ? archiveJobs
+    : hasSearchTerm
+      ? [...activeJobs, ...archiveJobs.filter((a) => !activeJobs.some((b) => b.id === a.id))]
+      : activeJobs;
   const totalForSource = showArchive ? counts.abgeschlossen + counts.storniert : counts.anfrage + counts.offen + counts.entwurf;
   const filtered = sourceJobs.filter((j) => {
     const numQ = searchNumber.trim();
