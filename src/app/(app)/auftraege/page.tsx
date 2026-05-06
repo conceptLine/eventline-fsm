@@ -697,60 +697,59 @@ export default function AuftraegePage() {
                   {/* Col 8: Spacer (1fr) — leer */}
                   <div />
 
-                  {/* RECHTS — Col 9: Rechnungs-Pille / Hint / Aktion-Icon */}
-                  <div className="flex items-center gap-1.5 shrink-0 justify-end">
-                    {job.invoiced_at && job.invoice_number && (
-                      <button
-                        type="button"
-                        // <button> statt <a> weil die ganze Card schon
-                        // in einem <Link> verpackt ist — verschachtelte
-                        // <a>-Tags sind invalides HTML.
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          window.open(
-                            `/api/bexio/open-invoice?nr=${encodeURIComponent(job.invoice_number!)}`,
-                            "_blank",
-                            "noopener,noreferrer",
-                          );
-                        }}
-                        // Bexio-Lime-Pill — selbe Styling-Familie wie die
-                        // Kunden-Bexio-Nr in /kunden, damit "lime = Bexio"
-                        // app-weit eindeutig bleibt.
-                        className="inline-flex items-center gap-1 font-mono text-xs font-semibold px-1.5 py-0.5 rounded text-[rgb(132,152,0)] dark:text-[rgb(196,214,0)] bg-[rgba(196,214,0,0.12)] dark:bg-[rgba(196,214,0,0.18)] hover:bg-[rgba(196,214,0,0.22)] dark:hover:bg-[rgba(196,214,0,0.26)] transition-colors"
-                        data-tooltip="In Bexio öffnen"
-                      >
-                        Rechnung {job.invoice_number}
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </button>
+                  {/* RECHTS — Col 9: Rechnungs-Pille / Hint / Aktion-Icon
+                      + bei Anfragen darunter direkt der Step-Tracker
+                      (vorher in eigener Zeile mit Luecke — jetzt eng
+                      gestackt). */}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="flex items-center gap-1.5 justify-end">
+                      {job.invoiced_at && job.invoice_number && (
+                        <button
+                          type="button"
+                          // <button> statt <a> weil die ganze Card schon
+                          // in einem <Link> verpackt ist — verschachtelte
+                          // <a>-Tags sind invalides HTML.
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.open(
+                              `/api/bexio/open-invoice?nr=${encodeURIComponent(job.invoice_number!)}`,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          }}
+                          // Bexio-Lime-Pill — selbe Styling-Familie wie die
+                          // Kunden-Bexio-Nr in /kunden, damit "lime = Bexio"
+                          // app-weit eindeutig bleibt.
+                          className="inline-flex items-center gap-1 font-mono text-xs font-semibold px-1.5 py-0.5 rounded text-[rgb(132,152,0)] dark:text-[rgb(196,214,0)] bg-[rgba(196,214,0,0.12)] dark:bg-[rgba(196,214,0,0.18)] hover:bg-[rgba(196,214,0,0.22)] dark:hover:bg-[rgba(196,214,0,0.26)] transition-colors"
+                          data-tooltip="In Bexio öffnen"
+                        >
+                          Rechnung {job.invoice_number}
+                          <ExternalLink className="h-3 w-3 opacity-60" />
+                        </button>
+                      )}
+                      {isAnfrage && isMailStep && (
+                        <span className="text-xs font-medium whitespace-nowrap text-purple-700 dark:text-purple-300">
+                          {stepInfo.label}
+                        </span>
+                      )}
+                      {isAnfrage && !isMailStep && (
+                        <span className="text-xs font-medium whitespace-nowrap text-purple-700 dark:text-purple-300">
+                          Manuell in Details bestätigen
+                        </span>
+                      )}
+                      {!isAnfrage && noTermin && (
+                        <span className="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-300">
+                          Kein Termin geplant
+                        </span>
+                      )}
+                      {renderActionIcon("sm")}
+                    </div>
+                    {isAnfrage && (
+                      <RequestStepTracker currentStep={currentStep} size="sm" />
                     )}
-                    {isAnfrage && isMailStep && (
-                      <span className="text-xs font-medium whitespace-nowrap text-purple-700 dark:text-purple-300">
-                        {stepInfo.label}
-                      </span>
-                    )}
-                    {isAnfrage && !isMailStep && (
-                      <span className="text-xs font-medium whitespace-nowrap text-purple-700 dark:text-purple-300">
-                        Manuell in Details bestätigen
-                      </span>
-                    )}
-                    {!isAnfrage && noTermin && (
-                      <span className="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-300">
-                        Kein Termin geplant
-                      </span>
-                    )}
-                    {renderActionIcon("sm")}
                   </div>
                 </div>
-
-                {/* Anfrage-Step-Tracker — eigene Zeile darunter, rechts-
-                    buendig. Zu breit (4 Step-Bubbles) fuer die Aktions-
-                    Spalte. */}
-                {isAnfrage && (
-                  <div className="px-4 pb-2 flex justify-end">
-                    <RequestStepTracker currentStep={currentStep} size="sm" />
-                  </div>
-                )}
               </Card>
             </Link>
             );
