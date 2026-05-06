@@ -20,7 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { Receipt, FileText, Clock, CheckCircle2, FolderArchive, XCircle } from "lucide-react";
+import { Receipt, FileText, Clock, CheckCircle2, FolderArchive, XCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
@@ -38,6 +38,7 @@ interface ServiceReportData {
   equipment_used: string | null;
   issues: string | null;
   report_date: string;
+  pdf_url: string | null;
 }
 
 interface TimeEntryData {
@@ -64,7 +65,7 @@ const JOBS_SELECT = `
   id, job_number, title, start_date, end_date,
   customer:customers(name),
   location:locations(name),
-  service_reports(id, work_description, equipment_used, issues, report_date),
+  service_reports(id, work_description, equipment_used, issues, report_date, pdf_url),
   time_entries(id, user_id, clock_in, clock_out, user:profiles!time_entries_profile_id_fkey(full_name))
 `.replace(/\s+/g, " ").trim();
 
@@ -702,7 +703,28 @@ function JobCard({ job, onMarkBilled, canEdit }: JobCardProps) {
       {/* Body — getrennt durch dezente Border-Linie */}
       <div className="border-t px-4 py-3 space-y-3">
         <div>
-          <SectionLabel icon={FileText}>Arbeitsrapport</SectionLabel>
+          <div className="flex items-center justify-between gap-2">
+            <SectionLabel icon={FileText}>Arbeitsrapport</SectionLabel>
+            {report?.pdf_url && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const supabase = createClient();
+                  const { data, error } = await supabase.storage.from("documents").createSignedUrl(report.pdf_url!, 3600);
+                  if (error || !data?.signedUrl) {
+                    toast.error("PDF nicht verfügbar — eventuell aus altem Bestand vor 6.5.2026");
+                    return;
+                  }
+                  window.open(data.signedUrl, "_blank", "noopener");
+                }}
+                className="kasten kasten-blue"
+                data-tooltip="Rapport-PDF Vorschau"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Rapport-PDF
+              </button>
+            )}
+          </div>
           {report ? (
             <div className="space-y-1.5 text-sm">
               <p className="whitespace-pre-wrap text-foreground">{report.work_description}</p>

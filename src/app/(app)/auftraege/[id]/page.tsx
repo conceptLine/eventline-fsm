@@ -17,7 +17,7 @@ type ReportWithCreator = ServiceReport & {
 };
 import {
   MapPin, User, Calendar, Clock, FileText, Plus, Upload, Camera,
-  Check, CheckCircle, XCircle, Trash2, UserCheck, Download, Send, X, StickyNote, Pencil, AlertCircle, Inbox, ExternalLink,
+  Check, CheckCircle, XCircle, Trash2, UserCheck, Download, Send, X, StickyNote, Pencil, AlertCircle, Inbox, ExternalLink, Eye,
   Phone, Mail,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
@@ -688,13 +688,30 @@ export default function AuftragDetailPage() {
                       <button
                         type="button"
                         onClick={async () => {
-                          const { data } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
-                          if (data?.signedUrl) {
-                            const a = document.createElement("a");
-                            a.href = data.signedUrl;
-                            a.download = doc.name;
-                            a.click();
+                          const { data, error } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
+                          if (error || !data?.signedUrl) {
+                            toast.error("Datei nicht verfügbar — eventuell aus altem Bestand vor 6.5.2026, im alten Storage zu finden");
+                            return;
                           }
+                          window.open(data.signedUrl, "_blank", "noopener");
+                        }}
+                        className="kasten kasten-blue"
+                        data-tooltip="Vorschau"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const { data, error } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
+                          if (error || !data?.signedUrl) {
+                            toast.error("Datei nicht verfügbar — eventuell aus altem Bestand vor 6.5.2026, im alten Storage zu finden");
+                            return;
+                          }
+                          const a = document.createElement("a");
+                          a.href = data.signedUrl;
+                          a.download = doc.name;
+                          a.click();
                         }}
                         className="kasten kasten-muted"
                         data-tooltip="Herunterladen"
