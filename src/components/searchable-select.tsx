@@ -133,8 +133,11 @@ export function SearchableSelect({
   const filtered = useMemo(() => {
     if (!open) return [];
     if (!searchable) return items;
-    if (!search) return items.slice(0, 8);
-    return items.filter((i) => matchesWordStart(i.label, search)).slice(0, 8);
+    // Cap auf 50 — der max-h-72-Container scrollt darunter, sodass der User
+    // bei realistischen Mengen (~30-50 aktive Auftraege) alles per Scroll
+    // erreicht. Bei groesseren Listen filtert die Suche.
+    if (!search) return items.slice(0, 50);
+    return items.filter((i) => matchesWordStart(i.label, search)).slice(0, 50);
   }, [items, search, open, searchable]);
 
   // "Neu anlegen"-Option: nur wenn vom Aufrufer gewuenscht UND Nutzer hat etwas getippt
