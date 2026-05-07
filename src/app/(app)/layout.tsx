@@ -25,6 +25,7 @@ import { NAV_ICON_MAP } from "@/lib/nav-icons";
 import { useEnterAsTab } from "@/lib/use-enter-as-tab";
 import { PermissionsProvider, usePermissions } from "@/lib/use-permissions";
 import { StempelProvider } from "@/lib/use-stempel";
+import { EveChat } from "@/components/eve-chat";
 
 // Outer-Wrapper — nur Provider. Der Inner-Layout kann den Provider
 // dann via Hook konsumieren statt eigenem Self-Load.
@@ -339,6 +340,10 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       </Sheet>
 
       <Toaster />
+      {/* Eve — der app-interne Chatbot, fuer alle eingeloggten Mitarbeiter
+          sichtbar. RLS auf den DB-Tools sorgt dafuer dass jeder nur eigene
+          Daten sieht. */}
+      {profile && <EveChat />}
     </div>
   );
 }
