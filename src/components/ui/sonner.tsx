@@ -1,16 +1,29 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
+  // Mobile: top-center damit Toasts nicht hinter MobileNav (bottom)
+  // verdeckt werden. Desktop: bottom-right wie Default.
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const update = () => setIsMobile(window.innerWidth < 768)
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      position={isMobile ? "top-center" : "bottom-right"}
+      offset={isMobile ? "calc(env(safe-area-inset-top) + 12px)" : undefined}
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />

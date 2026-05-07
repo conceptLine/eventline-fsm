@@ -627,15 +627,57 @@ export default function AuftraegePage() {
               <Card className={`auftrag-card-hover relative bg-card cursor-pointer ${
                 job.status === "entwurf" ? "border-dashed opacity-80" : ""
               }`}>
-                {/* Drei-Zonen-Layout (wie Leo's Skizze):
+                {/* Mobile-Variante: 2-Zeilen-Stack damit nichts horizontal
+                    rausragt. Zeile 1: Nr | Titel | Action-Icon.
+                    Zeile 2: Kunde · Datum + Status-Tags + ggf. Rechnungs-Pille
+                    + Step-Tracker. */}
+                <div className="md:hidden px-3 py-2.5 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <JobNumber number={job.job_number} />
+                    <span className="auftrag-card-title font-medium text-sm truncate transition-colors flex-1 min-w-0">{job.title}</span>
+                    <div className="shrink-0">{renderActionIcon("sm")}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                      <span className="text-muted-foreground truncate">{displayCustomerName ?? "—"}</span>
+                      {dateText && <span className="text-muted-foreground/70 text-[11px] whitespace-nowrap">{dateText}</span>}
+                    </div>
+                    <div className={`flex items-center gap-1 flex-wrap shrink-0 ${showArchive ? "grayscale opacity-60" : ""}`}>
+                      {job.priority === "dringend" && isActive && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                          <AlertCircle className="h-2.5 w-2.5" />
+                        </span>
+                      )}
+                      {job.status !== "offen" && (
+                        <span className={`inline-flex px-1.5 py-0 text-[10px] font-medium rounded-full ${JOB_STATUS[job.status].color}`}>
+                          {JOB_STATUS[job.status].label}
+                        </span>
+                      )}
+                      {job.was_anfrage && job.status !== "anfrage" && (
+                        <span className="inline-flex px-1.5 py-0 text-[10px] font-medium rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                          Vermietung
+                        </span>
+                      )}
+                      {job.invoiced_at && job.invoice_number && (
+                        <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded text-[rgb(132,152,0)] dark:text-[rgb(196,214,0)] bg-[rgba(196,214,0,0.12)]">
+                          RE {job.invoice_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isAnfrage && (
+                    <div className="flex justify-end mt-0.5">
+                      <RequestStepTracker currentStep={currentStep} size="sm" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop Drei-Zonen-Layout (wie Leo's Skizze):
                     LINKS  : Nr + Title eng zusammen
                     MITTE  : Kunde Ort Datum Status, gruppiert
-                    RECHTS : Rechnungs-Pille / Aktion
-                    Die zwei 1fr-Spalten dazwischen sind die Luecken. Title
-                    hat fixe Breite (220px) damit das Mittel-Feld ueber alle
-                    Cards hinweg in derselben Flucht startet. */}
+                    RECHTS : Rechnungs-Pille / Aktion */}
                 <div
-                  className="px-4 py-2 grid items-center gap-x-3"
+                  className="hidden md:grid px-4 py-2 items-center gap-x-3"
                   // Adaptive Spalten via minmax(min, max): jede Spalte hat
                   // ein Min (Inhalt MUSS hineinpassen, sonst wird abgeschnitten)
                   // und ein Max (kein unnoetiges Auseinanderziehen). Bei

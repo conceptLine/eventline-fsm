@@ -40,6 +40,17 @@ function buildGreeting(): Message {
 
 export function EveChat() {
   const [open, setOpen] = useState(false);
+  // Mobile (= < 768px) bekommt fullscreen-Panel ohne Drag/Resize. Auf
+  // Desktop bleibt die floating-Variante mit Drag-Handle. Window-Width
+  // beim Mount lesen + onResize update.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => setIsMobile(window.innerWidth < 768);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const [pos, setPos] = useState(() => {
     if (typeof window === "undefined") return { x: 0, y: 0 };
     return { x: window.innerWidth - 420, y: window.innerHeight - 620 };
@@ -158,10 +169,12 @@ export function EveChat() {
       // Inline-style fuer position statt Tailwind-Klassen — ein parent mit
       // CSS transform/filter wuerde sonst position:fixed brechen, plus
       // sind wir hier gegen JIT-Compile-Issues immun.
+      // Auf Mobile: bottom-Offset > MobileNav-Hoehe (~80px) + Stempel-
+      // Widget (~64px) + Safe-Area, sodass die Bubble sichtbar bleibt.
       style={{
         position: "fixed",
-        bottom: 24,
-        right: 24,
+        bottom: isMobile ? 96 : 24,
+        right: isMobile ? 16 : 24,
         zIndex: 1300,
         height: 48,
         width: 48,
@@ -177,9 +190,15 @@ export function EveChat() {
     </button>
   ) : null;
 
+  // Mobile: fullscreen-Sheet statt floating Panel — drag/resize macht
+  // wenig Sinn auf 375px-Screens, plus die Bottom-Nav waere im Weg.
   const panel = open ? (
     <div
-      style={{
+      style={isMobile ? {
+        position: "fixed",
+        inset: 0,
+        zIndex: 1400,
+      } : {
         position: "fixed",
         left: pos.x,
         top: pos.y,
@@ -193,11 +212,12 @@ export function EveChat() {
         overflow: "hidden",
         zIndex: 1300,
       }}
-      className="bg-card border border-border rounded-xl shadow-2xl flex flex-col"
+      className="bg-card border border-border flex flex-col md:rounded-xl md:shadow-2xl"
     >
       <div
-        onMouseDown={onHeaderMouseDown}
-        className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-gradient-to-r from-red-500/10 to-neutral-900/20 cursor-move select-none shrink-0"
+        onMouseDown={isMobile ? undefined : onHeaderMouseDown}
+        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-gradient-to-r from-red-500/10 to-neutral-900/20 select-none shrink-0 ${isMobile ? "" : "cursor-move"}`}
+        style={isMobile ? { paddingTop: "calc(env(safe-area-inset-top) + 8px)" } : undefined}
       >
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-br from-red-500 to-neutral-900 text-white shrink-0">

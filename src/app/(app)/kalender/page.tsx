@@ -325,7 +325,14 @@ export default function KalenderPage() {
               onNavigate={navigateToDate}
             />
           ) : (
-            <WeekView weekDays={weekDays} items={items} shifts={shifts} />
+            // Mobile: horizontal scrollable wrapper damit das 8-Spalten-Grid
+            // nicht klemmt. Desktop: kein Effekt weil min-width unter Desktop-
+            // Breite liegt.
+            <div className="-mx-3 sm:mx-0 overflow-x-auto">
+              <div className="min-w-[760px] px-3 sm:px-0">
+                <WeekView weekDays={weekDays} items={items} shifts={shifts} />
+              </div>
+            </div>
           )}
 
         </CardContent>
