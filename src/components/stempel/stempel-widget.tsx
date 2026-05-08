@@ -66,16 +66,17 @@ export function StempelWidget() {
 
   return (
     <>
-      {/* Pille fix unten-rechts NUR auf Mobile (md:hidden). Auf Desktop ist
-          der Stempel-Status in der Sidebar oberhalb von Dark-Mode integriert.
-          Mobile: 88px Abstand vom Boden wegen Bottom-Nav. */}
-      <div className="md:hidden fixed bottom-4 right-4 z-40 mb-[88px]">
+      {/* Volle-Breite-Stempel-Bar NUR auf Mobile (md:hidden), direkt ueber
+          der MobileNav (die ist 80px hoch + safe-area). Optisch gleich wie
+          die Sidebar-Stempel-Pille auf Desktop (gleiche Teal-Farbe + 2px
+          Border + tinted bg). Auf Desktop bleibt der Sidebar-Stempel. */}
+      <div className="md:hidden fixed left-3 right-3 z-40" style={{ bottom: "calc(env(safe-area-inset-bottom) + 80px + 8px)" }}>
         {active ? (
-          <div className="flex flex-col items-end gap-2">
-            {/* Expand-Card mit Details */}
+          <div className="space-y-2">
+            {/* Expand-Card mit Details — aufklappbar oberhalb der Bar */}
             {expanded && (
               <div
-                className="bg-card rounded-xl p-3 shadow-2xl min-w-[260px] max-w-[320px] animate-in fade-in slide-in-from-bottom-2 duration-200"
+                className="bg-card rounded-xl p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200"
                 style={{ border: "1px solid rgba(20,184,166,0.4)" }}
               >
                 <div className="flex items-start gap-2">
@@ -116,9 +117,8 @@ export function StempelWidget() {
                 </div>
               </div>
             )}
-            {/* Pille selbst — Klick toggelt expand. Inline-style fuer Hover/Press
-                damit die Animation garantiert sichtbar ist (Tailwind-Variants
-                liefen aus unbekanntem Grund nicht durch). */}
+            {/* Volle-Breite-Bar — Live-Timer + Job/Beschreibung links, Chevron
+                rechts. Klick toggelt expand. */}
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
@@ -126,24 +126,28 @@ export function StempelWidget() {
               onMouseLeave={() => { setHovered(false); setPressed(false); }}
               onMouseDown={() => setPressed(true)}
               onMouseUp={() => setPressed(false)}
-              className="flex items-center gap-2 pl-3 pr-4 py-2 rounded-full text-teal-700 dark:text-teal-300"
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300"
               style={{
-                transform: pressed ? "scale(0.95)" : hovered ? "scale(1.05) translateY(-2px)" : "scale(1) translateY(0)",
-                transition: "transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms, background-color 200ms",
-                backgroundColor: hovered ? "rgba(20,184,166,0.22)" : "rgba(20,184,166,0.12)",
+                transform: pressed ? "scale(0.99)" : hovered ? "scale(1.01)" : "scale(1)",
+                transition: "transform 180ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms, background-color 200ms",
+                backgroundColor: hovered ? "rgba(20,184,166,0.22)" : "rgba(20,184,166,0.14)",
                 border: "2px solid var(--stempel-color, #14b8a6)",
-                boxShadow: hovered ? "0 8px 20px -6px rgba(20,184,166,0.25)" : "0 3px 10px -3px rgba(20,184,166,0.15)",
+                boxShadow: hovered ? "0 8px 20px -6px rgba(20,184,166,0.30)" : "0 3px 10px -3px rgba(20,184,166,0.18)",
+                backdropFilter: "blur(8px)",
               }}
               aria-label={expanded ? "Stempel-Details schliessen" : "Stempel-Details oeffnen"}
             >
-              <span className="relative flex">
+              <span className="relative flex shrink-0">
                 <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full opacity-50" style={{ backgroundColor: "rgb(20,184,166)" }} />
                 <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: "rgb(20,184,166)" }} />
               </span>
-              <span className="font-mono text-sm font-semibold tabular-nums">
+              <span className="font-mono text-sm font-semibold tabular-nums shrink-0">
                 {formatStempelDuration(active.clock_in, now)}
               </span>
-              <ChevronUp className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+              <span className="text-xs opacity-75 truncate flex-1 text-left">
+                {active.job_id ? (jobLabel ?? "Auftrag laden…") : (active.description || "Andere Arbeit")}
+              </span>
+              <ChevronUp className={`h-4 w-4 transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`} />
             </button>
           </div>
         ) : (
@@ -154,17 +158,19 @@ export function StempelWidget() {
             onMouseLeave={() => { setHovered(false); setPressed(false); }}
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
-            className="flex items-center gap-2 pl-3 pr-4 py-2 rounded-full bg-card text-foreground"
+            className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300"
             style={{
-              transform: pressed ? "scale(0.95)" : hovered ? "scale(1.1) translateY(-4px)" : "scale(1) translateY(0)",
-              transition: "transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms",
-              boxShadow: hovered ? "0 20px 40px -10px rgba(0,0,0,0.25)" : "0 10px 20px -5px rgba(0,0,0,0.15)",
-              border: hovered ? "2px solid rgb(20,184,166)" : "2px solid var(--border)",
+              transform: pressed ? "scale(0.99)" : hovered ? "scale(1.01)" : "scale(1)",
+              transition: "transform 180ms cubic-bezier(0.4,0,0.2,1), background-color 200ms",
+              backgroundColor: hovered ? "rgba(20,184,166,0.22)" : "rgba(20,184,166,0.14)",
+              border: "2px solid var(--stempel-color, #14b8a6)",
+              boxShadow: "0 3px 10px -3px rgba(20,184,166,0.18)",
+              backdropFilter: "blur(8px)",
             }}
             aria-label="Einstempeln"
           >
-            <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-            <span className="text-sm font-medium">Einstempeln</span>
+            <Clock className="h-4 w-4" />
+            <span className="text-sm font-semibold">Einstempeln</span>
           </button>
         )}
       </div>

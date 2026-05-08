@@ -364,7 +364,7 @@ export default function AuftraegePage() {
               auf gleicher Linie sitzen wie auf den anderen Seiten. */}
           <p className="text-sm text-muted-foreground mt-1" aria-hidden="true">&nbsp;</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setShowArchive(!showArchive)} className={showArchive ? "kasten-active" : "kasten-toggle-off"}>
             <Archive className="h-3.5 w-3.5" />{showArchive ? "Aktive anzeigen" : `Archiv (${counts.abgeschlossen + counts.storniert})`}
           </button>
@@ -409,11 +409,15 @@ export default function AuftraegePage() {
           { label: "Storniert", count: counts.storniert, color: "var(--status-red)" },
         ];
         return (
-          <DonutChart
-            segments={segments}
-            centerLabel="Aufträge"
-            emptyMessage="Keine Aufträge vorhanden."
-          />
+          // Auf Mobile ausgeblendet — Diagramm braucht zu viel Platz auf
+          // kleinen Screens, die Status-Tags pro Card geben dieselbe Info.
+          <div className="hidden md:block">
+            <DonutChart
+              segments={segments}
+              centerLabel="Aufträge"
+              emptyMessage="Keine Aufträge vorhanden."
+            />
+          </div>
         );
       })()}
 

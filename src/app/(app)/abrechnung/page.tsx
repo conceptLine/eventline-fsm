@@ -378,7 +378,11 @@ export default function AbrechnungPage() {
         </p>
       </div>
 
-      {!loading && <TrendChart data={trend} />}
+      {!loading && (
+        <div className="hidden md:block">
+          <TrendChart data={trend} />
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Lade…</p>

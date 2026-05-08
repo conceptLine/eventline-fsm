@@ -69,7 +69,13 @@ interface RawShift {
 
 export default function KalenderPage() {
   const supabase = createClient();
-  const [view, setView] = useState<CalendarView>("monat");
+  // Auf Mobile starten wir mit der Wochen-Ansicht — das Monats-Grid (7×6)
+  // ist auf < 768px nicht sinnvoll bedienbar (Cells werden < 50px breit,
+  // INT-Nrn schneiden ab). Auf Desktop bleibt Default = monat.
+  const [view, setView] = useState<CalendarView>(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) return "woche";
+    return "monat";
+  });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
@@ -299,8 +305,9 @@ export default function KalenderPage() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-              {/* View-Toggle — kasten-Pattern wie überall sonst (active vs toggle-off) */}
-              <div className="flex p-0.5 bg-muted rounded-lg">
+              {/* View-Toggle — auf Mobile ausgeblendet (dort ist nur Wochen-
+                  Ansicht sinnvoll). Auf Desktop wie gehabt. */}
+              <div className="hidden md:flex p-0.5 bg-muted rounded-lg">
                 {(["monat", "woche"] as const).map((v) => (
                   <button
                     key={v}

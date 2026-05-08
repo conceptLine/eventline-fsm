@@ -169,11 +169,12 @@ export function EveChat() {
       // Inline-style fuer position statt Tailwind-Klassen — ein parent mit
       // CSS transform/filter wuerde sonst position:fixed brechen, plus
       // sind wir hier gegen JIT-Compile-Issues immun.
-      // Auf Mobile: bottom-Offset > MobileNav-Hoehe (~80px) + Stempel-
-      // Widget (~64px) + Safe-Area, sodass die Bubble sichtbar bleibt.
+      // Auf Mobile: bottom-Offset > MobileNav (~80px) + voller Stempel-
+      // Bar (~52px) + Safe-Area, sodass die Bubble nicht das Stempel-
+      // Widget verdeckt.
       style={{
         position: "fixed",
-        bottom: isMobile ? 96 : 24,
+        bottom: isMobile ? 156 : 24,
         right: isMobile ? 16 : 24,
         zIndex: 1300,
         height: 48,

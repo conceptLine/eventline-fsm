@@ -327,13 +327,19 @@ export default function VertriebPage() {
         </div>
       </div>
 
-      {/* Pipeline-Stats + Funnel — im Archiv ausgeblendet. */}
+      {/* Pipeline-Stats + Funnel — im Archiv ausgeblendet, auf Mobile
+          ebenfalls (zu viel vertikaler Platz; die Lead-Cards selbst
+          zeigen Status + Priority pro Eintrag). */}
       {!showArchive && counts && counts.total > 0 && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="hidden md:grid gap-3 md:grid-cols-3">
           <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} />
         </div>
       )}
-      {!showArchive && counts && counts.total > 0 && <Funnel counts={counts} />}
+      {!showArchive && counts && counts.total > 0 && (
+        <div className="hidden md:block">
+          <Funnel counts={counts} />
+        </div>
+      )}
 
       {/* Suche + Filter */}
       <div className="flex flex-wrap gap-3">
