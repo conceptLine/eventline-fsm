@@ -62,6 +62,14 @@ export const PERMISSION_MODULES: PermissionModule[] = [
 /** Pfade die fuer alle eingeloggten User erreichbar sind, unabhaengig von der Rolle. */
 const ALWAYS_ALLOWED_PREFIXES = ["/dashboard"];
 
+/** Pfade die immer erreichbar sind, auch ohne Modul-View-Permission, weil
+ *  sie via Verknuepfung aus einem anderen Modul aufgerufen werden (z.B.
+ *  /kunden/[uuid] aus einem Auftrag heraus, ohne dass der User die ganze
+ *  Kunden-Liste sehen darf). Detail-Pages — keine Listen, keine Neu/Edit. */
+const ALWAYS_ALLOWED_DETAIL_REGEX: RegExp[] = [
+  /^\/kunden\/[0-9a-f-]{36}\/?$/i,
+];
+
 /** Permission-Check fuer eine konkrete Aktion (z.B. "kunden:edit"). */
 export function hasPermission(permissions: string[], role: string, perm: string): boolean {
   if (role === "admin") return true;
@@ -76,6 +84,11 @@ function canSeeModule(slug: string, permissions: string[], role: string): boolea
 export function isPathAllowed(pathname: string, permissions: string[], role: string): boolean {
   if (role === "admin") return true;
   if (ALWAYS_ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
+  // Detail-Pages (/kunden/[uuid] etc.) sind ohne Modul-Permission erreichbar
+  // — sie werden ueber Verknuepfungen aus anderen Modulen geoeffnet (z.B.
+  // Klick auf den Kundennamen in einem Auftrag). RLS auf den Tabellen sorgt
+  // dafuer dass nur sichtbare Datensaetze angezeigt werden.
+  if (ALWAYS_ALLOWED_DETAIL_REGEX.some((re) => re.test(pathname))) return true;
   for (const mod of PERMISSION_MODULES) {
     if (mod.paths.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
       return canSeeModule(mod.slug, permissions, role);
