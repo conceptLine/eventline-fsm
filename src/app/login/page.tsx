@@ -24,21 +24,49 @@ export default function LoginPage() {
   // Hinweis fuer den User damit er weiss warum er ausgeloggt wurde.
   const reason = useSearchParams().get("reason");
   const wasInactive = reason === "inactive";
+  const wasDeactivated = reason === "deactivated";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      setError("E-Mail oder Passwort ist falsch.");
+      // Supabase liefert bei gebannten/deaktivierten Usern oft "Invalid login
+      // credentials" — selbe Meldung wie bei falschem Passwort. Wir koennen
+      // das nicht zuverlaessig unterscheiden ohne Email-Enumeration-Vector,
+      // aber bei expliziten ban-Codes geben wir die spezifische Meldung.
+      const msg = (error.message ?? "").toLowerCase();
+      const code = (error as { code?: string }).code;
+      if (msg.includes("banned") || msg.includes("deactivated") || code === "user_banned") {
+        setError("Dein Benutzer hat im Moment keinen Zugriff. Wende dich an einen Admin.");
+      } else {
+        setError("E-Mail oder Passwort ist falsch.");
+      }
       setLoading(false);
       return;
+    }
+
+    // Login durch — aber pruefe ob das profile aktiv ist. Wenn nicht: sofort
+    // ausloggen + Hinweis. Schuetzt gegen den Edge-Case wo der Auth-Ban noch
+    // nicht propagiert ist oder is_active ohne ban gesetzt wurde.
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_active")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        setError("Dein Benutzer hat im Moment keinen Zugriff. Wende dich an einen Admin.");
+        setLoading(false);
+        return;
+      }
     }
 
     router.push("/dashboard");
@@ -87,6 +115,15 @@ export default function LoginPage() {
               <div className="text-amber-800 dark:text-amber-200">
                 <strong className="font-semibold">Wegen Inaktivität ausgeloggt.</strong>{" "}
                 Bitte erneut anmelden um weiterzumachen.
+              </div>
+            </div>
+          )}
+          {wasDeactivated && !resetMode && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 dark:bg-red-500/10 dark:border-red-500/30 px-3 py-2.5 text-xs">
+              <Clock className="h-4 w-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+              <div className="text-red-800 dark:text-red-200">
+                <strong className="font-semibold">Dein Benutzer hat im Moment keinen Zugriff.</strong>{" "}
+                Wende dich an einen Admin.
               </div>
             </div>
           )}

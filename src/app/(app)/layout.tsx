@@ -144,13 +144,24 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   // die Session als "aktiv" markiert bleibt + last_seen_at aktualisiert
   // wird. Erster Heartbeat beim Mount sobald wir wissen dass der User
   // eingeloggt ist (profile geladen).
+  // Bonus: das Endpoint returnt 403 wenn der User waehrend der Session
+  // deaktiviert wurde — dann werfen wir ihn sofort raus.
   useEffect(() => {
     if (!profile) return;
-    const ping = () => fetch("/api/sessions/heartbeat", { method: "POST" }).catch(() => {});
+    const ping = async () => {
+      try {
+        const res = await fetch("/api/sessions/heartbeat", { method: "POST" });
+        if (res.status === 403) {
+          await supabase.auth.signOut();
+          router.push("/login?reason=deactivated");
+          router.refresh();
+        }
+      } catch { /* best-effort */ }
+    };
     ping();
     const interval = setInterval(ping, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [profile]);
+  }, [profile, supabase, router]);
 
   // Inaktivitaets-Logout — nur fuer Non-Admins. 30 min ohne Maus-/
   // Tastatur-/Scroll-/Touch-Interaktion -> auto-Logout mit Hinweis auf

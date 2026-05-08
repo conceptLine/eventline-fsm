@@ -29,6 +29,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Nicht authentifiziert" }, { status: 401 });
   }
 
+  // Aktiv-Check: wenn der User waehrend einer Session deaktiviert wurde,
+  // sofort den Client signalisieren dass er ausgeloggt werden soll. Der
+  // Client (layout.tsx) reagiert mit signOut + redirect zu /login?reason=
+  // deactivated. So wirft das Deaktivieren den User innerhalb der naechsten
+  // Heartbeat-Periode (max 5 min) raus, ohne dass er weiter editieren kann.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile && profile.is_active === false) {
+    return NextResponse.json(
+      { success: false, error: "deactivated" },
+      { status: 403 },
+    );
+  }
+
   const userAgent = request.headers.get("user-agent") ?? null;
   const now = Date.now();
 
