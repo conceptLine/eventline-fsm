@@ -356,7 +356,7 @@ export function AppointmentsSection({
                         </div>
                     </Modal>
                   </div>
-                  {!isClosed && (
+                  {!isClosed && can("kalender:delete") && (
                     <button
                       type="button"
                       onClick={() => deleteAppointment(appt.id)}
