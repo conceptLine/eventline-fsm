@@ -25,7 +25,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact, VertriebStatus, VertriebPriority, VertriebKategorie } from "@/types";
-import { Plus, TrendingUp, Search } from "lucide-react";
+import { Plus, TrendingUp, Search, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS, emptyForm } from "./constants";
 import { LeadCard } from "@/components/vertrieb/lead-card";
@@ -57,6 +57,16 @@ export default function VertriebPage() {
   const [filterStatus, setFilterStatus] = useState<VertriebStatus | "all">("all");
   const [filterPriority, setFilterPriority] = useState<VertriebPriority | "all">("all");
   const [filterKategorie, setFilterKategorie] = useState<VertriebKategorie | "all">("all");
+
+  // Archiv-Modus: zeigt ausschliesslich abgesagte Leads. Persistent damit
+  // ein versehentlicher Reload den Modus nicht verliert. Pattern uebernommen
+  // vom Operations-Archiv (auftraege/page.tsx).
+  const [showArchive, setShowArchive] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("vertrieb-archive") === "true" : false,
+  );
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("vertrieb-archive", String(showArchive));
+  }, [showArchive]);
 
   // Add-Flow (Inline) — Lead-NEU bleibt hier weil's nur 3 State-Variablen sind.
   const [showForm, setShowForm] = useState(false);
@@ -195,6 +205,9 @@ export default function VertriebPage() {
   const noopAsync = async () => {};
 
   const filtered = contacts
+    // Archiv-Trennung: Standard-View blendet 'abgesagt' aus, Archiv-View
+    // zeigt ausschliesslich 'abgesagt'.
+    .filter((c) => showArchive ? c.status === "abgesagt" : c.status !== "abgesagt")
     .filter((c) => filterKategorie === "all" || c.kategorie === filterKategorie)
     .filter((c) => filterStatus === "all" || c.status === filterStatus)
     .filter((c) => filterPriority === "all" || c.prioritaet === filterPriority)
@@ -212,18 +225,38 @@ export default function VertriebPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Vertrieb</h1>
-          <p className="text-sm text-muted-foreground mt-1">{counts?.total ?? 0} Kontakte · {statusCounts.gewonnen || 0} gewonnen · {statusCounts.offen || 0} offen</p>
+          <h1 className="text-2xl font-bold tracking-tight">{showArchive ? "Vertrieb Archiv" : "Vertrieb"}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {showArchive
+              ? `${statusCounts.abgesagt || 0} abgesagte Leads`
+              : `${(counts?.total ?? 0) - (statusCounts.abgesagt || 0)} aktive Kontakte · ${statusCounts.gewonnen || 0} gewonnen · ${statusCounts.offen || 0} offen`}
+          </p>
         </div>
-        {can("vertrieb:create") && (
-          <button type="button" onClick={openNew} className="kasten kasten-red">
-            <Plus className="h-3.5 w-3.5" />Lead
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              // Beim Wechsel den Status-Filter zuruecksetzen — sonst koennte
+              // ein "abgesagt"-Filter aus alter Session ins Archiv mitgehen
+              // und dort leere Resultate produzieren.
+              setFilterStatus("all");
+              setShowArchive(!showArchive);
+            }}
+            className={showArchive ? "kasten-active" : "kasten-toggle-off"}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            {showArchive ? "Aktive anzeigen" : `Archiv (${statusCounts.abgesagt || 0})`}
           </button>
-        )}
+          {!showArchive && can("vertrieb:create") && (
+            <button type="button" onClick={openNew} className="kasten kasten-red">
+              <Plus className="h-3.5 w-3.5" />Lead
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Donut-Chart */}
-      {counts && counts.total > 0 && <DonutChart counts={counts} />}
+      {/* Donut-Chart — im Archiv ausgeblendet (alle Karten haben gleichen Status). */}
+      {!showArchive && counts && counts.total > 0 && <DonutChart counts={counts} />}
 
       {/* Suche + Filter */}
       <div className="flex flex-wrap gap-3">
@@ -238,13 +271,19 @@ export default function VertriebPage() {
             searchable={false} clearable={false} active={filterKategorie !== "all"}
           />
         </div>
-        <div className="w-full sm:w-44">
-          <SearchableSelect
-            value={filterStatus} onChange={(v) => setFilterStatus(v as VertriebStatus | "all")}
-            items={[{ id: "all", label: "Alle Status" }, ...STATUS_OPTIONS.map((s) => ({ id: s.value, label: `${s.label} (${statusCounts[s.value] || 0})` }))]}
-            searchable={false} clearable={false} active={filterStatus !== "all"}
-          />
-        </div>
+        {!showArchive && (
+          <div className="w-full sm:w-44">
+            <SearchableSelect
+              value={filterStatus} onChange={(v) => setFilterStatus(v as VertriebStatus | "all")}
+              items={[
+                { id: "all", label: "Alle Status" },
+                // 'abgesagt' raus — dafuer gibt's das Archiv.
+                ...STATUS_OPTIONS.filter((s) => s.value !== "abgesagt").map((s) => ({ id: s.value, label: `${s.label} (${statusCounts[s.value] || 0})` })),
+              ]}
+              searchable={false} clearable={false} active={filterStatus !== "all"}
+            />
+          </div>
+        )}
         <div className="w-full sm:w-44">
           <SearchableSelect
             value={filterPriority} onChange={(v) => setFilterPriority(v as VertriebPriority | "all")}
@@ -299,9 +338,13 @@ export default function VertriebPage() {
       ) : filtered.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-16 text-center">
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4"><TrendingUp className="h-7 w-7 text-gray-400" /></div>
-            <h3 className="font-semibold text-lg">Keine Kontakte</h3>
-            <p className="text-sm text-muted-foreground mt-1">Erstelle deinen ersten Kontakt.</p>
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+              {showArchive ? <Archive className="h-7 w-7 text-gray-400" /> : <TrendingUp className="h-7 w-7 text-gray-400" />}
+            </div>
+            <h3 className="font-semibold text-lg">{showArchive ? "Keine abgesagten Leads" : "Keine Kontakte"}</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {showArchive ? "Hier landen Leads sobald sie auf 'abgesagt' gesetzt werden." : "Erstelle deinen ersten Kontakt."}
+            </p>
           </CardContent>
         </Card>
       ) : (
