@@ -35,6 +35,7 @@ import type { CalendarItem, CalendarShift, CalendarView, ItemType } from "@/comp
 import { MonthView } from "@/components/kalender/month-view";
 import { WeekView } from "@/components/kalender/week-view";
 import { NeuerTerminModal } from "@/components/kalender/neuer-termin-modal";
+import { TerminEditModal } from "@/components/kalender/termin-edit-modal";
 import { IcalFeedBlock } from "@/components/kalender/ical-feed-block";
 import { usePermissions } from "@/lib/use-permissions";
 
@@ -75,6 +76,10 @@ export default function KalenderPage() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNeuerTermin, setShowNeuerTermin] = useState(false);
+  // id eines geklickten Standalone-Termins (job_id=null) — oeffnet den
+  // Edit/Delete-Modal. Auftrag-bezogene Termine fuehren weiter zur
+  // Auftrag-Detail-Page (existing Link-behaviour in WeekView).
+  const [editTerminId, setEditTerminId] = useState<string | null>(null);
   const { can } = usePermissions();
 
   const year = currentDate.getFullYear();
@@ -330,7 +335,12 @@ export default function KalenderPage() {
             // Breite liegt.
             <div className="-mx-3 sm:mx-0 overflow-x-auto">
               <div className="min-w-[760px] px-3 sm:px-0">
-                <WeekView weekDays={weekDays} items={items} shifts={shifts} />
+                <WeekView
+                  weekDays={weekDays}
+                  items={items}
+                  shifts={shifts}
+                  onStandaloneShiftClick={setEditTerminId}
+                />
               </div>
             </div>
           )}
@@ -359,6 +369,12 @@ export default function KalenderPage() {
         // In Monatsansicht: ausgewaehlter Tag wird vorausgefuellt damit der
         // User nicht nochmal das Datum tippen muss.
         initialDate={view === "monat" && selectedDay != null ? new Date(year, month, selectedDay) : null}
+      />
+
+      <TerminEditModal
+        apptId={editTerminId}
+        onClose={() => setEditTerminId(null)}
+        onChanged={load}
       />
     </div>
   );

@@ -23,6 +23,9 @@ interface Props {
   weekDays: Date[];
   items: CalendarItem[];
   shifts: CalendarShift[];
+  /** Klick auf einen Termin ohne Job-Bezug (kein href). Optional —
+   *  wenn nicht gesetzt, bleibt der Termin static. */
+  onStandaloneShiftClick?: (shiftId: string) => void;
 }
 
 function keyOf(d: Date): string {
@@ -58,7 +61,7 @@ const SHIFT_STYLE_NEUTRAL = {
   text: "text-foreground/80",
 };
 
-export function WeekView({ weekDays, items, shifts }: Props) {
+export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick }: Props) {
   const todayKey = keyOf(new Date());
   const weekStartTs = new Date(weekDays[0].getFullYear(), weekDays[0].getMonth(), weekDays[0].getDate()).getTime();
   const weekEndTs = new Date(weekDays[6].getFullYear(), weekDays[6].getMonth(), weekDays[6].getDate()).getTime();
@@ -259,6 +262,16 @@ export function WeekView({ weekDays, items, shifts }: Props) {
                           >
                             {inner}
                           </Link>
+                        ) : onStandaloneShiftClick ? (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => onStandaloneShiftClick(s.id)}
+                            className={`${baseClasses} ${hoverClasses} text-left w-full`}
+                            data-tooltip={`${tipText} · klicken zum Bearbeiten`}
+                          >
+                            {inner}
+                          </button>
                         ) : (
                           <div key={s.id} className={baseClasses} data-tooltip={tipText}>
                             {inner}
