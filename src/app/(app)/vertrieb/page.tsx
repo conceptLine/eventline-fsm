@@ -50,6 +50,10 @@ export default function VertriebPage() {
   const [contacts, setContacts] = useState<VertriebContact[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null; phone: string | null }[]>([]);
+  // Sales-Mitarbeiter fuer den Assignee-Toggle. Hardcoded gefiltert auf
+  // Leo+Mischa per Email — die anderen Admins (admin test, ggf. andere)
+  // sind nicht im Sales-Workflow. Reihenfolge: alphabetisch nach Name.
+  const [salesPeople, setSalesPeople] = useState<{ id: string; full_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Suche/Filter
@@ -93,15 +97,39 @@ export default function VertriebPage() {
   }, []);
 
   async function load() {
-    const [{ data }, custRes, countsRes] = await Promise.all([
+    const [{ data }, custRes, countsRes, salesRes] = await Promise.all([
       supabase.from("vertrieb_contacts").select("*").order("nr").limit(2000),
       supabase.from("customers").select("id, name, email, phone").eq("is_active", true).order("name"),
       supabase.from("vertrieb_counts").select("*").single(),
+      supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("email", ["leo@eventline-basel.com", "mischa@eventline-basel.com"])
+        .eq("is_active", true)
+        .order("full_name"),
     ]);
     if (data) setContacts(data as VertriebContact[]);
     if (custRes.data) setCustomers(custRes.data);
     if (countsRes.data) setCounts(countsRes.data);
+    if (salesRes.data) setSalesPeople(salesRes.data);
     setLoading(false);
+  }
+
+  // Optimistic Assignee-Update — sofort lokal anzeigen, im Hintergrund
+  // schreiben. Bei Fehler revert + Toast. Nicht blocking damit der User
+  // sofort sieht dass der Toggle reagiert hat.
+  async function assignLead(leadId: string, userId: string | null) {
+    const before = contacts.find((c) => c.id === leadId)?.assigned_to;
+    setContacts((prev) => prev.map((c) => c.id === leadId ? { ...c, assigned_to: userId } : c));
+    const { error } = await supabase
+      .from("vertrieb_contacts")
+      .update({ assigned_to: userId })
+      .eq("id", leadId);
+    if (error) {
+      // Revert
+      setContacts((prev) => prev.map((c) => c.id === leadId ? { ...c, assigned_to: before ?? null } : c));
+      TOAST.supabaseError(error, "Zuweisung konnte nicht gespeichert werden");
+    }
   }
 
   function openNew() {
@@ -417,6 +445,8 @@ export default function VertriebPage() {
               onClick={(c2) => router.push(`/vertrieb/${c2.id}`)}
               onDelete={deleteContact}
               canDelete={can("vertrieb:delete")}
+              salesPeople={salesPeople}
+              onAssign={assignLead}
             />
           ))}
         </div>

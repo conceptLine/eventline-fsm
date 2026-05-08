@@ -355,6 +355,9 @@ export interface VertriebContact {
   kategorie: VertriebKategorie;
   step: number;
   verloren_grund: string | null;
+  /** Profil-ID des zustaendigen Sales-Mitarbeiters (Leo oder Mischa).
+   *  Null wenn noch nicht zugewiesen. */
+  assigned_to: string | null;
   created_at: string;
   updated_at: string;
 }

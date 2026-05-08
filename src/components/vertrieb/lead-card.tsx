@@ -11,9 +11,15 @@ interface Props {
   onDelete: (id: string) => void;
   /** Wenn false: Delete-Button im Hover wird nicht gerendert. */
   canDelete?: boolean;
+  /** Sales-Mitarbeiter fuer den Assignee-Toggle (Leo, Mischa).
+   *  Toggle wird nur gerendert wenn die Liste nicht leer ist. */
+  salesPeople?: { id: string; full_name: string }[];
+  /** Click-Handler fuer den Assignee-Toggle. userId=null = Zuweisung
+   *  zuruecknehmen (aktuell zugewiesener Avatar wird erneut geklickt). */
+  onAssign?: (leadId: string, userId: string | null) => void;
 }
 
-export function LeadCard({ contact: c, onClick, onDelete, canDelete = true }: Props) {
+export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, salesPeople = [], onAssign }: Props) {
   const statusConf = STATUS_OPTIONS.find((s) => s.value === c.status)!;
   const prioConf = PRIORITY_OPTIONS.find((p) => p.value === c.prioritaet)!;
   const katConf = KATEGORIE_OPTIONS.find((o) => o.value === c.kategorie);
@@ -120,8 +126,41 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true }: Pr
           </div>
         )}
 
-        {/* Status + Priority als Badges (nicht editierbar) */}
+        {/* Status + Priority + Assignee-Toggle. Assignee zuerst weil
+            "wem gehoert der Lead" der primaere Identifier ist. */}
         <div className="flex items-center gap-1.5 flex-wrap">
+          {salesPeople.length > 0 && onAssign && (
+            <div className="flex items-center gap-1 mr-0.5">
+              {salesPeople.map((sp) => {
+                const isAssigned = c.assigned_to === sp.id;
+                const initial = sp.full_name.charAt(0).toUpperCase();
+                return (
+                  <button
+                    key={sp.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Klick auf bereits-zugewiesen = unassign (Toggle-Geste).
+                      // Klick auf andere Person = wechseln. Null = unzugewiesen.
+                      onAssign(c.id, isAssigned ? null : sp.id);
+                    }}
+                    className={`w-6 h-6 rounded-full text-[10px] font-bold transition-colors flex items-center justify-center shrink-0 ${
+                      isAssigned
+                        ? "bg-red-500 text-white"
+                        : "bg-foreground/10 dark:bg-foreground/15 text-foreground/60 dark:text-foreground/70"
+                    }`}
+                    title={isAssigned
+                      ? `${sp.full_name} ist zugewiesen — klick zum Entfernen`
+                      : `${sp.full_name} zuweisen`}
+                    aria-label={isAssigned ? `${sp.full_name} entfernen` : `${sp.full_name} zuweisen`}
+                    aria-pressed={isAssigned}
+                  >
+                    {initial}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <span className={`text-[11px] font-medium px-2 py-1 rounded-md border ${statusConf.color}`}>{statusConf.label}</span>
           <span className={`text-[11px] font-medium px-2 py-1 rounded-md border ${prioConf.color}`}>{prioConf.label}</span>
           {c.datum_kontakt && (
