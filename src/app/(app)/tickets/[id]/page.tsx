@@ -60,6 +60,10 @@ export default function TicketDetailPage() {
   // Bei Beleg-Tickets: aufgeloester Genehmiger (Person-Name oder verlinktes
   // Material-Ticket mit Nummer + Titel).
   const [belegApproval, setBelegApproval] = useState<{ kind: "person" | "ticket"; label: string; href?: string } | null>(null);
+  // Bei Stempel-Aenderung: aufgeloester Auftrag (entweder direkt aus
+  // data.job_id, oder via time_entries.job_id bei Korrektur). Null = kein
+  // Auftrag (Andere Arbeit) ODER noch nicht geladen.
+  const [stempelJob, setStempelJob] = useState<{ id: string; job_number: number; title: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -107,6 +111,37 @@ export default function TicketDetailPage() {
         }
       } else {
         setBelegApproval(null);
+      }
+
+      // Stempel-Aenderung: Auftrag aufloesen.
+      // - Korrektur (time_entry_id): time_entries -> job_id -> jobs
+      // - Vergessen (job_id direkt): jobs
+      // - Andere Arbeit oder kein Bezug: stempelJob bleibt null
+      if (t.type === "stempel_aenderung") {
+        const sd = (t.data ?? {}) as { time_entry_id?: string; job_id?: string };
+        let jobId: string | null = null;
+        if (sd.time_entry_id) {
+          const { data: te } = await supabase
+            .from("time_entries")
+            .select("job_id")
+            .eq("id", sd.time_entry_id)
+            .maybeSingle();
+          jobId = te?.job_id ?? null;
+        } else if (sd.job_id) {
+          jobId = sd.job_id;
+        }
+        if (jobId) {
+          const { data: job } = await supabase
+            .from("jobs")
+            .select("id, job_number, title")
+            .eq("id", jobId)
+            .maybeSingle();
+          setStempelJob(job ? { id: job.id, job_number: job.job_number, title: job.title } : null);
+        } else {
+          setStempelJob(null);
+        }
+      } else {
+        setStempelJob(null);
       }
     }
     setLoading(false);
@@ -345,7 +380,7 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          <TicketDataDisplay type={ticket.type} data={ticket.data as Record<string, unknown>} />
+          <TicketDataDisplay type={ticket.type} data={ticket.data as Record<string, unknown>} stempelJob={stempelJob} />
 
           {/* Beleg-Genehmigung — aufgeloest aus genehmigt_von_user_id
               oder genehmigt_via_ticket_id. */}
@@ -469,7 +504,7 @@ export default function TicketDetailPage() {
 }
 
 // ---- Sub: type-spezifische Daten anzeigen ----
-function TicketDataDisplay({ type, data }: { type: TicketType; data: Record<string, unknown> }) {
+function TicketDataDisplay({ type, data, stempelJob }: { type: TicketType; data: Record<string, unknown>; stempelJob?: { id: string; job_number: number; title: string } | null }) {
   if (!data || Object.keys(data).length === 0) return null;
 
   if (type === "it") {
@@ -515,12 +550,18 @@ function TicketDataDisplay({ type, data }: { type: TicketType; data: Record<stri
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Modus</p>
             <p className="text-sm font-medium mt-0.5">{d.time_entry_id ? "Korrektur eines Eintrags" : "Vergessen einzustempeln"}</p>
           </div>
-          {d.time_entry_id && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Stempel-ID</p>
-              <p className="text-xs font-mono mt-0.5 truncate">{d.time_entry_id}</p>
-            </div>
-          )}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Auftrag</p>
+            {stempelJob ? (
+              <Link href={`/auftraege/${stempelJob.id}`} className="text-sm font-medium mt-0.5 text-blue-600 hover:underline inline-block truncate max-w-full">
+                INT-{stempelJob.job_number} · {stempelJob.title}
+              </Link>
+            ) : (
+              <p className="text-sm font-medium mt-0.5">
+                Andere Arbeit{d.beschreibung ? ` · ${d.beschreibung}` : ""}
+              </p>
+            )}
+          </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Neue Start</p>
             <p className="text-sm font-medium mt-0.5">{fmt(d.neu_start)}</p>
