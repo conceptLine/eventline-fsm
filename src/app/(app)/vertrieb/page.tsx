@@ -1,19 +1,19 @@
 "use client";
 
 /**
- * Vertrieb-Liste — Donut-Chart, Filter, Lead-Cards.
+ * Vertrieb-Liste — Sales-Cockpit + Filter + Lead-Cards.
  *
- * Detail/Edit eines Leads liegt jetzt auf /vertrieb/[id] (Detail-Page).
- * Hier nur noch:
- *  - Donut + Counts
- *  - Suche + Filter
+ * Detail/Edit eines Leads liegt auf /vertrieb/[id] (Detail-Page).
+ * Hier:
+ *  - StatCards (Aktive Pipeline / Events 30 Tage / Win-Rate)
+ *  - Funnel (Stage-Verteilung mit Outcome-Footer)
+ *  - Suche + Kategorie/Status/Priority-Filter + Sort-Dropdown
+ *  - Archiv-Toggle (zeigt nur 'abgesagt')
  *  - "Neuer Lead"-Flow (CategoryPicker → LeadForm-Inline → Insert → redirect)
  *  - Lead-Cards (Klick navigiert zur Detail-Page)
  *
- * Aller edit-spezifische State (Termin/Auftrag/Buchhaltung/Verbesserung/
- * Lost-Modals + Offerte-Upload + advanceStep) ist in den LeadEditor
- * geflossen. /vertrieb/page.tsx ist dadurch von 1066 Zeilen auf ~300
- * runter und hat keine Code-Duplikation mehr.
+ * StatCards/Funnel sind im Archiv-Modus ausgeblendet — alle Karten
+ * dort haben den gleichen Status, das Reporting waere sinnfrei.
  */
 
 import { useEffect, useState } from "react";
@@ -25,7 +25,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact, VertriebStatus, VertriebPriority, VertriebKategorie } from "@/types";
-import { Plus, TrendingUp, Search, Archive } from "lucide-react";
+import { Plus, TrendingUp, Search, Archive, PartyPopper, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS, emptyForm } from "./constants";
 import { LeadCard } from "@/components/vertrieb/lead-card";
@@ -57,6 +57,13 @@ export default function VertriebPage() {
   const [filterStatus, setFilterStatus] = useState<VertriebStatus | "all">("all");
   const [filterPriority, setFilterPriority] = useState<VertriebPriority | "all">("all");
   const [filterKategorie, setFilterKategorie] = useState<VertriebKategorie | "all">("all");
+  // Sort-Kriterium: Standard ist nr (Reihenfolge der Anlage). Andere
+  // Kriterien helfen dem Sales-Workflow:
+  //  - event: naechstes Event zuerst (Planungsblick)
+  //  - stale: aelteste datum_kontakt zuerst (= veraltet, nachhaken)
+  //  - priority: top zuerst (was ist wichtig)
+  type SortBy = "nr" | "event" | "stale" | "priority";
+  const [sortBy, setSortBy] = useState<SortBy>("nr");
 
   // Archiv-Modus: zeigt ausschliesslich abgesagte Leads. Persistent damit
   // ein versehentlicher Reload den Modus nicht verliert. Pattern uebernommen
@@ -204,6 +211,17 @@ export default function VertriebPage() {
   const noop = () => {};
   const noopAsync = async () => {};
 
+  // event_start aus dem JSON-encodeten notizen-Feld pul len. Wird fuer
+  // Event-Sort + Stat-Card "Events 30 Tage" gebraucht.
+  function parseEventStart(c: VertriebContact): Date | null {
+    try {
+      const d = (JSON.parse(c.notizen || "{}") as { _details?: { event_start?: string } })?._details?.event_start;
+      if (!d) return null;
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    } catch { return null; }
+  }
+
   const filtered = contacts
     // Archiv-Trennung: Standard-View blendet 'abgesagt' aus, Archiv-View
     // zeigt ausschliesslich 'abgesagt'.
@@ -215,6 +233,32 @@ export default function VertriebPage() {
       const q = search.toLowerCase();
       return !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q) || (c.branche || "").toLowerCase().includes(q);
     });
+
+  // Sortierung — separat nach Filter, damit die Filter-Logik linear bleibt.
+  const sorted = filtered.slice().sort((a, b) => {
+    if (sortBy === "event") {
+      const aE = parseEventStart(a);
+      const bE = parseEventStart(b);
+      if (!aE && !bE) return a.nr - b.nr;
+      if (!aE) return 1;
+      if (!bE) return -1;
+      return aE.getTime() - bE.getTime();
+    }
+    if (sortBy === "stale") {
+      // datum_kontakt aufsteigend = aelteste oben (= laengste nicht
+      // angefasst). nulls landen unten.
+      if (!a.datum_kontakt && !b.datum_kontakt) return a.nr - b.nr;
+      if (!a.datum_kontakt) return 1;
+      if (!b.datum_kontakt) return -1;
+      return a.datum_kontakt.localeCompare(b.datum_kontakt);
+    }
+    if (sortBy === "priority") {
+      const order: Record<VertriebPriority, number> = { top: 0, gut: 1, mittel: 2 };
+      const cmp = order[a.prioritaet] - order[b.prioritaet];
+      return cmp !== 0 ? cmp : a.nr - b.nr;
+    }
+    return a.nr - b.nr;
+  });
 
   const statusCounts: Record<string, number> = counts ? {
     offen: counts.offen, kontaktiert: counts.kontaktiert, gespraech: counts.gespraech,
@@ -255,8 +299,13 @@ export default function VertriebPage() {
         </div>
       </div>
 
-      {/* Donut-Chart — im Archiv ausgeblendet (alle Karten haben gleichen Status). */}
-      {!showArchive && counts && counts.total > 0 && <DonutChart counts={counts} />}
+      {/* Pipeline-Stats + Funnel — im Archiv ausgeblendet. */}
+      {!showArchive && counts && counts.total > 0 && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} />
+        </div>
+      )}
+      {!showArchive && counts && counts.total > 0 && <Funnel counts={counts} />}
 
       {/* Suche + Filter */}
       <div className="flex flex-wrap gap-3">
@@ -289,6 +338,18 @@ export default function VertriebPage() {
             value={filterPriority} onChange={(v) => setFilterPriority(v as VertriebPriority | "all")}
             items={[{ id: "all", label: "Alle Prioritäten" }, ...PRIORITY_OPTIONS.map((p) => ({ id: p.value, label: p.label }))]}
             searchable={false} clearable={false} active={filterPriority !== "all"}
+          />
+        </div>
+        <div className="w-full sm:w-52">
+          <SearchableSelect
+            value={sortBy} onChange={(v) => setSortBy(v as SortBy)}
+            items={[
+              { id: "nr", label: "↕ Reihenfolge (Standard)" },
+              { id: "event", label: "↑ Event-Datum (nächstes)" },
+              { id: "stale", label: "↑ Letzter Kontakt (älteste)" },
+              { id: "priority", label: "★ Priorität (Top zuerst)" },
+            ]}
+            searchable={false} clearable={false} active={sortBy !== "nr"}
           />
         </div>
       </div>
@@ -335,7 +396,7 @@ export default function VertriebPage() {
       {/* Liste */}
       {loading ? (
         <div className="space-y-2">{[1, 2, 3].map((i) => <Card key={i} className="animate-pulse bg-card"><CardContent className="p-4"><div className="h-5 bg-gray-200 rounded w-1/3" /></CardContent></Card>)}</div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-16 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
@@ -349,7 +410,7 @@ export default function VertriebPage() {
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((c) => (
+          {sorted.map((c) => (
             <LeadCard
               key={c.id}
               contact={c}
@@ -366,102 +427,147 @@ export default function VertriebPage() {
 }
 
 /* --------------------------------------------------------------------------
- * Donut-Chart — eigenes Sub-Component damit die Hauptpage nicht so lang ist.
- * Logik unveraendert vom vorherigen Inline-Code.
+ * StatCards — drei kompakte Kennzahl-Karten als Sales-Cockpit:
+ *   1. Aktive Pipeline   — alle Leads in nicht-terminalen Stages
+ *   2. Events 30 Tage    — Leads mit event_start in den naechsten 30 Tagen
+ *   3. Win-Rate          — gewonnen / (gewonnen + abgesagt)
  * -------------------------------------------------------------------------- */
-function DonutChart({ counts }: { counts: Counts }) {
-  const segments = [
-    { label: "Schritt 1: Offen", count: counts.step_1, color: "var(--status-gray)" },
-    { label: "Schritt 2: Kontaktiert", count: counts.step_2, color: "var(--status-blue)" },
-    { label: "Schritt 3: Finalisierung", count: counts.step_3, color: "var(--status-orange)" },
-    { label: "Schritt 4: Operations", count: counts.step_4, color: "var(--status-emerald)" },
-    { label: "Gewonnen", count: counts.gewonnen, color: "var(--status-green)" },
-    { label: "Verloren", count: counts.abgesagt, color: "var(--status-red)" },
-  ].filter((s) => s.count > 0);
+function StatCards({
+  counts,
+  contacts,
+  parseEventStart,
+}: {
+  counts: Counts;
+  contacts: VertriebContact[];
+  parseEventStart: (c: VertriebContact) => Date | null;
+}) {
+  const aktive = counts.step_1 + counts.step_2 + counts.step_3 + counts.step_4;
 
-  const total = segments.reduce((sum, s) => sum + s.count, 0);
-  const radius = 72;
-  const ringWidth = 18;
-  const outerR = radius + ringWidth / 2;
-  const innerR = radius - ringWidth / 2;
-  const ringDiff = outerR - innerR;
-  const outlineWidth = 2;
-  const svgPad = Math.ceil(outlineWidth / 2) + 1;
-  const cx = outerR + svgPad;
-  const cy = outerR + svgPad;
-  const svgSize = outerR * 2 + svgPad * 2;
-  const gapAngle = segments.length > 1 ? 0.08 : 0;
-  let cumulativeGapMid = -Math.PI / 2;
+  // Events 30 Tage: nur nicht-terminale Leads mit event_start in [today, today+30].
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const in30 = new Date(today); in30.setDate(today.getDate() + 30);
+  const events30 = contacts.filter((c) => {
+    if (c.status === "abgesagt" || c.status === "gewonnen") return false;
+    const ed = parseEventStart(c);
+    return !!ed && ed >= today && ed <= in30;
+  }).length;
+
+  // Win-Rate: Sample-Groesse mitanzeigen damit der Wert einordbar ist.
+  const closed = counts.gewonnen + counts.abgesagt;
+  const winRate = closed > 0 ? Math.round((counts.gewonnen / closed) * 100) : null;
+
+  return (
+    <>
+      <Card className="bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <TrendingUp className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Aktive Pipeline</p>
+              <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{aktive}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Leads in Bearbeitung</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+              <PartyPopper className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Events nächste 30 Tage</p>
+              <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{events30}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">anstehend</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-green-50 dark:bg-green-500/15 text-green-600 dark:text-green-400 flex items-center justify-center shrink-0">
+              <Trophy className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Win-Rate</p>
+              <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{winRate !== null ? `${winRate}%` : "—"}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {closed > 0 ? `${counts.gewonnen} von ${closed} abgeschlossen` : "noch keine abgeschlossen"}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/* --------------------------------------------------------------------------
+ * Funnel — Sales-Pipeline als horizontale Bar-Liste.
+ *
+ * Snapshot, kein Flow: jede Stage zeigt wie viele Leads aktuell DORT
+ * stehen, nicht wie viele die Stage passiert haben (Status-Change-Historie
+ * fehlt). Trotzdem aussagekraeftiger als der Donut weil Stages in Reihenfolge
+ * stehen und die Bar-Breiten relativ zur staerksten Stage skalieren — der
+ * "Funnel-Effekt" wird visuell sichtbar.
+ * -------------------------------------------------------------------------- */
+function Funnel({ counts }: { counts: Counts }) {
+  // Style: tinted Background + 2px solid Border in der Stage-Farbe — gleiche
+  // Optik wie der TrendChart auf /abrechnung. RGB-Werte stammen aus den
+  // --status-X CSS-Variablen; rgba(...)-Klassen muessen statisch im Code
+  // stehen damit Tailwind-JIT sie picken kann.
+  const stages = [
+    { nr: 1, label: "Offen",         count: counts.step_1, color: "var(--status-gray)",    tint: "bg-[rgba(100,116,139,0.12)] dark:bg-[rgba(100,116,139,0.18)]" },
+    { nr: 2, label: "Kontaktiert",   count: counts.step_2, color: "var(--status-blue)",    tint: "bg-[rgba(37,99,235,0.12)] dark:bg-[rgba(37,99,235,0.18)]" },
+    { nr: 3, label: "Finalisierung", count: counts.step_3, color: "var(--status-orange)",  tint: "bg-[rgba(234,88,12,0.12)] dark:bg-[rgba(234,88,12,0.18)]" },
+    { nr: 4, label: "Operations",    count: counts.step_4, color: "var(--status-emerald)", tint: "bg-[rgba(4,120,87,0.12)] dark:bg-[rgba(4,120,87,0.18)]" },
+  ];
+  const maxCount = Math.max(1, ...stages.map((s) => s.count));
 
   return (
     <Card className="bg-card">
-      <CardContent className="p-5">
-        <div className="flex flex-col md:flex-row items-start gap-6">
-          <div className="relative shrink-0">
-            <svg width={svgSize} height={svgSize}>
-              <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.08]" />
-              <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.08]" />
-              {segments.length === 1 ? (
-                <>
-                  <circle cx={cx} cy={cy} r={outerR} fill="none" stroke={segments[0].color} strokeWidth={outlineWidth} />
-                  <circle cx={cx} cy={cy} r={innerR} fill="none" stroke={segments[0].color} strokeWidth={outlineWidth} />
-                </>
-              ) : (
-                segments.map((s, i) => {
-                  const portion = s.count / total;
-                  const segAngle = portion * 2 * Math.PI - gapAngle;
-                  const gapMidPrev = cumulativeGapMid;
-                  const startA = gapMidPrev + gapAngle / 2;
-                  const endA = startA + segAngle;
-                  const gapMidNext = endA + gapAngle / 2;
-                  cumulativeGapMid = gapMidNext;
-                  const ox1 = cx + outerR * Math.cos(startA);
-                  const oy1 = cy + outerR * Math.sin(startA);
-                  const ox2 = cx + outerR * Math.cos(endA);
-                  const oy2 = cy + outerR * Math.sin(endA);
-                  const ix1u = ox1 - ringDiff * Math.cos(gapMidPrev);
-                  const iy1u = oy1 - ringDiff * Math.sin(gapMidPrev);
-                  const innerStartAngle = Math.atan2(iy1u - cy, ix1u - cx);
-                  const ix1 = cx + innerR * Math.cos(innerStartAngle);
-                  const iy1 = cy + innerR * Math.sin(innerStartAngle);
-                  const ix2u = ox2 - ringDiff * Math.cos(gapMidNext);
-                  const iy2u = oy2 - ringDiff * Math.sin(gapMidNext);
-                  const innerEndAngle = Math.atan2(iy2u - cy, ix2u - cx);
-                  const ix2 = cx + innerR * Math.cos(innerEndAngle);
-                  const iy2 = cy + innerR * Math.sin(innerEndAngle);
-                  const largeArc = segAngle > Math.PI ? 1 : 0;
-                  const d = `M ${ox1} ${oy1} A ${outerR} ${outerR} 0 ${largeArc} 1 ${ox2} ${oy2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix1} ${iy1} Z`;
-                  return <path key={i} d={d} fill={s.color} stroke={s.color} strokeWidth={outlineWidth} strokeLinejoin="round" className="donut-segment" />;
-                })
-              )}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-[34px] font-bold leading-none tracking-tight">{total}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Leads</span>
-            </div>
-          </div>
-
-          <div className="flex-1 w-full space-y-2.5">
-            {segments.map((s) => {
-              const pct = total > 0 ? (s.count / total) * 100 : 0;
-              return (
-                <div key={s.label} className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium truncate">{s.label}</span>
-                      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                        <strong className="text-foreground">{s.count}</strong> · {pct.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="h-[2px] rounded-full bg-foreground/[0.05] overflow-hidden mt-1.5">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.color }} />
-                    </div>
-                  </div>
+      <CardContent className="p-4 space-y-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pipeline</p>
+        <div className="space-y-2">
+          {stages.map((s) => {
+            const pct = (s.count / maxCount) * 100;
+            return (
+              <div key={s.nr} className="flex items-center gap-3">
+                <span className="w-32 sm:w-40 text-xs font-medium shrink-0 truncate">{s.nr}. {s.label}</span>
+                <div className="flex-1 h-7 flex items-center">
+                  {s.count > 0 && (
+                    <div
+                      className={`h-7 rounded-md border-2 border-solid transition-all ${s.tint}`}
+                      style={{
+                        width: `${pct}%`,
+                        borderColor: s.color,
+                        minWidth: "10px",
+                      }}
+                    />
+                  )}
                 </div>
-              );
-            })}
-          </div>
+                <span className="w-8 text-right text-sm font-mono tabular-nums font-semibold shrink-0">{s.count}</span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Outcomes — getrennt unter dem Funnel weil sie kein "current state"
+            sind sondern abgeschlossene Faelle. */}
+        <div className="border-t border-border pt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "var(--status-green)" }} />
+            <span className="text-muted-foreground">Gewonnen</span>
+            <strong className="tabular-nums">{counts.gewonnen}</strong>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "var(--status-red)" }} />
+            <span className="text-muted-foreground">Verloren</span>
+            <strong className="tabular-nums">{counts.abgesagt}</strong>
+          </span>
         </div>
       </CardContent>
     </Card>
