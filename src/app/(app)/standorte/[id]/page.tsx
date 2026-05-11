@@ -64,6 +64,14 @@ export default function StandortDetailPage() {
   // Floating PDF/Image-Vorschau — non-modal.
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
 
+  // Notizen-Blocks — frei: Text oder Link, mit Erstell-Datum. Gespeichert
+  // im locations.notes-Feld als JSON-Array. Pattern uebernommen vom alten
+  // FSM, dort hat sich bewaehrt: Codes, Dropbox-Links, Calendar-Embeds.
+  type Note = { id: string; content: string; created_at: string };
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
   useEffect(() => { loadAll(); }, [id]);
 
   async function loadAll() {
@@ -95,6 +103,56 @@ export default function StandortDetailPage() {
         if (Array.isArray(parsed)) setDocs(parsed);
       } catch {}
     }
+
+    // Notizen — JSON-Array im notes-Feld. Bei Legacy-Daten (raw text statt
+    // JSON) konvertieren wir den Text in einen einzelnen Block.
+    if (locRes.data?.notes) {
+      try {
+        const parsed = JSON.parse(locRes.data.notes);
+        if (Array.isArray(parsed)) setNotes(parsed as Note[]);
+        else setNotes([]);
+      } catch {
+        // Legacy raw-text → ein Block
+        const raw = String(locRes.data.notes).trim();
+        if (raw) {
+          setNotes([{ id: crypto.randomUUID(), content: raw, created_at: new Date().toISOString() }]);
+        } else {
+          setNotes([]);
+        }
+      }
+    } else {
+      setNotes([]);
+    }
+  }
+
+  async function saveNotes(next: Note[]) {
+    setNotes(next);
+    const { error } = await supabase.from("locations").update({ notes: JSON.stringify(next) }).eq("id", id);
+    if (error) {
+      TOAST.supabaseError(error, "Notiz konnte nicht gespeichert werden");
+      // Bei Fehler revert via reload
+      loadAll();
+    }
+  }
+
+  async function addNote() {
+    const content = newNoteText.trim();
+    if (!content || savingNote) return;
+    setSavingNote(true);
+    const newNote: Note = { id: crypto.randomUUID(), content, created_at: new Date().toISOString() };
+    await saveNotes([...notes, newNote]);
+    setNewNoteText("");
+    setSavingNote(false);
+  }
+
+  async function deleteNote(noteId: string) {
+    const ok = await confirm({ title: "Notiz löschen?", confirmLabel: "Löschen", variant: "red" });
+    if (!ok) return;
+    await saveNotes(notes.filter((n) => n.id !== noteId));
+  }
+
+  function isUrl(s: string): boolean {
+    return /^https?:\/\/\S+/i.test(s.trim());
   }
 
   async function linkCustomer(customerId: string) {
@@ -287,6 +345,72 @@ export default function StandortDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Notizen — freier Textblock oder Link, kann mehrere Eintraege haben.
+          Links (http/https) werden klickbar als <a> gerendert. */}
+      <Card className="bg-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><FileText className="h-4 w-4" />Notizen ({notes.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {notes.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">Noch keine Notizen.</p>
+          )}
+          {notes.map((n) => (
+            <div key={n.id} className="flex items-start gap-2 p-3 rounded-lg bg-muted/40 border">
+              <div className="min-w-0 flex-1">
+                {isUrl(n.content) ? (
+                  <a
+                    href={n.content}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all"
+                  >
+                    {n.content}
+                  </a>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap break-words">{n.content}</p>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {new Date(n.created_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                </p>
+              </div>
+              {can("locations:edit") && (
+                <button
+                  type="button"
+                  onClick={() => deleteNote(n.id)}
+                  className="icon-btn icon-btn-red shrink-0"
+                  data-tooltip="Notiz löschen"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          {can("locations:edit") && (
+            <div className="flex items-end gap-2 pt-1">
+              <textarea
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addNote(); } }}
+                placeholder="Neue Notiz oder Link (Strg+Enter zum Speichern)…"
+                rows={2}
+                className="flex-1 px-3 py-2 text-sm rounded-xl border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring/40"
+                style={{ fieldSizing: "content" } as React.CSSProperties}
+              />
+              <button
+                type="button"
+                onClick={addNote}
+                disabled={!newNoteText.trim() || savingNote}
+                className="kasten kasten-blue shrink-0 disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Hinzufügen
+              </button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Kunde verknüpfen */}
       <Card className="bg-card">
