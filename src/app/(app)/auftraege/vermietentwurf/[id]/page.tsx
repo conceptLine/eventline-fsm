@@ -138,6 +138,7 @@ export default function AnfrageDetailPage() {
     setUploading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setUploading(false); return; }
+    let okCount = 0;
     for (const file of validated) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `vermietentwurf-direct/${id}/${Date.now()}_${safeName}`;
@@ -151,7 +152,7 @@ export default function AnfrageDetailPage() {
           TOAST.uploadError(json.error);
           continue;
         }
-        await supabase.from("documents").insert({
+        const { error: insertErr } = await supabase.from("documents").insert({
           name: file.name,
           storage_path: path,
           file_size: file.size,
@@ -159,12 +160,19 @@ export default function AnfrageDetailPage() {
           job_id: id as string,
           uploaded_by: user.id,
         });
+        if (insertErr) {
+          TOAST.supabaseError(insertErr, "Dokument konnte nicht gespeichert werden");
+          continue;
+        }
+        okCount++;
       } catch (err) {
         TOAST.uploadError(err instanceof Error ? err.message : "Netzwerkfehler");
       }
     }
-    toast.success(validated.length === 1 ? "Datei hochgeladen" : "Dateien hochgeladen");
-    await loadDocuments();
+    if (okCount > 0) {
+      toast.success(okCount === 1 ? "Datei hochgeladen" : `${okCount} Dateien hochgeladen`);
+      await loadDocuments();
+    }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }

@@ -19,7 +19,9 @@ export const maxDuration = 30;
 //   - todos/            → todos/page
 //   - tickets/          → new-ticket-modal
 //   - vertrieb/         → vertrieb/page (Offerten-PDF)
-//   - vermietentwurf/   → send-step-modal
+//   - vermietentwurf/        → send-step-modal (Mail-Anhaenge je Schritt)
+//   - vermietentwurf-direct/ → vermietentwurf/[id] (Direkt-Upload aus
+//                              der Dokumentenliste, ohne Mail-Schritt)
 //   - rapport-photos/   → rapport-form-modal
 //   - signatures/client + signatures/tech → rapport-form-modal
 const ALLOWED_PREFIXES = [
@@ -31,6 +33,7 @@ const ALLOWED_PREFIXES = [
   "tickets/",
   "vertrieb/",
   "vermietentwurf/",
+  "vermietentwurf-direct/",
   "rapport-photos/",
   "signatures/",
 ] as const;
