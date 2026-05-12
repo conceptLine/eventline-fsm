@@ -429,7 +429,7 @@ export default function VertriebPage() {
 
       {/* Liste */}
       {loading ? (
-        <div className="space-y-2">{[1, 2, 3].map((i) => <Card key={i} className="animate-pulse bg-card"><CardContent className="p-4"><div className="h-5 bg-gray-200 rounded w-1/3" /></CardContent></Card>)}</div>
+        <div className="space-y-2">{[1, 2, 3].map((i) => <Card key={i} className="animate-pulse bg-card"><CardContent className="p-4"><div className="h-5 bg-foreground/10 dark:bg-foreground/15 rounded w-1/3" /></CardContent></Card>)}</div>
       ) : sorted.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-16 text-center">

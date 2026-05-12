@@ -51,6 +51,7 @@ export function PhotosSection({ photos, uploadCount, isReadOnly, onSelectFiles, 
                     type="button"
                     onClick={() => onRemove(photo)}
                     className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                    aria-label="Foto entfernen"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

@@ -738,16 +738,22 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
                 <>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground/70 ml-1">Welcher Eintrag? *</p>
-                    <SearchableSelect
-                      value={stempel.time_entry_id}
-                      onChange={(v) => setStempel({ ...stempel, time_entry_id: v })}
-                      items={timeEntries.map((e) => ({
-                        id: e.id,
-                        label: `${new Date(e.clock_in).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — ${e.job_label ?? "—"}`,
-                      }))}
-                      placeholder="Stempel-Eintrag auswählen…"
-                      clearable={false}
-                    />
+                    {timeEntries.length === 0 ? (
+                      <div className="px-3 py-2 text-sm rounded-lg border border-border bg-muted/30 text-muted-foreground">
+                        Keine Stempel-Einträge in den letzten 30 Tagen — nutze stattdessen „Vergessen einzustempeln".
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        value={stempel.time_entry_id}
+                        onChange={(v) => setStempel({ ...stempel, time_entry_id: v })}
+                        items={timeEntries.map((e) => ({
+                          id: e.id,
+                          label: `${new Date(e.clock_in).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — ${e.job_label ?? "—"}`,
+                        }))}
+                        placeholder="Stempel-Eintrag auswählen…"
+                        clearable={false}
+                      />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">

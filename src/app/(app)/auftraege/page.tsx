@@ -86,6 +86,10 @@ export default function AuftraegePage() {
   const [loading, setLoading] = useState(true);
   // Inline-Step-Aktion: welche Anfrage-Karte hat aktuell das Mail-Modal offen?
   const [activeStepJobId, setActiveStepJobId] = useState<string | null>(null);
+  // Doppelklick-Schutz: schneller Re-Klick auf "Naechster Schritt" sonst
+  // zwei parallele UPDATEs gegen die jobs-Row, dazwischen Realtime-Refresh
+  // mit unklarer Endposition. Disabled solange der eine Call lauft.
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -120,33 +124,39 @@ export default function AuftraegePage() {
   // Nach Schritt 4 (Angebot bestaetigt) -> direkt umwandeln in Auftrag
   // (status='offen', kein Entwurf-Zwischenschritt). was_anfrage bleibt true.
   async function advanceAnfrageStep(jobId: string) {
+    if (advancingId) return; // bereits ein Advance im Flug
     const job = activeJobs.find((j) => j.id === jobId);
     if (!job?.request_step) return;
-    const nextStep = job.request_step + 1;
-    if (nextStep > 4) {
-      // Schritt 4 erledigt -> Vermietentwurf -> Auftrag (offen)
+    setAdvancingId(jobId);
+    try {
+      const nextStep = job.request_step + 1;
+      if (nextStep > 4) {
+        // Schritt 4 erledigt -> Vermietentwurf -> Auftrag (offen)
+        const { error } = await supabase
+          .from("jobs")
+          .update({ status: "offen", request_step: null })
+          .eq("id", jobId);
+        if (error) {
+          TOAST.supabaseError(error);
+          return;
+        }
+        toast.success("Vermietentwurf in Auftrag umgewandelt");
+        window.dispatchEvent(new Event("jobs:invalidate"));
+        return;
+      }
       const { error } = await supabase
         .from("jobs")
-        .update({ status: "offen", request_step: null })
+        .update({ request_step: nextStep })
         .eq("id", jobId);
       if (error) {
         TOAST.supabaseError(error);
         return;
       }
-      toast.success("Vermietentwurf in Auftrag umgewandelt");
+      toast.success(REQUEST_STEPS[nextStep - 1].label);
       window.dispatchEvent(new Event("jobs:invalidate"));
-      return;
+    } finally {
+      setAdvancingId(null);
     }
-    const { error } = await supabase
-      .from("jobs")
-      .update({ request_step: nextStep })
-      .eq("id", jobId);
-    if (error) {
-      TOAST.supabaseError(error);
-      return;
-    }
-    toast.success(REQUEST_STEPS[nextStep - 1].label);
-    window.dispatchEvent(new Event("jobs:invalidate"));
   }
 
   async function handleAnfrageNext(jobId: string) {
@@ -516,8 +526,8 @@ export default function AuftraegePage() {
           {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse bg-card">
               <CardContent className="p-5">
-                <div className="h-5 bg-gray-200 rounded w-1/2 mb-3" />
-                <div className="h-4 bg-gray-100 rounded w-1/3" />
+                <div className="h-5 bg-foreground/10 dark:bg-foreground/15 rounded w-1/2 mb-3" />
+                <div className="h-4 bg-foreground/[0.06] dark:bg-foreground/10 rounded w-1/3" />
               </CardContent>
             </Card>
           ))}
@@ -598,8 +608,12 @@ export default function AuftraegePage() {
               const padCls = size === "sm" ? "p-1.5" : "p-2.5";
               if (isAnfrage) {
                 if (isMailStep) return (
-                  <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAnfrageNext(job.id); }}
-                    className={`${padCls} rounded-lg text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors`} aria-label={stepInfo.label}>
+                  <button type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAnfrageNext(job.id); }}
+                    disabled={advancingId === job.id}
+                    className={`${padCls} rounded-lg text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none`}
+                    aria-label={stepInfo.label}
+                  >
                     <Send className={iconCls} />
                   </button>
                 );

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { requireUser } from "@/lib/api-auth";
 import { appUrl } from "@/lib/app-url";
+import { ADMIN_NOTIFICATION_EMAIL } from "@/lib/constants";
 
 export async function POST(request: Request) {
   const auth = await requireUser();
@@ -12,11 +13,11 @@ export async function POST(request: Request) {
   const resendKey = process.env.RESEND_API_KEY;
   const supabase = createAdminClient();
 
-  // In-App Notification an Leo
-  const { data: leo } = await supabase.from("profiles").select("id").eq("email", "leo@eventline-basel.com").single();
-  if (leo?.id) {
+  // In-App Notification an den primaeren Admin
+  const { data: admin } = await supabase.from("profiles").select("id").eq("email", ADMIN_NOTIFICATION_EMAIL).single();
+  if (admin?.id) {
     await supabase.from("notifications").insert({
-      user_id: leo.id,
+      user_id: admin.id,
       title: `Neuer Auftrag aus Vertrieb: INT-${jobNumber}`,
       message: `${firma} — ${title}${creatorName ? ` (erstellt von ${creatorName})` : ""}`,
       link: `/auftraege/${jobId}`,
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   try {
     await resend.emails.send({
       from: "EVENTLINE GmbH <noreply@eventline-basel.com>",
-      to: "leo@eventline-basel.com",
+      to: ADMIN_NOTIFICATION_EMAIL,
       subject: `🎉 Neuer Auftrag aus Vertrieb: INT-${jobNumber} — ${firma}`,
       html: `
         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto">

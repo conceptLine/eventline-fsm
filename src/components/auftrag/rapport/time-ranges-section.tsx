@@ -37,6 +37,39 @@ function calcTotalHours(timeRanges: TimeRange[]): string {
   return `${Math.floor(totalMin / 60)}h ${totalMin % 60 > 0 ? (totalMin % 60) + "m" : ""}`.trim();
 }
 
+// Findet Indizes von Zeitbereichen die sich mit anderen auf dem
+// gleichen (Datum, Techniker)-Tupel ueberlappen. Nutzt einfache
+// Pairwise-Pruefung — fuer < 100 Eintraege OK.
+function findOverlapIndices(timeRanges: TimeRange[]): Set<number> {
+  const conflicts = new Set<number>();
+  const toMin = (t: string): number | null => {
+    if (!t) return null;
+    const [h, m] = t.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+  for (let i = 0; i < timeRanges.length; i++) {
+    const a = timeRanges[i];
+    if (!a.date || !a.technician_id) continue;
+    const aStart = toMin(a.start);
+    const aEnd = toMin(a.end);
+    if (aStart === null || aEnd === null || aEnd <= aStart) continue;
+    for (let j = i + 1; j < timeRanges.length; j++) {
+      const b = timeRanges[j];
+      if (b.date !== a.date || b.technician_id !== a.technician_id) continue;
+      const bStart = toMin(b.start);
+      const bEnd = toMin(b.end);
+      if (bStart === null || bEnd === null || bEnd <= bStart) continue;
+      // Overlap: a.start < b.end && b.start < a.end
+      if (aStart < bEnd && bStart < aEnd) {
+        conflicts.add(i);
+        conflicts.add(j);
+      }
+    }
+  }
+  return conflicts;
+}
+
 export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }: Props) {
   function addRange() {
     onChange([...timeRanges, { date: "", start: "", end: "", pause: 0, technician_id: "" }]);
@@ -49,14 +82,29 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
     onChange(timeRanges.map((tr, idx) => idx === i ? { ...tr, [field]: value } : tr));
   }
 
+  const overlapIdx = findOverlapIndices(timeRanges);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Einsatzzeiten</p>
         <span className="text-xs font-semibold text-red-600">Total: {calcTotalHours(timeRanges)}</span>
       </div>
+      {overlapIdx.size > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          Achtung: zwei oder mehr Zeitbereiche fuer denselben Techniker am gleichen Tag ueberschneiden sich. Stunden werden doppelt gezaehlt.
+        </div>
+      )}
       {timeRanges.map((tr, i) => (
-        <div key={i} id={`time-range-${i}`} className="p-3 rounded-xl bg-muted/30 border space-y-3">
+        <div
+          key={i}
+          id={`time-range-${i}`}
+          className={`p-3 rounded-xl border space-y-3 ${
+            overlapIdx.has(i)
+              ? "bg-amber-50/60 border-amber-300 dark:bg-amber-500/[0.08] dark:border-amber-500/40"
+              : "bg-muted/30"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground">
               {timeRanges.length > 1 ? `Tag ${i + 1}` : "Einsatztag"}
@@ -64,7 +112,7 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium">{calcDuration(tr)}</span>
               {timeRanges.length > 1 && (
-                <button type="button" onClick={() => removeRange(i)} className="icon-btn icon-btn-red">
+                <button type="button" onClick={() => removeRange(i)} className="icon-btn icon-btn-red" aria-label="Zeitbereich entfernen" data-tooltip="Entfernen">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}

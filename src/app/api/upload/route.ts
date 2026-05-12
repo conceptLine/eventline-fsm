@@ -100,12 +100,24 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logError("api.upload.supabase", error, { userId: auth.user.id, path });
-      return NextResponse.json({ success: false, error: "Upload fehlgeschlagen" }, { status: 500 });
+      // Spezifische Storage-Fehler durchreichen damit der Client unterscheiden
+      // kann (Datei-existiert / Quota / Netzwerk). Sicherheitskritische
+      // Details (Path/User) bleiben im logError, nicht in der Response.
+      const msg = error.message || "";
+      let userMsg = "Upload fehlgeschlagen";
+      if (/already exists|duplicate|conflict/i.test(msg)) {
+        userMsg = "Datei mit gleichem Pfad existiert bereits";
+      } else if (/payload|too large|size/i.test(msg)) {
+        userMsg = "Datei zu gross";
+      } else if (/forbidden|permission|denied/i.test(msg)) {
+        userMsg = "Keine Berechtigung fuer diesen Pfad";
+      }
+      return NextResponse.json({ success: false, error: userMsg }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, path });
   } catch (e) {
     logError("api.upload.exception", e);
-    return NextResponse.json({ success: false, error: "Upload fehlgeschlagen" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Upload fehlgeschlagen — Server-Fehler" }, { status: 500 });
   }
 }

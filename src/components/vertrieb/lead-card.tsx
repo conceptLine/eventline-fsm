@@ -177,7 +177,7 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
                       e.stopPropagation();
                       onAssign(c.id, isAssigned ? null : sp.id);
                     }}
-                    className={`w-5 h-5 rounded-full text-[9px] font-bold transition-colors flex items-center justify-center shrink-0 ${
+                    className={`w-7 h-7 md:w-6 md:h-6 rounded-full text-[10px] md:text-[9px] font-bold transition-colors flex items-center justify-center shrink-0 ${
                       isAssigned
                         ? "bg-red-500 text-white"
                         : "bg-foreground/10 dark:bg-foreground/15 text-foreground/60 dark:text-foreground/70"
