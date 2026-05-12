@@ -534,7 +534,6 @@ const ACCENT_CLASSES = {
   red: { icon: "text-red-600 dark:text-red-400", bg: "rgb(220,38,38)" },
   green: { icon: "text-green-600 dark:text-green-400", bg: "rgb(34,197,94)" },
   blue: { icon: "text-blue-600 dark:text-blue-400", bg: "rgb(37,99,235)" },
-  purple: { icon: "text-purple-600 dark:text-purple-400", bg: "rgb(168,85,247)" },
 } as const;
 
 interface StatCardProps {
@@ -745,7 +744,7 @@ interface QueueItemProps {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent: "teal" | "red" | "green" | "blue" | "purple";
+  accent: "teal" | "red" | "green" | "blue";
 }
 
 function QueueItem({ count, label, href, icon: Icon, accent }: QueueItemProps) {
@@ -818,7 +817,7 @@ function ActionQueueCard({ data }: { data: AdminPending | null }) {
               label="Tickets zum Erledigen"
               href="/tickets"
               icon={Ticket}
-              accent="purple"
+              accent="red"
             />
           </div>
         )}
