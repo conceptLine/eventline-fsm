@@ -5,25 +5,24 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 // App-weite Scroll-Position-Restauration auf Back-Navigation.
 //
-// Default-Next.js-Verhalten im App-Router:
+// Default-Verhalten im App-Router:
 //   - Forward-Nav (Link/router.push)   -> scrollt nach oben
-//   - Back-Nav   (router.back/Browser) -> versucht zu restoren, klappt
-//                                         aber nicht zuverlaessig wenn
-//                                         die Page Async-Daten laedt
-//                                         (Daten = noch nicht da = Page
-//                                         ist 0px hoch = scroll-to-Y
-//                                         clipt auf 0)
+//   - Back-Nav   (router.back/Browser) -> tries to restore, klappt aber
+//                                          nicht zuverlaessig wenn die
+//                                          Page Async-Daten laedt
 //
-// Loesung: scrollRestoration auf "manual" stellen, scrollY pro URL in
-// sessionStorage spiegeln, bei popstate auf die gleiche URL die letzte
-// gespeicherte Position wiederherstellen — mit RAF-Retry, weil Listen
-// erst auf Datenladung wachsen.
+// Loesung: bei popstate (Back-Nav) gespeicherte Position aus
+// sessionStorage zurueckschreiben, mit RAF-Retry weil Listen erst auf
+// Datenladung wachsen.
+//
+// Wichtig: Scroll-Container ist NICHT window. Der Layout-Wrapper hat
+// overflow-x:hidden, dadurch wird overflow-y implizit auto (CSS-Quirk)
+// und dieser Div scrollt — nicht das Document. Wir targetieren den
+// Container via id="app-scroll".
 
 let popstateFired = false;
 let popstateUrl: string | null = null;
 if (typeof window !== "undefined") {
-  // EIN globaler Listener — der Hook selbst registriert keinen, sonst
-  // doppelte Events bei jedem Mount.
   window.addEventListener("popstate", () => {
     popstateFired = true;
     popstateUrl = window.location.pathname + window.location.search;
@@ -32,38 +31,45 @@ if (typeof window !== "undefined") {
 
 const storageKey = (url: string) => `scroll:${url}`;
 
+function getScroller(): HTMLElement | Window {
+  if (typeof document === "undefined") return globalThis as unknown as Window;
+  return document.getElementById("app-scroll") ?? window;
+}
+
+function getScrollTop(el: HTMLElement | Window): number {
+  return el instanceof Window ? el.scrollY : el.scrollTop;
+}
+
+function setScrollTop(el: HTMLElement | Window, y: number): void {
+  if (el instanceof Window) el.scrollTo(0, y);
+  else el.scrollTop = y;
+}
+
 export function useScrollRestoration() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const url = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
 
-  // Browser's auto-Restore deaktivieren — wir machen's selbst, sonst
-  // springt der Browser auf 0 bevor unsere Daten da sind.
+  // Browser-Auto-Restore deaktivieren — wir machen's selbst.
   useEffect(() => {
     if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
   }, []);
 
-  // Position auf jedem Scroll-Event mitschreiben. KEIN initial-save beim
-  // Mount: bei "manual"-Restoration springt der Browser auf Back-Nav
-  // nicht auf 0, der scrollY-Wert der vorherigen Page lebt fort —
-  // ein initial-save wuerde damit den korrekten saved-Wert (z.B. 500
-  // von vorher) ueberschreiben mit dem Muell-Wert (z.B. 200 vom Detail).
-  // Beim Cleanup speichern wir nochmal final, damit eine kurz-besuchte
-  // Page (User hat nicht gescrollt) trotzdem den Endstand kriegt.
   useEffect(() => {
+    const scroller = getScroller();
     let isRestoring = false;
-    const save = () => {
-      if (isRestoring) return; // Restore-RAF nicht in den Storage reinpfuschen lassen
-      try {
-        sessionStorage.setItem(storageKey(url), String(window.scrollY));
-      } catch { /* quota oder private-mode — egal */ }
-    };
-    window.addEventListener("scroll", save, { passive: true });
 
-    // Wenn diese URL durch popstate erreicht wurde: gespeicherte Position
-    // restoren. RAF-Retry weil Async-Daten die DOM-Hoehe erst nachladen.
+    const save = () => {
+      if (isRestoring) return; // RAF-Zwischenstaende nicht persistieren
+      try {
+        sessionStorage.setItem(storageKey(url), String(getScrollTop(scroller)));
+      } catch { /* quota/private-mode */ }
+    };
+    scroller.addEventListener("scroll", save, { passive: true });
+
+    // Restore wenn diese URL durch popstate (Back) erreicht wurde.
     let cancelled = false;
     if (popstateFired && popstateUrl === url) {
       popstateFired = false;
@@ -76,13 +82,12 @@ export function useScrollRestoration() {
         let tries = 0;
         const restore = () => {
           if (cancelled) return;
-          window.scrollTo(0, target);
-          if (Math.abs(window.scrollY - target) > 10 && tries++ < 30) {
+          setScrollTop(scroller, target);
+          if (Math.abs(getScrollTop(scroller) - target) > 10 && tries++ < 30) {
             requestAnimationFrame(restore);
           } else {
             isRestoring = false;
-            // letzten Stand sauber persistieren
-            try { sessionStorage.setItem(storageKey(url), String(window.scrollY)); } catch { /* ignore */ }
+            try { sessionStorage.setItem(storageKey(url), String(getScrollTop(scroller))); } catch { /* ignore */ }
           }
         };
         requestAnimationFrame(restore);
@@ -91,12 +96,9 @@ export function useScrollRestoration() {
 
     return () => {
       cancelled = true;
-      window.removeEventListener("scroll", save);
-      // final save — nur wenn wir nicht gerade mitten in einem Restore
-      // stecken; sonst koennte ein halb-fertiger scrollTo-Zwischenwert
-      // in den Storage rutschen.
+      scroller.removeEventListener("scroll", save);
       if (!isRestoring) {
-        try { sessionStorage.setItem(storageKey(url), String(window.scrollY)); } catch { /* ignore */ }
+        try { sessionStorage.setItem(storageKey(url), String(getScrollTop(scroller))); } catch { /* ignore */ }
       }
     };
   }, [url]);

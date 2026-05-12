@@ -253,7 +253,11 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
           Content-Bereich nicht unter der fixed-positionierten Sidebar liegt.
           Bottom-Padding auf Mobile: MobileNav (80px) + Stempel-Bar (52px) +
           Safe-Area + Puffer = Content scrollt frei oberhalb der UI-Layer. */}
-      <div className="flex-1 flex flex-col pb-[calc(env(safe-area-inset-bottom)+150px)] md:pb-0 min-w-0 overflow-x-hidden md:ml-[260px]">
+      {/* id="app-scroll" — durch overflow-x-hidden wird overflow-y
+          implizit auto (CSS-Quirk), dieser Div ist daher der echte
+          Scroll-Container der App und nicht window. useScrollRestoration
+          targetiert das Element ueber diese id. */}
+      <div id="app-scroll" className="flex-1 flex flex-col pb-[calc(env(safe-area-inset-bottom)+150px)] md:pb-0 min-w-0 overflow-x-hidden md:ml-[260px]">
         <main className="flex-1 p-3 sm:p-4 pt-[calc(env(safe-area-inset-top)+12px)] sm:pt-[calc(env(safe-area-inset-top)+16px)] md:p-8 md:pt-8 max-w-[1400px] w-full mx-auto min-w-0">{children}</main>
       </div>
 
