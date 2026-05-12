@@ -87,6 +87,10 @@ interface AdminPending {
                              // (deckt sowohl Ablegen als auch Ablehnen ab —
                              // Buttons sind direkt auf der Beleg-Karte)
   confirmedAnfragen: number; // status=anfrage + request_step=4
+  openTickets: number;       // status=offen, type != beleg (Beleg-Tickets
+                             // werden ueber unfiledBelege gezaehlt; IT-,
+                             // Stempel-Aenderungs- und Material-Tickets
+                             // landen hier).
 }
 
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -281,7 +285,7 @@ export default function HeutePage() {
 
       // Admin-Daten — nur fetchen wenn isAdmin (sonst RLS-Errors / Verschwendung)
       if (isAdmin) {
-        const [activeStempelRes, todayStempelRes, unbilledRes, unfiledRes, anfrage4Res] = await Promise.all([
+        const [activeStempelRes, todayStempelRes, unbilledRes, unfiledRes, anfrage4Res, openTicketsRes] = await Promise.all([
           // Aktuell eingestempelt (clock_out IS NULL)
           supabase
             .from("time_entries")
@@ -318,6 +322,14 @@ export default function HeutePage() {
             .eq("status", "anfrage")
             .eq("request_step", 4)
             .neq("is_deleted", true),
+          // Offene Tickets fuer Admin-Aktion — IT/Stempel-Aenderung/Material.
+          // Beleg-Tickets sind ueber unfiledBelege gezaehlt, deshalb hier
+          // ausgeschlossen damit nichts doppelt steht.
+          supabase
+            .from("tickets")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "offen")
+            .neq("type", "beleg"),
         ]);
 
         type StempelRow = {
@@ -347,6 +359,7 @@ export default function HeutePage() {
           unbilledJobs: unbilledRes.count ?? 0,
           unfiledBelege: unfiledRes.count ?? 0,
           confirmedAnfragen: anfrage4Res.count ?? 0,
+          openTickets: openTicketsRes.count ?? 0,
         });
       }
 
@@ -521,6 +534,7 @@ const ACCENT_CLASSES = {
   red: { icon: "text-red-600 dark:text-red-400", bg: "rgb(220,38,38)" },
   green: { icon: "text-green-600 dark:text-green-400", bg: "rgb(34,197,94)" },
   blue: { icon: "text-blue-600 dark:text-blue-400", bg: "rgb(37,99,235)" },
+  purple: { icon: "text-purple-600 dark:text-purple-400", bg: "rgb(168,85,247)" },
 } as const;
 
 interface StatCardProps {
@@ -731,7 +745,7 @@ interface QueueItemProps {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent: "teal" | "red" | "green" | "blue";
+  accent: "teal" | "red" | "green" | "blue" | "purple";
 }
 
 function QueueItem({ count, label, href, icon: Icon, accent }: QueueItemProps) {
@@ -757,7 +771,7 @@ function QueueItem({ count, label, href, icon: Icon, accent }: QueueItemProps) {
 
 function ActionQueueCard({ data }: { data: AdminPending | null }) {
   if (!data) return null;
-  const total = data.unbilledJobs + data.unfiledBelege + data.confirmedAnfragen;
+  const total = data.unbilledJobs + data.unfiledBelege + data.confirmedAnfragen + data.openTickets;
 
   return (
     <Card className="bg-card">
@@ -798,6 +812,13 @@ function ActionQueueCard({ data }: { data: AdminPending | null }) {
               href="/auftraege?status=anfrage"
               icon={Send}
               accent="teal"
+            />
+            <QueueItem
+              count={data.openTickets}
+              label="Tickets zum Erledigen"
+              href="/tickets"
+              icon={Ticket}
+              accent="purple"
             />
           </div>
         )}
