@@ -21,7 +21,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
-import { Calendar, CheckSquare, Ticket, ArrowRight, AlertCircle, Clock, Briefcase, CheckCircle2, Users, Receipt, FolderArchive, Inbox, Send } from "lucide-react";
+import { Calendar, CheckSquare, Ticket, ArrowRight, AlertCircle, Clock, Briefcase, CheckCircle2, Users, Receipt, FolderArchive, Inbox, Send, Building2 } from "lucide-react";
 import { usePermissions } from "@/lib/use-permissions";
 
 function greetingForHour(h: number): string {
@@ -91,6 +91,8 @@ interface AdminPending {
                              // werden ueber unfiledBelege gezaehlt; IT-,
                              // Stempel-Aenderungs- und Material-Tickets
                              // landen hier).
+  partnerAnfragen: number;   // status=partner_anfrage — wartet auf
+                             // Annahme/Ablehnung durch Admin.
 }
 
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -285,7 +287,7 @@ export default function HeutePage() {
 
       // Admin-Daten — nur fetchen wenn isAdmin (sonst RLS-Errors / Verschwendung)
       if (isAdmin) {
-        const [activeStempelRes, todayStempelRes, unbilledRes, unfiledRes, anfrage4Res, openTicketsRes] = await Promise.all([
+        const [activeStempelRes, todayStempelRes, unbilledRes, unfiledRes, anfrage4Res, openTicketsRes, partnerAnfrageRes] = await Promise.all([
           // Aktuell eingestempelt (clock_out IS NULL)
           supabase
             .from("time_entries")
@@ -330,6 +332,12 @@ export default function HeutePage() {
             .select("id", { count: "exact", head: true })
             .eq("status", "offen")
             .neq("type", "beleg"),
+          // Partner-Anfragen wartend auf Annahme/Ablehnung
+          supabase
+            .from("jobs")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "partner_anfrage")
+            .neq("is_deleted", true),
         ]);
 
         type StempelRow = {
@@ -360,6 +368,7 @@ export default function HeutePage() {
           unfiledBelege: unfiledRes.count ?? 0,
           confirmedAnfragen: anfrage4Res.count ?? 0,
           openTickets: openTicketsRes.count ?? 0,
+          partnerAnfragen: partnerAnfrageRes.count ?? 0,
         });
       }
 
@@ -770,7 +779,7 @@ function QueueItem({ count, label, href, icon: Icon, accent }: QueueItemProps) {
 
 function ActionQueueCard({ data }: { data: AdminPending | null }) {
   if (!data) return null;
-  const total = data.unbilledJobs + data.unfiledBelege + data.confirmedAnfragen + data.openTickets;
+  const total = data.unbilledJobs + data.unfiledBelege + data.confirmedAnfragen + data.openTickets + data.partnerAnfragen;
 
   return (
     <Card className="bg-card">
@@ -810,6 +819,13 @@ function ActionQueueCard({ data }: { data: AdminPending | null }) {
               label="Vermietentwürfe Step 4"
               href="/auftraege?status=anfrage"
               icon={Send}
+              accent="teal"
+            />
+            <QueueItem
+              count={data.partnerAnfragen}
+              label="Partner-Anfragen"
+              href="/auftraege?status=partner_anfrage"
+              icon={Building2}
               accent="teal"
             />
             <QueueItem

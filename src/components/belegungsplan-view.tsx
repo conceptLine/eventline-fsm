@@ -71,7 +71,14 @@ const KIND_LABEL: Record<BookingKind, string> = {
   draft: "Vermietentwurf",
 };
 
-export function BelegungsplanView() {
+interface Props {
+  /** Wenn gesetzt: zeigt nur diese eine Location + nur deren Bookings.
+   *  Partner-Portal nutzt das damit der Partner ausschliesslich seine
+   *  zugewiesene Location sieht. */
+  restrictToLocationId?: string;
+}
+
+export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
   const supabase = createClient();
   const [locations, setLocations] = useState<Location[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -82,7 +89,8 @@ export function BelegungsplanView() {
 
   useEffect(() => {
     load();
-  }, [anchorDate, windowDays]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorDate, windowDays, restrictToLocationId]);
 
   async function load() {
     setLoading(true);
@@ -95,12 +103,15 @@ export function BelegungsplanView() {
     // Bookings via /api/belegungsplan: das Endpoint maskiert Auftrags-
     // Details fuer User die dem Job nicht zugeteilt sind, aber zeigt die
     // Belegung trotzdem. So ist die Kapazitaets-Sicht fuer alle gleich.
+    const locationsQuery = supabase
+      .from("locations")
+      .select("id, name, address_city, capacity")
+      .eq("is_active", true)
+      .order("name");
+    if (restrictToLocationId) locationsQuery.eq("id", restrictToLocationId);
+
     const [locRes, bpRes] = await Promise.all([
-      supabase
-        .from("locations")
-        .select("id, name, address_city, capacity")
-        .eq("is_active", true)
-        .order("name"),
+      locationsQuery,
       fetch(`/api/belegungsplan?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
         .then((r) => r.ok ? r.json() : Promise.resolve({ bookings: [] })),
     ]);
@@ -124,6 +135,8 @@ export function BelegungsplanView() {
     for (const j of (bpRes.bookings ?? []) as ApiBooking[]) {
       if (!j.start_date || !j.location_id) continue;
       if (j.status === "storniert") continue;
+      // Partner-Modus: nur Bookings der eigenen Location, sonst gar nichts.
+      if (restrictToLocationId && j.location_id !== restrictToLocationId) continue;
       const kind: BookingKind =
         j.status === "anfrage" || j.status === "entwurf" ? "draft"
         : j.was_anfrage ? "vermietung"

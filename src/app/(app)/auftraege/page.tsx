@@ -666,7 +666,7 @@ export default function AuftraegePage() {
                           <AlertCircle className="h-2.5 w-2.5" />
                         </span>
                       )}
-                      {job.status !== "offen" && (
+                      {job.status !== "offen" && JOB_STATUS[job.status] && (
                         <span className={`inline-flex px-1.5 py-0 text-[10px] font-medium rounded-full ${JOB_STATUS[job.status].color}`}>
                           {JOB_STATUS[job.status].label}
                         </span>
@@ -742,7 +742,7 @@ export default function AuftraegePage() {
                         <AlertCircle className="h-2.5 w-2.5" />
                       </span>
                     )}
-                    {job.status !== "offen" && (
+                    {job.status !== "offen" && JOB_STATUS[job.status] && (
                       <span className={`inline-flex px-1.5 py-0 text-[10px] font-medium rounded-full shrink-0 ${JOB_STATUS[job.status].color}`}>
                         {JOB_STATUS[job.status].label}
                       </span>

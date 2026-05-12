@@ -22,6 +22,7 @@ export const maxDuration = 30;
 //   - vermietentwurf/        → send-step-modal (Mail-Anhaenge je Schritt)
 //   - vermietentwurf-direct/ → vermietentwurf/[id] (Direkt-Upload aus
 //                              der Dokumentenliste, ohne Mail-Schritt)
+//   - partner-anfragen/      → partner-Portal (Anhaenge bei Anfrage-Erstellung)
 //   - rapport-photos/   → rapport-form-modal
 //   - signatures/client + signatures/tech → rapport-form-modal
 const ALLOWED_PREFIXES = [
@@ -34,6 +35,7 @@ const ALLOWED_PREFIXES = [
   "vertrieb/",
   "vermietentwurf/",
   "vermietentwurf-direct/",
+  "partner-anfragen/",
   "rapport-photos/",
   "signatures/",
 ] as const;

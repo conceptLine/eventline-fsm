@@ -1,6 +1,10 @@
-export type UserRole = "admin" | "techniker";
+// Hauptrollen — die Praesenz von 'partner' hier ist wichtig damit der
+// Path-Guard im (app)-Layout den Partner-Redirect typsicher pruefen kann.
+// In der DB ist roles eine eigene Tabelle mit beliebig vielen slugs;
+// dieser Type ist nur die "bekannten" Rollen fuer Compile-time-Branching.
+export type UserRole = "admin" | "techniker" | "partner";
 
-export type JobStatus = "anfrage" | "entwurf" | "offen" | "abgeschlossen" | "storniert";
+export type JobStatus = "partner_anfrage" | "anfrage" | "entwurf" | "offen" | "abgeschlossen" | "storniert";
 
 export type JobPriority = "normal" | "dringend";
 

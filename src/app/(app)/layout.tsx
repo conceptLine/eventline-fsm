@@ -122,8 +122,14 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   // Path-Guard: wenn der aktuelle Pfad fuer diese Rolle nicht erlaubt ist,
   // zurueck aufs Dashboard. Greift wenn jemand eine URL direkt aufruft die
   // nicht in seiner Sidebar steht.
+  // Partner-Rolle gehoert ueberhaupt nicht in (app) — direkt ins Partner-
+  // Portal umleiten.
   useEffect(() => {
     if (!profile) return;
+    if (profile.role === "partner") {
+      router.replace("/partner/anfragen");
+      return;
+    }
     if (!isPathAllowed(pathname, permissions, profile.role)) {
       router.replace("/dashboard");
     }

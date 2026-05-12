@@ -12,6 +12,10 @@ export const ADMIN_NOTIFICATION_EMAIL =
 // Anfrage konvertiert wird, wechselt der Status auf 'offen' (oder 'entwurf')
 // und request_step wird NULL. Ab dann normale Auftragslogik.
 export const JOB_STATUS = {
+  // Partner-Anfrage: gelb/amber, "wartet auf Eventline-Entscheidung".
+  // Entsteht ueber das Partner-Portal — Partner erstellt eine Anfrage,
+  // Admin akzeptiert (→ offen) oder lehnt ab (→ storniert).
+  partner_anfrage: { label: "Partner-Anfrage", color: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
   // Vermietentwurf + Auftrag-Entwurf: gleiche LILA Draft-Farbe, app-weit
   // als "WIP" einheitlich. Status-Codes sind unterschiedlich (anfrage =
   // Sales-Pipeline, entwurf = Ops-Side-Draft) damit Lifecycle-Logik greift.

@@ -9,14 +9,15 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plug, Users, Shield, Activity } from "lucide-react";
+import { Plug, Users, Shield, Activity, Building2 } from "lucide-react";
 import { IntegrationenTab } from "@/components/einstellungen/integrationen-tab";
 import { TeamTab } from "@/components/einstellungen/team-tab";
 import { RollenTab } from "@/components/einstellungen/rollen-tab";
 import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
+import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 
-type Tab = "integrationen" | "team" | "rollen" | "aktivitaet";
+type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner";
 
 export default function EinstellungenPage() {
   const supabase = createClient();
@@ -26,7 +27,7 @@ export default function EinstellungenPage() {
   // (Reihenfolge: Team → Rollen → Integrationen). Fuer Non-Admin wird
   // unten via useEffect auf "integrationen" umgeleitet sobald der
   // Admin-Status geladen ist.
-  const [tab, setTab] = useState<Tab>(urlTab && ["integrationen", "team", "rollen", "aktivitaet"].includes(urlTab) ? urlTab : "team");
+  const [tab, setTab] = useState<Tab>(urlTab && ["integrationen", "team", "rollen", "aktivitaet", "partner"].includes(urlTab) ? urlTab : "team");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   // Tab-Wechsel: state = sofortige UI-Quelle, URL parallel updaten via
@@ -55,7 +56,7 @@ export default function EinstellungenPage() {
       setIsAdmin(admin);
       // Non-Admin auf einem Admin-only-Tab → auf integrationen umlenken,
       // sonst sieht er einen leeren Tab.
-      if (!admin && (tab === "team" || tab === "rollen" || tab === "aktivitaet")) {
+      if (!admin && (tab === "team" || tab === "rollen" || tab === "aktivitaet" || tab === "partner")) {
         selectTab("integrationen");
       }
     })();
@@ -64,6 +65,7 @@ export default function EinstellungenPage() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     ...(isAdmin ? [
       { key: "team" as Tab, label: "Team", icon: <Users className="h-4 w-4" /> },
+      { key: "partner" as Tab, label: "Partner", icon: <Building2 className="h-4 w-4" /> },
       { key: "rollen" as Tab, label: "Rollen", icon: <Shield className="h-4 w-4" /> },
       { key: "aktivitaet" as Tab, label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
     ] : []),
@@ -102,6 +104,8 @@ export default function EinstellungenPage() {
       {tab === "integrationen" && <IntegrationenTab />}
 
       {tab === "team" && isAdmin && <TeamTab />}
+
+      {tab === "partner" && isAdmin && <PartnerTab />}
 
       {tab === "rollen" && isAdmin && <RollenTab />}
 

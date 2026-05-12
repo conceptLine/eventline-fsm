@@ -75,6 +75,11 @@ export default function AuftragDetailPage() {
 
   // Stornieren-Flow: Modal mit zwei Phasen (confirm -> reason)
   const [cancelPhase, setCancelPhase] = useState<"closed" | "confirm" | "reason">("closed");
+  // Partner-Anfrage: separater Decision-Flow. Annahme = via useConfirm,
+  // Ablehnung = eigenes Reason-Modal weil Begruendung Pflicht ist.
+  const [partnerRejectOpen, setPartnerRejectOpen] = useState(false);
+  const [partnerRejectReason, setPartnerRejectReason] = useState("");
+  const [partnerDecisionBusy, setPartnerDecisionBusy] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
 
@@ -283,6 +288,37 @@ export default function AuftragDetailPage() {
   const mapsUrl = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : "";
   const projectLead = job.project_lead;
 
+  async function decidePartnerAnfrage(decision: "accept" | "reject", message?: string) {
+    setPartnerDecisionBusy(true);
+    const res = await fetch(`/api/jobs/${id}/partner-decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, message: message ?? "" }),
+    });
+    const json = await res.json();
+    setPartnerDecisionBusy(false);
+    if (!json.success) {
+      toast.error(json.error ?? "Aktion fehlgeschlagen");
+      return;
+    }
+    toast.success(decision === "accept" ? "Anfrage angenommen" : "Anfrage abgelehnt");
+    setPartnerRejectOpen(false);
+    setPartnerRejectReason("");
+    window.dispatchEvent(new Event("jobs:invalidate"));
+    await loadAll();
+  }
+
+  async function acceptPartnerAnfrage() {
+    const ok = await confirm({
+      title: "Partner-Anfrage annehmen?",
+      message: "Die Anfrage wird ein offener Auftrag in eurer Pipeline. Der Partner sieht den Status danach read-only und kann nichts mehr ändern.",
+      confirmLabel: "Annehmen",
+      variant: "blue",
+    });
+    if (!ok) return;
+    decidePartnerAnfrage("accept");
+  }
+
   // Status-Aktionen — knapp: Freigeben (Entwurf → Bevorstehend), Abschliessen, Stornieren.
   // 'Starten' entfernt (siehe in_arbeit-Status weg).
   const statusActions: { from: JobStatus[]; to: JobStatus; label: string; icon: React.ReactNode; variant: "primary" | "outline" | "destructive" }[] = [
@@ -342,6 +378,44 @@ export default function AuftragDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Partner-Anfrage-Banner: nur bei status='partner_anfrage'. Admin-
+          Aktion via /api/jobs/[id]/partner-decision. */}
+      {job.status === "partner_anfrage" && can("auftraege:edit") && (
+        <Card className="bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
+              <div className="text-sm flex-1">
+                <p className="font-semibold text-amber-800 dark:text-amber-200">Partner-Anfrage</p>
+                <p className="text-amber-700 dark:text-amber-300 mt-0.5">
+                  Diese Anfrage kam vom Location-Partner. Annahme = wird offener Auftrag. Ablehnung = Partner sieht den Grund.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={acceptPartnerAnfrage}
+                disabled={partnerDecisionBusy}
+                className="kasten kasten-green"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                Annehmen
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartnerRejectOpen(true)}
+                disabled={partnerDecisionBusy}
+                className="kasten kasten-red"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                Ablehnen
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Aktionen: Status-Uebergaenge + Bearbeiten + Stornieren — alles im Kasten-Stil.
           "Abschliessen" oeffnet das Rapport-Modal — bleibt sichtbar fuer
@@ -729,6 +803,45 @@ export default function AuftragDetailPage() {
           )}
         </CardContent>
       </Card>
+      {/* Partner-Anfrage ablehnen — Reason-Modal */}
+      <Modal
+        open={partnerRejectOpen}
+        onClose={() => { setPartnerRejectOpen(false); setPartnerRejectReason(""); }}
+        title="Anfrage ablehnen?"
+        closable={!partnerDecisionBusy}
+      >
+        <p className="text-sm text-muted-foreground">
+          Der Partner sieht den Grund als Erklärung in seinem Portal.
+        </p>
+        <textarea
+          placeholder="z.B. Datum nicht verfügbar, Personalmangel…"
+          value={partnerRejectReason}
+          onChange={(e) => setPartnerRejectReason(e.target.value)}
+          rows={3}
+          autoFocus
+          className="w-full px-3 py-2 text-sm rounded-xl border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring/40"
+          style={{ fieldSizing: "content" } as React.CSSProperties}
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => { setPartnerRejectOpen(false); setPartnerRejectReason(""); }}
+            disabled={partnerDecisionBusy}
+            className="kasten kasten-muted flex-1"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={() => decidePartnerAnfrage("reject", partnerRejectReason.trim())}
+            disabled={partnerDecisionBusy || !partnerRejectReason.trim()}
+            className="kasten kasten-red flex-1"
+          >
+            {partnerDecisionBusy ? "Speichere…" : "Ablehnen"}
+          </button>
+        </div>
+      </Modal>
+
       {/* Stornieren-Flow: Phase 'confirm' -> 'reason' */}
       <Modal
         open={cancelPhase !== "closed"}
