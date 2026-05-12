@@ -62,9 +62,21 @@ export function AppointmentsSection({
   const [emailField2, setEmailField2] = useState("");
   // Inline-Zuweisung pro existierendem Termin (sonst muesste der User
   // den Termin loeschen + neu anlegen um zuzuteilen). assigningId =
-  // welcher Termin gerade die Zuweisen-Schublade offen hat.
+  // welcher Termin gerade die Zuweisen-Schublade offen hat. Multi-select:
+  // wir behalten eine lokale Auswahl bis der User auf "Anwenden" klickt,
+  // dann gleichen wir gegen die DB ab (UPDATE-original + INSERT-Kopien
+  // pro zusaetzlichem Mitarbeiter).
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assigningSelection, setAssigningSelection] = useState<string[]>([]);
   const [assigningBusy, setAssigningBusy] = useState(false);
+
+  function openAssign(apptId: string, currentAssignee: string | null) {
+    setAssigningId(apptId);
+    setAssigningSelection(currentAssignee ? [currentAssignee] : []);
+  }
+  function toggleAssignee(profileId: string) {
+    setAssigningSelection((prev) => prev.includes(profileId) ? prev.filter((id) => id !== profileId) : [...prev, profileId]);
+  }
   const { confirm, ConfirmModalElement } = useConfirm();
 
   // Ferien-Konflikte am Termin-Datum — Hook gated auf showApptForm
@@ -146,37 +158,63 @@ export function AppointmentsSection({
 
   // useConfirm-Pattern statt vorherigem hardcoded Code "5225"-Modal —
   // konsistent mit allen anderen Loesch-Flows app-weit.
-  async function setApptAssignee(apptId: string, profileId: string | null) {
+  async function applyAssignment(apptId: string) {
+    const appt = appointments.find((a) => a.id === apptId);
+    if (!appt) return;
     setAssigningBusy(true);
-    const { error } = await supabase
-      .from("job_appointments")
-      .update({ assigned_to: profileId })
-      .eq("id", apptId);
-    setAssigningBusy(false);
-    if (error) {
-      TOAST.supabaseError(error, "Zuweisung konnte nicht gespeichert werden");
-      return;
-    }
-    toast.success(profileId ? "Termin zugewiesen" : "Zuweisung entfernt");
-    setAssigningId(null);
-    onReload();
-    // Best-effort: bei Neu-Zuweisung Mail an den neuen Mitarbeiter,
-    // analog zur Insert-Pipeline (mit gleicher API-Route).
-    if (profileId) {
-      const appt = appointments.find((a) => a.id === apptId);
-      if (appt) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (profileId !== user?.id) {
-          const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", user?.id ?? "").maybeSingle();
-          const apptDate = appt.start_time.split("T")[0];
-          const apptTime = appt.start_time.split("T")[1]?.slice(0, 5) ?? "";
-          const apptEnd = appt.end_time ? appt.end_time.split("T")[1]?.slice(0, 5) : "";
+    const selection = assigningSelection;
+    const previousAssignee = appt.assigned_to;
+
+    try {
+      if (selection.length === 0) {
+        // Keiner mehr zugewiesen -> Original-Row auf null setzen
+        const { error } = await supabase
+          .from("job_appointments")
+          .update({ assigned_to: null })
+          .eq("id", apptId);
+        if (error) throw error;
+        toast.success("Zuweisung entfernt");
+      } else {
+        // Erste Person bekommt den Original-Row (UPDATE), zusaetzliche
+        // bekommen Kopien (INSERT). So zaehlt der ursprueng-Termin
+        // weiter und wir vermeiden Dublikate des urspruenglichen.
+        const [first, ...rest] = selection;
+        const { error: upErr } = await supabase
+          .from("job_appointments")
+          .update({ assigned_to: first })
+          .eq("id", apptId);
+        if (upErr) throw upErr;
+        if (rest.length > 0) {
+          const rows = rest.map((personId) => ({
+            job_id: jobId,
+            title: appt.title,
+            start_time: appt.start_time,
+            end_time: appt.end_time,
+            description: appt.description,
+            assigned_to: personId,
+          }));
+          const { error: insErr } = await supabase.from("job_appointments").insert(rows);
+          if (insErr) throw insErr;
+        }
+        toast.success(selection.length === 1 ? "Termin zugewiesen" : `${selection.length} Personen zugewiesen`);
+      }
+
+      // Mail an die NEU zugewiesenen Personen (vorher waren sie nicht
+      // assignee dieses Rows). Bei mehreren neuen -> mehrere Mails.
+      const { data: { user } } = await supabase.auth.getUser();
+      const newAssignees = selection.filter((id) => id !== previousAssignee && id !== user?.id);
+      if (newAssignees.length > 0) {
+        const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", user?.id ?? "").maybeSingle();
+        const apptDate = appt.start_time.split("T")[0];
+        const apptTime = appt.start_time.split("T")[1]?.slice(0, 5) ?? "";
+        const apptEnd = appt.end_time ? appt.end_time.split("T")[1]?.slice(0, 5) : "";
+        for (const personId of newAssignees) {
           try {
             await fetch("/api/appointments/assign-notify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                assignedTo: profileId,
+                assignedTo: personId,
                 title: appt.title,
                 date: apptDate,
                 time: apptTime,
@@ -186,10 +224,18 @@ export function AppointmentsSection({
               }),
             });
           } catch (e) {
-            logError("auftrag.appt.reassign-notify", e, { profileId, apptId });
+            logError("auftrag.appt.reassign-notify", e, { personId, apptId });
           }
         }
       }
+
+      setAssigningId(null);
+      setAssigningSelection([]);
+      onReload();
+    } catch (e) {
+      TOAST.supabaseError(e as Parameters<typeof TOAST.supabaseError>[0], "Zuweisung konnte nicht gespeichert werden");
+    } finally {
+      setAssigningBusy(false);
     }
   }
 
@@ -417,7 +463,7 @@ export function AppointmentsSection({
                   {!isClosed && can("kalender:create") && (
                     <button
                       type="button"
-                      onClick={() => setAssigningId(isAssigning ? null : appt.id)}
+                      onClick={() => isAssigning ? setAssigningId(null) : openAssign(appt.id, appt.assigned_to)}
                       className={`kasten ${unassigned ? "kasten-red" : "kasten-muted"}`}
                       data-tooltip={unassigned ? "Termin zuweisen" : "Zuweisung ändern"}
                     >
@@ -438,19 +484,24 @@ export function AppointmentsSection({
                   )}
                 </div>
               </div>
-              {/* Inline-Zuweisungs-Schublade */}
+              {/* Inline-Zuweisungs-Schublade — Multi-Select.
+                  Erste Person uebernimmt den Original-Row, weitere
+                  bekommen eigene Termin-Zeile (gleiche Zeit, gleicher
+                  Titel, andere assigned_to). */}
               {isAssigning && !isClosed && can("kalender:create") && (
                 <div className="px-3 pb-3 border-t border-foreground/10 dark:border-foreground/15 pt-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Zuweisen an</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Zuweisen an {assigningSelection.length > 0 && <span className="text-muted-foreground">({assigningSelection.length})</span>}
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
                     {profiles.map((p) => {
-                      const selected = appt.assigned_to === p.id;
+                      const selected = assigningSelection.includes(p.id);
                       return (
                         <button
                           key={p.id}
                           type="button"
                           disabled={assigningBusy}
-                          onClick={() => setApptAssignee(appt.id, selected ? null : p.id)}
+                          onClick={() => toggleAssignee(p.id)}
                           className={selected ? "kasten-active" : "kasten-toggle-off"}
                         >
                           <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${selected ? "bg-background/20" : "bg-foreground/10 text-muted-foreground"}`}>
@@ -461,9 +512,27 @@ export function AppointmentsSection({
                       );
                     })}
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">
-                    Eine Person aktiv = zugewiesen. Erneut klicken um zu entfernen.
-                  </p>
+                  <div className="flex items-center gap-2 mt-2.5">
+                    <p className="text-[11px] text-muted-foreground flex-1">
+                      Mehrere möglich — jede zusätzliche Person bekommt eine eigene Termin-Zeile.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setAssigningId(null); setAssigningSelection([]); }}
+                      disabled={assigningBusy}
+                      className="kasten kasten-muted"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyAssignment(appt.id)}
+                      disabled={assigningBusy}
+                      className="kasten kasten-blue"
+                    >
+                      {assigningBusy ? "Speichern…" : "Anwenden"}
+                    </button>
+                  </div>
                 </div>
               )}
               </div>
