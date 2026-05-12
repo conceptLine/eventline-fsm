@@ -16,5 +16,16 @@ export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
-  return <LeadEditor contactId={id} onClose={() => router.push("/vertrieb")} />;
+  // router.back() statt router.push("/vertrieb") — sonst feuert kein
+  // popstate-Event und die globale Scroll-Restauration in (app)/layout.tsx
+  // greift nicht. Fallback fuer Direkt-Links (history-Length === 1) wie
+  // beim BackButton.
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/vertrieb");
+    }
+  };
+  return <LeadEditor contactId={id} onClose={goBack} />;
 }

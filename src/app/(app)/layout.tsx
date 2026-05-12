@@ -23,6 +23,7 @@ import { Logo } from "@/components/logo";
 import { useTheme } from "next-themes";
 import { NAV_ICON_MAP } from "@/lib/nav-icons";
 import { useEnterAsTab } from "@/lib/use-enter-as-tab";
+import { useScrollRestoration } from "@/lib/use-scroll-restoration";
 import { PermissionsProvider, usePermissions } from "@/lib/use-permissions";
 import { StempelProvider } from "@/lib/use-stempel";
 import { EveChat } from "@/components/eve-chat";
@@ -56,6 +57,11 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Globale Regel: Enter im Input/Select springt zum nächsten Feld, statt zu submitten.
   useEnterAsTab();
+
+  // App-weit: Scroll-Position wiederherstellen wenn man zur vorherigen
+  // Seite zurueck navigiert (Back-Pfeil, Browser-Back). Forward-Nav
+  // bleibt scroll-to-top wie gewohnt.
+  useScrollRestoration();
 
   // Realtime — EIN globaler Channel fuer alle Tables; vorher hatte jeder
   // Listener (use-stempel, notifications-bell, vertrieb-page, etc.) seine
