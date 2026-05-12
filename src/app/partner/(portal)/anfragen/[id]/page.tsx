@@ -138,16 +138,31 @@ export default function PartnerAnfrageDetailPage() {
   async function deleteAnfrage() {
     const ok = await confirm({
       title: "Anfrage löschen?",
-      message: "Die Anfrage und alle zugehörigen Termine werden entfernt. Dies kann nicht rückgängig gemacht werden.",
+      message: "Die Anfrage und alle zugehörigen Termine + Anhänge werden entfernt. Dies kann nicht rückgängig gemacht werden.",
       confirmLabel: "Löschen",
       variant: "red",
     });
     if (!ok) return;
-    // Termine zuerst — kein CASCADE annehmen
+    // Storage-Files + DB-Rows zuerst — kein CASCADE annehmen.
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("storage_path")
+      .eq("job_id", id);
+    if (docs && docs.length > 0) {
+      await supabase.storage.from("documents").remove(docs.map((d) => d.storage_path));
+    }
+    await supabase.from("documents").delete().eq("job_id", id);
     await supabase.from("job_appointments").delete().eq("job_id", id);
-    const { error } = await supabase.from("jobs").delete().eq("id", id);
+    const { error, count } = await supabase
+      .from("jobs")
+      .delete({ count: "exact" })
+      .eq("id", id);
     if (error) {
       TOAST.deleteError(error.message);
+      return;
+    }
+    if (count === 0) {
+      toast.error("Anfrage konnte nicht gelöscht werden — keine Berechtigung");
       return;
     }
     toast.success("Anfrage gelöscht");
