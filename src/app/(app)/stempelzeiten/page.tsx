@@ -175,7 +175,7 @@ export default function StempelzeitenPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Direktlink zum Stempel-Aenderungs-Ticket — vorher musste der
               User zu /tickets, "+ Neues Ticket", "Stempel-Aenderung"-Karte
               waehlen. Jetzt ein Klick. Permission-gegated: User ohne

@@ -138,32 +138,36 @@ export function IcalFeedBlock({ title, description, source = "user" }: Props) {
             </p>
           </div>
         </div>
-        <div className="flex items-stretch gap-2">
+        {/* Mobile: Input volle Zeile, Buttons darunter. Desktop: alles
+            inline. Sonst quetscht der Copy-Button die URL auf 30px. */}
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-2">
           <input
             readOnly
             value={icalUrl}
             onClick={(e) => e.currentTarget.select()}
             className="flex-1 min-w-0 px-3 py-2 text-xs font-mono rounded-lg border bg-muted/40 truncate focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
-          <button
-            type="button"
-            onClick={copy}
-            disabled={!icalUrl}
-            className={`kasten ${copied ? "kasten-green" : "kasten-blue"}`}
-          >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Kopiert" : "Kopieren"}
-          </button>
-          <button
-            type="button"
-            onClick={rotate}
-            disabled={!icalUrl || rotating}
-            className="kasten kasten-muted"
-            data-tooltip="Token rotieren — alter Link wird ungültig"
-            data-tooltip-align="end"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${rotating ? "animate-spin" : ""}`} />
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={copy}
+              disabled={!icalUrl}
+              className={`kasten flex-1 sm:flex-none ${copied ? "kasten-green" : "kasten-blue"}`}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Kopiert" : "Kopieren"}
+            </button>
+            <button
+              type="button"
+              onClick={rotate}
+              disabled={!icalUrl || rotating}
+              className="kasten kasten-muted"
+              data-tooltip="Token rotieren — alter Link wird ungültig"
+              data-tooltip-align="end"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${rotating ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
         {ConfirmModalElement}
       </CardContent>

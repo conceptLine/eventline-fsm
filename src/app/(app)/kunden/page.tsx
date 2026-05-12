@@ -285,7 +285,7 @@ export default function KundenPage() {
             {hasFilter ? " (gefiltert)" : showArchive ? " im Archiv" : " gesamt"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setShowArchive(!showArchive)}

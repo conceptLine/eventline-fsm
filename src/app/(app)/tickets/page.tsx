@@ -179,7 +179,7 @@ export default function TicketsPage() {
             IT-Probleme · Belege · Stempel-Änderungen · Material-Anfragen
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setShowArchive((v) => !v)}

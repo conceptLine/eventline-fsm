@@ -335,8 +335,10 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* Toggles */}
-          <div className="absolute bottom-[90px] left-3 right-3 space-y-0.5">
+          {/* Toggles — bottom-Offset rechnet die User-Card-Hoehe (~95px) +
+              safe-area mit ein, sonst landet der Light/Dark-Button auf
+              kleinen Phones hinter der Card oder unter dem Notch-Bereich. */}
+          <div className="absolute left-3 right-3 space-y-0.5" style={{ bottom: "calc(env(safe-area-inset-bottom) + 110px)" }}>
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all"
@@ -346,7 +348,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <div className="absolute bottom-3 left-3 right-3">
+          <div className="absolute left-3 right-3" style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             <div className="p-4 rounded-xl bg-sidebar-foreground/[0.04] border border-sidebar-border">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold">

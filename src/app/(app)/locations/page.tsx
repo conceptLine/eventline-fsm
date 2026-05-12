@@ -177,12 +177,20 @@ export default function OrtePage() {
         </div>
       </div>
 
-      {/* Schweizer Karte mit Punkten fuer alle Verwaltungen + Raeume */}
-      <LocationsSwitzerlandMap />
+      {/* Schweizer Karte mit Punkten fuer alle Verwaltungen + Raeume.
+          Auf Mobile ausgeblendet — Leaflet braucht zu viel vertikale
+          Höhe und ist auf < 768px Touch-Targets eh schlecht bedienbar. */}
+      <div className="hidden md:block">
+        <LocationsSwitzerlandMap />
+      </div>
 
       {/* Belegungsplan — gleiche Standorte als Matrix mit Buchungen,
-          fuer Akquise-Verfuegbarkeitscheck direkt auf der Locations-Page. */}
-      <BelegungsplanView />
+          fuer Akquise-Verfuegbarkeitscheck direkt auf der Locations-Page.
+          Auf Mobile ausgeblendet — Matrix scrollt horizontal und ist
+          auf schmalen Screens unleserlich. */}
+      <div className="hidden md:block">
+        <BelegungsplanView />
+      </div>
 
       {/* Inline Form — gleiche Felder, nur Header und Submit-Label aendern sich.
           Standort = Verwaltung (intern, mit Customer-Verknuepfung in Details).

@@ -14,6 +14,10 @@ interface BackButtonProps {
 // (Browser-History) statt zu einem hardcodeten Pfad — wer aus dem Kalender
 // auf einen Auftrag klickt, landet beim Zurueck wieder im Kalender, nicht
 // auf der Auftrags-Liste.
+//
+// Auf Mobile mit sichtbarer border + bg damit's eindeutig als Button
+// erkennbar ist (Touch-Screens haben keinen Hover-State der "klickbar"
+// signalisiert). Desktop bleibt minimal — Hover-Highlight reicht da.
 export function BackButton({ fallbackHref = "/dashboard", size = "md" }: BackButtonProps) {
   const router = useRouter();
   const padding = size === "sm" ? "p-1.5" : "p-2";
@@ -33,7 +37,7 @@ export function BackButton({ fallbackHref = "/dashboard", size = "md" }: BackBut
           router.push(fallbackHref);
         }
       }}
-      className={`${padding} rounded-lg hover:bg-foreground/5 dark:hover:bg-foreground/10 transition-colors`}
+      className={`${padding} rounded-lg shrink-0 border border-border bg-card md:border-transparent md:bg-transparent hover:bg-foreground/5 dark:hover:bg-foreground/10 transition-colors`}
     >
       <ArrowLeft className={icon} />
     </button>
