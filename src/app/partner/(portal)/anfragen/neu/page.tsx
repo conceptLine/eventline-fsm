@@ -20,10 +20,14 @@ export default function NeueAnfragePage() {
   const supabase = createClient();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  // Veranstaltung = die ganze Zeitspanne (z.B. Hochzeit Fr–So). Tage-only.
   const [startDate, setStartDate] = useState("");
-  const [startTime, setStartTime] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [endTime, setEndTime] = useState("");
+  // Termin = der einzelne Anlass an dem etwas konkret stattfindet
+  // (z.B. Hauptfeier Samstag 19:00–23:00). Ein-Tages mit Uhrzeit-Range.
+  const [terminDate, setTerminDate] = useState("");
+  const [terminStartTime, setTerminStartTime] = useState("");
+  const [terminEndTime, setTerminEndTime] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -98,8 +102,12 @@ export default function NeueAnfragePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !startDate || !startTime || !endTime) {
-      toast.error("Titel, Datum und Uhrzeiten sind Pflicht");
+    if (!title.trim() || !startDate) {
+      toast.error("Titel und Veranstaltungs-Startdatum sind Pflicht");
+      return;
+    }
+    if (!terminDate || !terminStartTime || !terminEndTime) {
+      toast.error("Termin-Datum und -Uhrzeiten sind Pflicht");
       return;
     }
     if (!contactPerson.trim() || !contactPhone.trim()) {
@@ -111,11 +119,19 @@ export default function NeueAnfragePage() {
       return;
     }
     const effectiveEndDate = endDate || startDate;
-    // Sanity: End-Zeitpunkt muss nach Start-Zeitpunkt liegen
-    const startIso = `${startDate}T${startTime}:00`;
-    const endIso = `${effectiveEndDate}T${endTime}:00`;
-    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
-      toast.error("Endzeit muss nach der Startzeit liegen");
+    if (effectiveEndDate < startDate) {
+      toast.error("Veranstaltungs-Enddatum muss am oder nach Startdatum liegen");
+      return;
+    }
+    // Termin innerhalb der Veranstaltung
+    if (terminDate < startDate || terminDate > effectiveEndDate) {
+      toast.error("Termin-Datum muss innerhalb der Veranstaltung liegen");
+      return;
+    }
+    const terminStartIso = `${terminDate}T${terminStartTime}:00`;
+    const terminEndIso = `${terminDate}T${terminEndTime}:00`;
+    if (new Date(terminEndIso).getTime() <= new Date(terminStartIso).getTime()) {
+      toast.error("Termin-Endzeit muss nach der Startzeit liegen");
       return;
     }
     setSaving(true);
@@ -145,16 +161,16 @@ export default function NeueAnfragePage() {
       TOAST.supabaseError(error, "Anfrage konnte nicht erstellt werden");
       return;
     }
-    // Termin direkt mit anlegen — wird auf der Job als Veranstaltungs-
-    // Termin gefuehrt. Wenn der Partner spaeter mehr Termine braucht
-    // (Aufbau, Abbau), kann er die im Detail-View nachziehen.
+    // Termin direkt mit anlegen — separater Datums-/Zeit-Block als Job-
+    // start/end (Veranstaltungs-Zeitspanne), der Termin ist der konkrete
+    // Anlass innerhalb dieser Zeitspanne.
     const { error: terminErr } = await supabase
       .from("job_appointments")
       .insert({
         job_id: data.id,
         title: title.trim(),
-        start_time: startIso,
-        end_time: endIso,
+        start_time: terminStartIso,
+        end_time: terminEndIso,
         description: null,
       });
     if (terminErr) {
@@ -202,8 +218,10 @@ export default function NeueAnfragePage() {
               />
             </div>
 
+            {/* Veranstaltung = Zeitspanne (z.B. Hochzeitswochenende Fr–So).
+                Tage-only, keine Uhrzeit. */}
             <div className="space-y-3 p-3 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04] border border-foreground/10 dark:border-foreground/15">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Veranstaltung</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium">Startdatum *</label>
@@ -216,18 +234,6 @@ export default function NeueAnfragePage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium">Startzeit *</label>
-                  <Input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="mt-1"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
                   <label className="text-xs font-medium">Enddatum</label>
                   <Input
                     type="date"
@@ -235,16 +241,46 @@ export default function NeueAnfragePage() {
                     onChange={(e) => setEndDate(e.target.value)}
                     className="mt-1"
                     min={startDate || undefined}
-                    placeholder={startDate || undefined}
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Leer = gleicher Tag wie Start</p>
                 </div>
+              </div>
+            </div>
+
+            {/* Termin = der konkrete Anlass innerhalb der Veranstaltung
+                (z.B. Hauptfeier Sa 19:00–23:00). Ein-Tages mit Zeit-Range. */}
+            <div className="space-y-3 p-3 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04] border border-foreground/10 dark:border-foreground/15">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin</p>
+              <div>
+                <label className="text-xs font-medium">Datum *</label>
+                <Input
+                  type="date"
+                  value={terminDate}
+                  onChange={(e) => setTerminDate(e.target.value)}
+                  className="mt-1"
+                  min={startDate || undefined}
+                  max={endDate || startDate || undefined}
+                  required
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Muss innerhalb der Veranstaltung liegen.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium">Endzeit *</label>
+                  <label className="text-xs font-medium">Von *</label>
                   <Input
                     type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
+                    value={terminStartTime}
+                    onChange={(e) => setTerminStartTime(e.target.value)}
+                    className="mt-1"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Bis *</label>
+                  <Input
+                    type="time"
+                    value={terminEndTime}
+                    onChange={(e) => setTerminEndTime(e.target.value)}
                     className="mt-1"
                     required
                   />
