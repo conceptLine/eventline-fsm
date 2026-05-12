@@ -84,11 +84,8 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
               {c.kategorie === "verwaltung" ? "Verwaltung" : "Event"}
             </span>
           )}
-          <div className="min-w-0 flex-1 flex items-baseline gap-1.5">
+          <div className="min-w-0 flex-1">
             <h3 className="font-semibold text-sm truncate">{c.firma}</h3>
-            {c.branche && (
-              <span className="text-[11px] text-muted-foreground truncate">· {c.branche}</span>
-            )}
           </div>
           {daysSinceStep !== null && (
             <span
