@@ -453,113 +453,149 @@ export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay
             </header>
             {selectedItems.length === 0 && selectedShifts.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Keine Einträge</p>
-            ) : (
-              <div className="space-y-3">
-                {(["auftrag", "vermietung", "entwurf"] as const).map((type) => {
-                  const ofType = selectedItems.filter((it) => it.type === type);
-                  if (ofType.length === 0) return null;
-                  const sty = TYPE_STYLE[type];
-                  const plural = ofType.length > 1
-                    ? type === "auftrag" ? "Aufträge"
-                    : type === "vermietung" ? "Vermietungen"
-                    : "Entwürfe"
-                    : sty.label;
-                  return (
-                    <Fragment key={type}>
-                      <div>
-                        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${sty.dot}`} />
-                          {plural} ({ofType.length})
-                        </h3>
-                        <div className="space-y-1.5">
-                          {ofType.map((item) => (
-                            <Link
-                              key={item.id}
-                              href={item.href}
-                              className={`block p-2.5 rounded-lg ${sty.bg} ${sty.text} hover:shadow-sm transition-all group`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="font-semibold text-sm truncate">{item.title}</span>
-                                <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity shrink-0 mt-0.5" />
-                              </div>
-                              {(item.customerName || item.locationName) && (
-                                <div className="flex items-center gap-1 mt-1 text-[11px] opacity-80">
-                                  <MapPin className="h-2.5 w-2.5 shrink-0" />
-                                  <span className="truncate">
-                                    {[item.customerName, item.locationName].filter(Boolean).join(" · ")}
-                                  </span>
-                                </div>
-                              )}
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    </Fragment>
-                  );
-                })}
+            ) : (() => {
+              // Termine zu ihrem Auftrag gruppieren — Leo's Wunsch: nicht
+              // mehr "Auftraege oben, Termine unten mit INT-Nr-Lookup", sondern
+              // Termine direkt im Auftrag-Kasten geschachtelt. Orphans
+              // (Termine ohne jobId oder mit jobId der nicht im View ist)
+              // wandern in eine separate Sektion drunter.
+              const itemIds = new Set(selectedItems.map((it) => it.id));
+              const shiftsByItem = new Map<string, typeof selectedShifts>();
+              const orphanShifts: typeof selectedShifts = [];
+              for (const sh of selectedShifts) {
+                if (sh.jobId && itemIds.has(sh.jobId)) {
+                  const arr = shiftsByItem.get(sh.jobId) ?? [];
+                  arr.push(sh);
+                  shiftsByItem.set(sh.jobId, arr);
+                } else {
+                  orphanShifts.push(sh);
+                }
+              }
 
-                {/* Termine — kompakt mit Uhrzeit + Job-Bezug + Assignee */}
-                {selectedShifts.length > 0 && (
-                  <div>
-                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                      <Clock className="h-3 w-3" />
-                      Termine ({selectedShifts.length})
-                    </h3>
-                    <div className="space-y-1.5">
-                      {selectedShifts.map((sh) => {
-                        const sty = sh.jobType ? TYPE_STYLE[sh.jobType] : SHIFT_NEUTRAL;
-                        const startStr = fmtShiftTime(sh.date);
-                        const endStr = sh.endDate ? fmtShiftTime(sh.endDate) : null;
-                        const inner = (
-                          <>
-                            <div className="flex items-center justify-between gap-2 mb-0.5">
-                              <span className="text-[11px] font-semibold tabular-nums">
-                                {startStr}{endStr ? `–${endStr}` : ""}
-                              </span>
-                              {sh.jobNumber && (
-                                <span className="text-[10px] font-mono font-bold opacity-70 shrink-0">
-                                  INT-{sh.jobNumber}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm font-medium truncate">{sh.title}</div>
-                            {sh.assigneeName && (
-                              <div className="flex items-center gap-1 mt-0.5 text-[11px] opacity-75">
-                                <User className="h-2.5 w-2.5 shrink-0" />
-                                <span className="truncate">{sh.assigneeName}</span>
-                              </div>
-                            )}
-                          </>
-                        );
-                        return sh.href ? (
-                          <Link
-                            key={sh.id}
-                            href={sh.href}
-                            className={`block p-2.5 rounded-lg ${sty.bg} ${sty.text} hover:shadow-sm transition-all`}
-                          >
-                            {inner}
-                          </Link>
-                        ) : onStandaloneShiftClick ? (
-                          <button
-                            key={sh.id}
-                            type="button"
-                            onClick={() => onStandaloneShiftClick(sh.id)}
-                            className={`block w-full text-left p-2.5 rounded-lg ${sty.bg} ${sty.text} hover:shadow-sm transition-all`}
-                            data-tooltip="Klicken zum Bearbeiten"
-                          >
-                            {inner}
-                          </button>
-                        ) : (
-                          <div key={sh.id} className={`block p-2.5 rounded-lg ${sty.bg} ${sty.text}`}>
-                            {inner}
-                          </div>
-                        );
-                      })}
+              const renderShift = (sh: typeof selectedShifts[number], showJobNr: boolean) => {
+                const sty = sh.jobType ? TYPE_STYLE[sh.jobType] : SHIFT_NEUTRAL;
+                const startStr = fmtShiftTime(sh.date);
+                const endStr = sh.endDate ? fmtShiftTime(sh.endDate) : null;
+                const inner = (
+                  <>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <span className="text-[11px] font-semibold tabular-nums">
+                        {startStr}{endStr ? `–${endStr}` : ""}
+                      </span>
+                      {showJobNr && sh.jobNumber && (
+                        <span className="text-[10px] font-mono font-bold opacity-70 shrink-0">
+                          INT-{sh.jobNumber}
+                        </span>
+                      )}
                     </div>
+                    <div className="text-sm font-medium truncate">{sh.title}</div>
+                    {sh.assigneeName && (
+                      <div className="flex items-center gap-1 mt-0.5 text-[11px] opacity-75">
+                        <User className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{sh.assigneeName}</span>
+                      </div>
+                    )}
+                  </>
+                );
+                return sh.href ? (
+                  <Link
+                    key={sh.id}
+                    href={sh.href}
+                    className={`block p-2 rounded-lg ${sty.bg} ${sty.text} hover:shadow-sm transition-all`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {inner}
+                  </Link>
+                ) : onStandaloneShiftClick ? (
+                  <button
+                    key={sh.id}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onStandaloneShiftClick(sh.id); }}
+                    className={`block w-full text-left p-2 rounded-lg ${sty.bg} ${sty.text} hover:shadow-sm transition-all`}
+                    data-tooltip="Klicken zum Bearbeiten"
+                  >
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={sh.id} className={`block p-2 rounded-lg ${sty.bg} ${sty.text}`}>
+                    {inner}
                   </div>
-                )}
-              </div>
-            )}
+                );
+              };
+
+              return (
+                <div className="space-y-3">
+                  {(["auftrag", "vermietung", "entwurf"] as const).map((type) => {
+                    const ofType = selectedItems.filter((it) => it.type === type);
+                    if (ofType.length === 0) return null;
+                    const sty = TYPE_STYLE[type];
+                    const plural = ofType.length > 1
+                      ? type === "auftrag" ? "Aufträge"
+                      : type === "vermietung" ? "Vermietungen"
+                      : "Entwürfe"
+                      : sty.label;
+                    return (
+                      <Fragment key={type}>
+                        <div>
+                          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${sty.dot}`} />
+                            {plural} ({ofType.length})
+                          </h3>
+                          <div className="space-y-1.5">
+                            {ofType.map((item) => {
+                              const itemShifts = shiftsByItem.get(item.id) ?? [];
+                              return (
+                                <div key={item.id} className={`rounded-lg ${sty.bg} ${sty.text} overflow-hidden`}>
+                                  <Link
+                                    href={item.href}
+                                    className="block p-2.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-all group"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="font-semibold text-sm truncate">{item.title}</span>
+                                      <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity shrink-0 mt-0.5" />
+                                    </div>
+                                    {(item.customerName || item.locationName) && (
+                                      <div className="flex items-center gap-1 mt-1 text-[11px] opacity-80">
+                                        <MapPin className="h-2.5 w-2.5 shrink-0" />
+                                        <span className="truncate">
+                                          {[item.customerName, item.locationName].filter(Boolean).join(" · ")}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </Link>
+                                  {itemShifts.length > 0 && (
+                                    <div className="px-2 pb-2 space-y-1 bg-black/[0.04] dark:bg-white/[0.04]">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70 pt-1.5 px-1 flex items-center gap-1">
+                                        <Clock className="h-2.5 w-2.5" />
+                                        Termine ({itemShifts.length})
+                                      </p>
+                                      {itemShifts.map((sh) => renderShift(sh, false))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </Fragment>
+                    );
+                  })}
+
+                  {/* Orphan-Termine (kein jobId oder Job nicht im View) */}
+                  {orphanShifts.length > 0 && (
+                    <div>
+                      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                        <Clock className="h-3 w-3" />
+                        Sonstige Termine ({orphanShifts.length})
+                      </h3>
+                      <div className="space-y-1.5">
+                        {orphanShifts.map((sh) => renderShift(sh, true))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="hidden lg:block rounded-xl border border-dashed bg-card p-6 text-center">
