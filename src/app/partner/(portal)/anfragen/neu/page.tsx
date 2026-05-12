@@ -21,7 +21,9 @@ export default function NeueAnfragePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -96,8 +98,8 @@ export default function NeueAnfragePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !startDate) {
-      toast.error("Titel und Startdatum sind Pflicht");
+    if (!title.trim() || !startDate || !startTime || !endTime) {
+      toast.error("Titel, Datum und Uhrzeiten sind Pflicht");
       return;
     }
     if (!contactPerson.trim() || !contactPhone.trim()) {
@@ -106,6 +108,14 @@ export default function NeueAnfragePage() {
     }
     if (!partnerLocationId) {
       toast.error("Deinem Profil ist keine Location zugewiesen — wende dich an Eventline.");
+      return;
+    }
+    const effectiveEndDate = endDate || startDate;
+    // Sanity: End-Zeitpunkt muss nach Start-Zeitpunkt liegen
+    const startIso = `${startDate}T${startTime}:00`;
+    const endIso = `${effectiveEndDate}T${endTime}:00`;
+    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+      toast.error("Endzeit muss nach der Startzeit liegen");
       return;
     }
     setSaving(true);
@@ -120,7 +130,7 @@ export default function NeueAnfragePage() {
         title: title.trim(),
         description: description.trim() || null,
         start_date: startDate,
-        end_date: endDate || startDate,
+        end_date: effectiveEndDate,
         status: "partner_anfrage",
         location_id: partnerLocationId,
         contact_person: contactPerson.trim(),
@@ -135,6 +145,23 @@ export default function NeueAnfragePage() {
       TOAST.supabaseError(error, "Anfrage konnte nicht erstellt werden");
       return;
     }
+    // Termin direkt mit anlegen — wird auf der Job als Veranstaltungs-
+    // Termin gefuehrt. Wenn der Partner spaeter mehr Termine braucht
+    // (Aufbau, Abbau), kann er die im Detail-View nachziehen.
+    const { error: terminErr } = await supabase
+      .from("job_appointments")
+      .insert({
+        job_id: data.id,
+        title: title.trim(),
+        start_time: startIso,
+        end_time: endIso,
+        description: null,
+      });
+    if (terminErr) {
+      // Job ist trotzdem da — wir warnen und schicken den User zum Detail,
+      // wo er den Termin manuell anlegen kann.
+      toast.warning("Anfrage erstellt, aber Termin konnte nicht angelegt werden — bitte auf Detail-Seite manuell hinzufügen");
+    }
     if (stagedFiles.length > 0) {
       const ok = await uploadStagedFiles(data.id, user.id);
       if (ok < stagedFiles.length) {
@@ -142,7 +169,7 @@ export default function NeueAnfragePage() {
       }
     }
     setSaving(false);
-    toast.success("Anfrage erstellt — füge jetzt Termine hinzu");
+    if (!terminErr) toast.success("Anfrage erstellt");
     router.push(`/partner/anfragen/${data.id}`);
   }
 
@@ -175,26 +202,53 @@ export default function NeueAnfragePage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium">Startdatum *</label>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="mt-1"
-                  required
-                />
+            <div className="space-y-3 p-3 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04] border border-foreground/10 dark:border-foreground/15">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">Startdatum *</label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Startzeit *</label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="mt-1"
+                    required
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium">Enddatum</label>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="mt-1"
-                  min={startDate || undefined}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">Enddatum</label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="mt-1"
+                    min={startDate || undefined}
+                    placeholder={startDate || undefined}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Leer = gleicher Tag wie Start</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Endzeit *</label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="mt-1"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
@@ -323,7 +377,7 @@ export default function NeueAnfragePage() {
             </div>
 
             <p className="text-[11px] text-muted-foreground pt-2">
-              Termine kannst du nach dem Speichern auf der Anfrage-Detail-Seite hinzufügen.
+              Weitere Termine (Aufbau, Abbau, etc.) kannst du nach dem Speichern auf der Anfrage-Detail-Seite hinzufügen.
             </p>
           </form>
         </CardContent>
