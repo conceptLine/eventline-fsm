@@ -150,8 +150,8 @@ export function DonutChart({ segments, centerLabel, below, emptyMessage }: Donut
           <div className="relative shrink-0">
             <svg width={SVG_SIZE} height={SVG_SIZE}>
               {/* Track: zwei feine konzentrische Outlines als Rahmen des Donuts */}
-              <circle cx={CX} cy={CY} r={OUTER_R} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.08]" />
-              <circle cx={CX} cy={CY} r={INNER_R} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.08]" />
+              <circle cx={CX} cy={CY} r={OUTER_R} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.12] dark:text-foreground/[0.18]" />
+              <circle cx={CX} cy={CY} r={INNER_R} fill="none" stroke="currentColor" strokeWidth={1} className="text-foreground/[0.12] dark:text-foreground/[0.18]" />
               {visibleSegments.length === 1 ? (
                 // Voller Ring: aussen + innen kompletter Kreis (ohne Fill — sonst innenkreis komplett getoent)
                 <>

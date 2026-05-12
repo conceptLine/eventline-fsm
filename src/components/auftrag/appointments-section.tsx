@@ -14,7 +14,6 @@ import { deleteRow } from "@/lib/db-mutations";
 import { logError } from "@/lib/log";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { Calendar, Clock, User, Plus, Send, Check, Trash2, AlertTriangle } from "lucide-react";
@@ -198,14 +197,14 @@ export function AppointmentsSection({
             <Calendar className="h-4 w-4" />Termine ({appointments.length})
           </CardTitle>
           {can("kalender:create") && (
-            <Button size="sm" variant="outline" onClick={() => setShowApptForm(!showApptForm)}>
-              <Plus className="h-4 w-4 mr-1" />Termin
-            </Button>
+            <button type="button" onClick={() => setShowApptForm(!showApptForm)} className="kasten kasten-blue">
+              <Plus className="h-3.5 w-3.5" />Termin
+            </button>
           )}
         </CardHeader>
         <CardContent className="space-y-3">
           {showApptForm && (
-            <form onSubmit={addAppointment} className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-3">
+            <form onSubmit={addAppointment} className="p-4 rounded-xl bg-foreground/[0.03] border border-foreground/10 dark:bg-foreground/5 dark:border-foreground/15 space-y-3">
               <Input placeholder="Termin-Titel *" value={apptForm.title} onChange={(e) => setApptForm({ ...apptForm, title: e.target.value })} required />
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="text-xs font-medium">Datum *</label><Input type="date" value={apptForm.date} onChange={(e) => setApptForm({ ...apptForm, date: e.target.value })} className="mt-1" required /></div>
@@ -213,7 +212,7 @@ export function AppointmentsSection({
                 <div><label className="text-xs font-medium">Bis *</label><Input type="time" value={apptForm.end_time} onChange={(e) => setApptForm({ ...apptForm, end_time: e.target.value })} className="mt-1" required /></div>
               </div>
               <div>
-                <label className="text-xs font-medium">Zuweisen an {apptForm.assigned_to.length > 0 && <span className="text-red-500">({apptForm.assigned_to.length})</span>}</label>
+                <label className="text-xs font-medium">Zuweisen an {apptForm.assigned_to.length > 0 && <span className="text-muted-foreground">({apptForm.assigned_to.length})</span>}</label>
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   {profiles.map((p) => {
                     const selected = apptForm.assigned_to.includes(p.id);
@@ -268,7 +267,7 @@ export function AppointmentsSection({
                   </div>
                 )}
               </div>
-              <textarea placeholder="Beschreibung..." value={apptForm.description} onChange={(e) => setApptForm({ ...apptForm, description: e.target.value })} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-card resize-none" rows={2} />
+              <textarea placeholder="Beschreibung..." value={apptForm.description} onChange={(e) => setApptForm({ ...apptForm, description: e.target.value })} className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card resize-none focus:outline-none focus:ring-2 focus:ring-ring/40" rows={2} style={{ fieldSizing: "content" } as React.CSSProperties} />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setShowApptForm(false)} className="kasten kasten-muted">Abbrechen</button>
                 <button type="submit" className="kasten kasten-red">Termin erstellen</button>
@@ -299,7 +298,7 @@ export function AppointmentsSection({
           {appointments.map((appt) => {
             const assignee = appt.assignee;
             return (
-              <div key={appt.id} className="flex items-center justify-between p-3 rounded-xl border bg-gray-50 border-gray-100">
+              <div key={appt.id} className="flex items-center justify-between p-3 rounded-xl border bg-foreground/[0.02] border-foreground/10 dark:bg-foreground/[0.04] dark:border-foreground/15">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="min-w-0">
                     <span className="font-medium text-sm">{appt.title}</span>

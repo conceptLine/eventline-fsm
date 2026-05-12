@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { jsPDF } from "jspdf";
+// jsPDF wird lazy in generatePDF() geladen — ~180KB nicht im Cold-Start.
 import LOGO_BASE64 from "@/lib/logo-base64";
 import { requireUser } from "@/lib/api-auth";
 
@@ -28,6 +28,7 @@ async function generatePDF(
   signatures: { tech: string | null; client: string | null }
 ): Promise<Buffer> {
   const timeRanges: TimeRange[] = report.time_ranges || [];
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 20;
@@ -342,29 +343,31 @@ export async function POST(
   const customerName = customer?.name || "Unbekannt";
 
   // Fotos laden
-  const photoImages: { base64: string; caption: string | null }[] = [];
   const { data: reportPhotos } = await supabase
     .from("report_photos")
     .select("*")
     .eq("report_id", id)
     .order("sort_order");
 
-  if (reportPhotos) {
-    for (const photo of reportPhotos as ReportPhoto[]) {
-      try {
-        const { data: fileData } = await supabase.storage.from("documents").download(photo.storage_path);
-        if (fileData) {
-          const buffer = Buffer.from(await fileData.arrayBuffer());
-          const ext = photo.storage_path.split(".").pop()?.toLowerCase() || "jpg";
-          const mime = ext === "png" ? "image/png" : "image/jpeg";
-          photoImages.push({
-            base64: `data:${mime};base64,${buffer.toString("base64")}`,
-            caption: photo.caption,
-          });
-        }
-      } catch {}
-    }
-  }
+  // Photo-Downloads parallel (vorher sequenziell = N x Storage-Latenz).
+  // null-Werte raus, damit der Caller sich nicht um Fehlschlaege kuemmern muss.
+  const photoImages = reportPhotos
+    ? (await Promise.all(
+        (reportPhotos as ReportPhoto[]).map(async (photo) => {
+          try {
+            const { data: fileData } = await supabase.storage.from("documents").download(photo.storage_path);
+            if (!fileData) return null;
+            const buffer = Buffer.from(await fileData.arrayBuffer());
+            const ext = photo.storage_path.split(".").pop()?.toLowerCase() || "jpg";
+            const mime = ext === "png" ? "image/png" : "image/jpeg";
+            return {
+              base64: `data:${mime};base64,${buffer.toString("base64")}`,
+              caption: photo.caption,
+            };
+          } catch { return null; }
+        }),
+      )).filter((x): x is { base64: string; caption: string | null } => x !== null)
+    : [];
 
   // Unterschriften laden
   const signatures: { tech: string | null; client: string | null } = { tech: null, client: null };

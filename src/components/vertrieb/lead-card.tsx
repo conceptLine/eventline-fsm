@@ -66,8 +66,8 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
     <Card
       onClick={() => onClick(c)}
       className={`cursor-pointer transition-all hover:shadow-lg hover:-translate-y-0.5 group relative ${
-        isGewonnen ? "bg-green-50 border-green-200" :
-        isVerloren ? "bg-red-50/60 border-red-200 opacity-70" :
+        isGewonnen ? "bg-green-50 border-green-200 dark:bg-green-500/10 dark:border-green-500/30" :
+        isVerloren ? "bg-red-50/60 border-red-200 opacity-70 dark:bg-red-500/10 dark:border-red-500/30" :
         isStale ? "bg-card border-[var(--status-red)]" :
         "bg-card"
       }`}
@@ -123,7 +123,7 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
               {STEPS.map((s) => (
                 <div
                   key={s.nr}
-                  className={`w-4 h-1.5 rounded-full ${s.nr <= currentStepNr ? "bg-blue-500" : "bg-gray-200 dark:bg-gray-700"}`}
+                  className={`w-4 h-1.5 rounded-full ${s.nr <= currentStepNr ? "bg-blue-500" : "bg-foreground/10 dark:bg-foreground/20"}`}
                 />
               ))}
             </div>
@@ -131,13 +131,13 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
 
           {/* Won/Lost-Badge inline statt eigene Banner-Zeile */}
           {isGewonnen && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-green-100 text-green-800 border border-green-200">
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-green-100 text-green-800 border border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30">
               <Check className="h-3 w-3" />
               Gewonnen{jobNumber ? ` · INT-${jobNumber}` : ""}
             </span>
           )}
           {isVerloren && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-red-100 text-red-800 border border-red-200 truncate max-w-[260px]">
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-red-100 text-red-800 border border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30 truncate max-w-[260px]">
               <AlertTriangle className="h-3 w-3 shrink-0" />
               <span className="truncate">Verloren{c.verloren_grund ? `: ${c.verloren_grund}` : ""}</span>
             </span>

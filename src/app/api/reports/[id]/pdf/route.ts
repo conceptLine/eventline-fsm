@@ -1,7 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { jsPDF } from "jspdf";
+// jsPDF wird lazy geladen — ~180KB, soll nicht beim Cold-Start der
+// Route mitgeparsed werden wenn der erste Aufruf vielleicht gar nicht
+// bis zum PDF-Build kommt.
 import LOGO_BASE64 from "@/lib/logo-base64";
 import { requireUser } from "@/lib/api-auth";
 
@@ -46,6 +48,7 @@ export async function GET(
   const location = job?.location;
   const timeRanges: TimeRange[] = report.time_ranges || [];
 
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 20;

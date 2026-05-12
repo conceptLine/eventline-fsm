@@ -89,14 +89,12 @@ export async function POST(request: NextRequest) {
       if (fnCallPart?.functionCall) {
         // Tool ausfuehren
         const { name, args } = fnCallPart.functionCall;
-        console.log(`[eve] iter=${i} tool_call=${name} args=${JSON.stringify(args ?? {})}`);
         let result: unknown;
         try {
           result = await executeEveTool(name, args ?? {});
-          console.log(`[eve] iter=${i} tool_result=${JSON.stringify(result).slice(0, 400)}`);
         } catch (e) {
           result = { error: e instanceof Error ? e.message : "Tool-Fehler" };
-          console.log(`[eve] iter=${i} tool_error=${(result as { error: string }).error}`);
+          logError("api.chat.tool_error", e, { tool: name, iter: i });
         }
         // History fortschreiben: model's functionCall + user's functionResponse
         history.push({ role: "model", parts });
