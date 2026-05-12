@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
-import { Calendar, Clock, User, Plus, Send, Check, Trash2, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, User, Plus, Send, Check, Trash2, AlertTriangle, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
@@ -60,6 +60,11 @@ export function AppointmentsSection({
   const [notifyPopup, setNotifyPopup] = useState<string | null>(null);
   const [emailField1, setEmailField1] = useState("");
   const [emailField2, setEmailField2] = useState("");
+  // Inline-Zuweisung pro existierendem Termin (sonst muesste der User
+  // den Termin loeschen + neu anlegen um zuzuteilen). assigningId =
+  // welcher Termin gerade die Zuweisen-Schublade offen hat.
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assigningBusy, setAssigningBusy] = useState(false);
   const { confirm, ConfirmModalElement } = useConfirm();
 
   // Ferien-Konflikte am Termin-Datum — Hook gated auf showApptForm
@@ -141,6 +146,53 @@ export function AppointmentsSection({
 
   // useConfirm-Pattern statt vorherigem hardcoded Code "5225"-Modal —
   // konsistent mit allen anderen Loesch-Flows app-weit.
+  async function setApptAssignee(apptId: string, profileId: string | null) {
+    setAssigningBusy(true);
+    const { error } = await supabase
+      .from("job_appointments")
+      .update({ assigned_to: profileId })
+      .eq("id", apptId);
+    setAssigningBusy(false);
+    if (error) {
+      TOAST.supabaseError(error, "Zuweisung konnte nicht gespeichert werden");
+      return;
+    }
+    toast.success(profileId ? "Termin zugewiesen" : "Zuweisung entfernt");
+    setAssigningId(null);
+    onReload();
+    // Best-effort: bei Neu-Zuweisung Mail an den neuen Mitarbeiter,
+    // analog zur Insert-Pipeline (mit gleicher API-Route).
+    if (profileId) {
+      const appt = appointments.find((a) => a.id === apptId);
+      if (appt) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (profileId !== user?.id) {
+          const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", user?.id ?? "").maybeSingle();
+          const apptDate = appt.start_time.split("T")[0];
+          const apptTime = appt.start_time.split("T")[1]?.slice(0, 5) ?? "";
+          const apptEnd = appt.end_time ? appt.end_time.split("T")[1]?.slice(0, 5) : "";
+          try {
+            await fetch("/api/appointments/assign-notify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                assignedTo: profileId,
+                title: appt.title,
+                date: apptDate,
+                time: apptTime,
+                endTime: apptEnd,
+                jobTitle: jobTitle ?? null,
+                creatorName: creator?.full_name || "Unbekannt",
+              }),
+            });
+          } catch (e) {
+            logError("auftrag.appt.reassign-notify", e, { profileId, apptId });
+          }
+        }
+      }
+    }
+  }
+
   async function deleteAppointment(apptId: string) {
     const ok = await confirm({
       title: "Termin löschen?",
@@ -297,14 +349,21 @@ export function AppointmentsSection({
           )}
           {appointments.map((appt) => {
             const assignee = appt.assignee;
+            const isAssigning = assigningId === appt.id;
+            const unassigned = !appt.assigned_to;
             return (
-              <div key={appt.id} className="flex items-center justify-between p-3 rounded-xl border bg-foreground/[0.02] border-foreground/10 dark:bg-foreground/[0.04] dark:border-foreground/15">
+              <div key={appt.id} className="rounded-xl border bg-foreground/[0.02] border-foreground/10 dark:bg-foreground/[0.04] dark:border-foreground/15">
+              <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="min-w-0">
                     <span className="font-medium text-sm">{appt.title}</span>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(appt.start_time).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{appt.end_time ? ` – ${new Date(appt.end_time).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
-                      {assignee && <span className="flex items-center gap-1"><User className="h-3 w-3" />{assignee.full_name}</span>}
+                      {assignee ? (
+                        <span className="flex items-center gap-1"><User className="h-3 w-3" />{assignee.full_name}</span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-medium"><UserPlus className="h-3 w-3" />Nicht zugewiesen</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -355,6 +414,17 @@ export function AppointmentsSection({
                         </div>
                     </Modal>
                   </div>
+                  {!isClosed && can("kalender:create") && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigningId(isAssigning ? null : appt.id)}
+                      className={`kasten ${unassigned ? "kasten-red" : "kasten-muted"}`}
+                      data-tooltip={unassigned ? "Termin zuweisen" : "Zuweisung ändern"}
+                    >
+                      {isAssigning ? <X className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
+                      {unassigned ? "Zuweisen" : "Ändern"}
+                    </button>
+                  )}
                   {!isClosed && can("kalender:delete") && (
                     <button
                       type="button"
@@ -367,6 +437,35 @@ export function AppointmentsSection({
                     </button>
                   )}
                 </div>
+              </div>
+              {/* Inline-Zuweisungs-Schublade */}
+              {isAssigning && !isClosed && can("kalender:create") && (
+                <div className="px-3 pb-3 border-t border-foreground/10 dark:border-foreground/15 pt-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Zuweisen an</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {profiles.map((p) => {
+                      const selected = appt.assigned_to === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={assigningBusy}
+                          onClick={() => setApptAssignee(appt.id, selected ? null : p.id)}
+                          className={selected ? "kasten-active" : "kasten-toggle-off"}
+                        >
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${selected ? "bg-background/20" : "bg-foreground/10 text-muted-foreground"}`}>
+                            {p.full_name.charAt(0)}
+                          </div>
+                          {p.full_name.split(" ")[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Eine Person aktiv = zugewiesen. Erneut klicken um zu entfernen.
+                  </p>
+                </div>
+              )}
               </div>
             );
           })}
