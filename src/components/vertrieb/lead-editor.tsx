@@ -562,7 +562,7 @@ export function LeadEditor({ contactId, onClose }: Props) {
         <BuchhaltungModalBody buchhaltungMessage={buchhaltungMessage} setBuchhaltungMessage={setBuchhaltungMessage} onSend={sendBuchhaltungsBenachrichtigung} onClose={() => setShowBuchhaltung(false)} sending={sendingBuchhaltung} />
       </Modal>
 
-      <Modal open={showVerbesserung} onClose={() => setShowVerbesserung(false)} title="Verbesserungs-Vorschlag" icon={<Mail className="h-4 w-4 text-orange-600" />} size="md" closable={!sendingVerbesserung}>
+      <Modal open={showVerbesserung} onClose={() => setShowVerbesserung(false)} title="Verbesserungs-Vorschlag" icon={<Mail className="h-4 w-4 text-green-600" />} size="md" closable={!sendingVerbesserung}>
         <VerbesserungModalBody verbesserungText={verbesserungText} setVerbesserungText={setVerbesserungText} onSend={sendVerbesserung} onClose={() => setShowVerbesserung(false)} sending={sendingVerbesserung} />
       </Modal>
 

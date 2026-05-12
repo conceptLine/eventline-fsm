@@ -20,14 +20,14 @@ export function VerbesserungModalBody({ verbesserungText, setVerbesserungText, o
           value={verbesserungText}
           onChange={(e) => setVerbesserungText(e.target.value)}
           placeholder="z.B. Preis anpassen, Leistungen ergänzen, Datum ändern..."
-          className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-gray-50 dark:bg-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+          className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-gray-50 dark:bg-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-green-500/20"
           rows={5}
           autoFocus
         />
       </div>
       <div className="flex gap-3">
         <button onClick={onClose} className="kasten kasten-muted flex-1">Abbrechen</button>
-        <button onClick={onSend} disabled={!verbesserungText.trim() || sending} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50">
+        <button onClick={onSend} disabled={!verbesserungText.trim() || sending} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
           <Mail className="h-4 w-4" />{sending ? "Senden..." : "Senden"}
         </button>
       </div>

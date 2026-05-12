@@ -559,7 +559,7 @@ function Funnel({ counts }: { counts: Counts }) {
   const stages = [
     { nr: 1, label: "Offen",         count: counts.step_1, color: "var(--status-gray)",    tint: "bg-[rgba(100,116,139,0.12)] dark:bg-[rgba(100,116,139,0.18)]" },
     { nr: 2, label: "Kontaktiert",   count: counts.step_2, color: "var(--status-blue)",    tint: "bg-[rgba(37,99,235,0.12)] dark:bg-[rgba(37,99,235,0.18)]" },
-    { nr: 3, label: "Finalisierung", count: counts.step_3, color: "var(--status-orange)",  tint: "bg-[rgba(234,88,12,0.12)] dark:bg-[rgba(234,88,12,0.18)]" },
+    { nr: 3, label: "Finalisierung", count: counts.step_3, color: "var(--status-green)",   tint: "bg-[rgba(0,168,107,0.12)] dark:bg-[rgba(0,168,107,0.18)]" },
     { nr: 4, label: "Operations",    count: counts.step_4, color: "var(--status-emerald)", tint: "bg-[rgba(4,120,87,0.12)] dark:bg-[rgba(4,120,87,0.18)]" },
   ];
   const maxCount = Math.max(1, ...stages.map((s) => s.count));

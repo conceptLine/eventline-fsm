@@ -3,7 +3,7 @@ import type { VertriebStatus, VertriebPriority, VertriebKategorie } from "@/type
 
 export const STATUS_OPTIONS: { value: VertriebStatus; label: string; color: string }[] = [
   { value: "offen", label: "Offen", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  { value: "kontaktiert", label: "Kontaktiert", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  { value: "kontaktiert", label: "Kontaktiert", color: "bg-blue-100 text-blue-700 border-blue-200" },
   { value: "gespraech", label: "Gespräch", color: "bg-teal-100 text-teal-700 border-teal-200" },
   { value: "gewonnen", label: "Gewonnen", color: "bg-green-100 text-green-700 border-green-200" },
   { value: "abgesagt", label: "Abgesagt", color: "bg-red-100 text-red-700 border-red-200" },

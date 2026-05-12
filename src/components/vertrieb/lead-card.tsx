@@ -28,6 +28,26 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
   const stepLabel = STEPS.find((s) => s.nr === currentStepNr)?.label || "";
   const isGewonnen = c.status === "gewonnen";
   const isVerloren = c.status === "abgesagt";
+
+  // Tage seit letztem Schritt — advanceStep() setzt datum_kontakt jeweils
+  // auf today, also ist das der "letzter Schritt"-Timestamp. Fuer ganz
+  // frische Leads (noch nie Schritt gemacht) faellt's auf created_at zurueck,
+  // damit auch lange-liegen-gelassene Neueingaenge stale werden.
+  // Bei gewonnen/abgesagt ist der Prozess fertig — kein Staleness-Indikator.
+  const daysSinceStep: number | null = (() => {
+    if (isGewonnen || isVerloren) return null;
+    let then: number;
+    if (c.datum_kontakt) {
+      const [y, m, d] = c.datum_kontakt.split("-").map(Number);
+      then = new Date(y, m - 1, d, 12).getTime();
+    } else if (c.created_at) {
+      then = new Date(c.created_at).getTime();
+    } else {
+      return null;
+    }
+    return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+  })();
+  const isStale = daysSinceStep !== null && daysSinceStep > 7;
   // Job-Nummer + Event-Datum ermitteln
   let jobNumber: number | null = null;
   let eventStart: string | null = null;
@@ -45,6 +65,10 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
       className={`cursor-pointer transition-all hover:shadow-lg hover:-translate-y-0.5 group relative ${
         isGewonnen ? "bg-green-50 border-green-200" :
         isVerloren ? "bg-red-50/60 border-red-200 opacity-70" :
+        // Stale: nur Rand rot (status-red, gleicher Ton wie kasten-red-
+        // Buttons), keine rote Fuellung — sonst sieht's aus wie ein
+        // verlorener Lead.
+        isStale ? "bg-card border-[var(--status-red)]" :
         "bg-card"
       }`}
     >
@@ -163,10 +187,21 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
           )}
           <span className={`text-[11px] font-medium px-2 py-1 rounded-md border ${statusConf.color}`}>{statusConf.label}</span>
           <span className={`text-[11px] font-medium px-2 py-1 rounded-md border ${prioConf.color}`}>{prioConf.label}</span>
-          {c.datum_kontakt && (
-            <span className="ml-auto text-[10px] text-muted-foreground flex items-center gap-1">
+          {daysSinceStep !== null && (
+            <span
+              className={`ml-auto text-[10px] flex items-center gap-1 ${
+                isStale
+                  ? "font-bold text-red-600 dark:text-red-400"
+                  : "font-medium text-muted-foreground"
+              }`}
+              title={c.datum_kontakt
+                ? `Letzter Schritt am ${(() => { const [y,m,d] = c.datum_kontakt!.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH"); })()}`
+                : `Lead angelegt am ${new Date(c.created_at).toLocaleDateString("de-CH")}`}
+            >
               <Calendar className="h-2.5 w-2.5" />
-              {(() => { const [y,m,d] = c.datum_kontakt!.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" }); })()}
+              {daysSinceStep === 0 ? "heute"
+                : daysSinceStep === 1 ? "vor 1 Tag"
+                : `vor ${daysSinceStep} Tagen`}
             </span>
           )}
         </div>

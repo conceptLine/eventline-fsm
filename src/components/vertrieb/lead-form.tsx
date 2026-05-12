@@ -202,24 +202,24 @@ export function LeadForm({
 
           {/* SCHRITT 3: Finalisierung */}
           {editingId && editingStep === 3 && form.status !== "abgesagt" && (
-            <div className="p-4 rounded-xl bg-orange-50 border-2 border-orange-200 space-y-3">
-              <p className="text-sm font-semibold text-orange-800 flex items-center gap-1.5"><Filter className="h-4 w-4" />Schritt 3: Finalisierung</p>
+            <div className="p-4 rounded-xl bg-green-50 border-2 border-green-200 space-y-3">
+              <p className="text-sm font-semibold text-green-800 flex items-center gap-1.5"><Filter className="h-4 w-4" />Schritt 3: Finalisierung</p>
               <div>
                 <label className="text-xs font-medium">Offerte als PDF</label>
                 {offertePdf ? (
-                  <div className="mt-1.5 flex items-center justify-between p-2 rounded-lg bg-card border border-orange-200">
+                  <div className="mt-1.5 flex items-center justify-between p-2 rounded-lg bg-card border border-green-200">
                     <span className="text-sm truncate">{offertePdf.name}</span>
                     <button type="button" onClick={onRemoveOfferte} className="p-1 text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 ) : (
-                  <label className="mt-1.5 flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-orange-300 bg-card text-sm text-orange-700 cursor-pointer hover:border-orange-500 transition-colors">
+                  <label className="mt-1.5 flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-green-300 bg-card text-sm text-green-700 cursor-pointer hover:border-green-500 transition-colors">
                     <Plus className="h-4 w-4" />{uploadingOfferte ? "Hochladen..." : "Offerte PDF hochladen"}
                     <input type="file" accept=".pdf" onChange={onUploadOfferte} className="hidden" disabled={uploadingOfferte} />
                   </label>
                 )}
               </div>
-              <div className="flex gap-2 flex-wrap pt-2 border-t border-orange-200">
-                <Button type="button" size="sm" onClick={onOpenVerbesserung} variant="outline" className="text-orange-700 border-orange-300 hover:bg-orange-100">
+              <div className="flex gap-2 flex-wrap pt-2 border-t border-green-200">
+                <Button type="button" size="sm" onClick={onOpenVerbesserung} variant="outline" className="text-green-700 border-green-300 hover:bg-green-100">
                   <Mail className="h-4 w-4 mr-1" />Verbesserungs-Nachricht
                 </Button>
                 <button type="button" onClick={onSendBestaetigung} disabled={sendingBestaetigung} className="kasten kasten-green">
