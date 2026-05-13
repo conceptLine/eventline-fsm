@@ -4,13 +4,15 @@
  * Partner-Belegungsplan: klassischer Monats-Kalender (7×5/6) mit farbig
  * markierten Buchungs-Tagen, darunter eine Liste der naechsten Buchungen.
  *
- * Daten kommen aus /api/belegungsplan (gefiltert auf die Partner-Location);
- * Eventline-interne Buchungen erscheinen als "Belegt" (Maskierung macht
- * das API schon ueber visible:false), eigene Anfragen mit vollem Titel.
+ * Daten kommen aus /api/belegungsplan (gefiltert auf die Partner-Location).
+ * Eintraege sind klickbar: eigene Anfragen → /partner/anfragen/[id],
+ * fremde Vermietungen → kleines Modal mit Read-Only-Details.
  */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 
 type BookingKind = "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung";
 
@@ -18,6 +20,8 @@ interface Booking {
   id: string;
   kind: BookingKind;
   title: string;
+  customerName: string | null;
+  isOwn: boolean;
   status: string;
   start: Date;
   end: Date;
@@ -93,6 +97,10 @@ export function PartnerBelegungsplan({ locationId }: Props) {
   });
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  // Foreign-Vermietung-Detail-Modal — eigene Anfragen gehen ueber Link
+  // auf die /partner/anfragen/[id]-Page, Vermietungen (kein Partner-Owner)
+  // haben keine eigene Detail-Page → leichtes Modal mit Title/Datum/Kunde.
+  const [vermietungDetail, setVermietungDetail] = useState<Booking | null>(null);
 
   // Visible Range: Start = erster Montag der Kalenderwoche des Monats-Ersten,
   // End = letzter Sonntag der Kalenderwoche des Monats-Letzten. So gibt's
@@ -128,14 +136,12 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         if (b.status === "storniert" && !b.is_own) continue;
         const kind = kindFromBooking(b);
         if (kind === null) continue; // fremde Nicht-Vermietungen ausblenden
-        // Fremde Titel maskieren — Partner sieht "Vermietung" statt
-        // EVENTLINE-Kundendetails (Datenschutz, gleiches Versprechen wie
-        // im Page-Header "ohne Details").
-        const titleForPartner = b.is_own ? (b.title ?? "Anfrage") : "Vermietung";
         all.push({
           id: b.id,
           kind,
-          title: titleForPartner,
+          title: b.title ?? (b.is_own ? "Anfrage" : "Vermietung"),
+          customerName: b.customer_name,
+          isOwn: b.is_own,
           status: b.status,
           start: startOfDay(new Date(b.start_date)),
           end: startOfDay(new Date(b.end_date ?? b.start_date)),
@@ -243,14 +249,23 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                     // dieser Buchung? Dann nur Block, ohne Titel wiederholen.
                     const prevDay = new Date(day.getTime() - DAY_MS);
                     const isContinuation = isInRange(prevDay, b.start, b.end);
-                    return (
-                      <div
+                    const cls = `block w-full text-left text-[10px] font-medium px-1.5 py-0.5 rounded truncate ${s.bg} ${s.text} ${s.border} border hover:opacity-80 transition-opacity cursor-pointer`;
+                    const label = isContinuation ? "↪" : b.title;
+                    const titleAttr = `${b.title} (${b.start.toLocaleDateString("de-CH")}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH")}` : ""})`;
+                    return b.isOwn ? (
+                      <Link key={b.id} href={`/partner/anfragen/${b.id}`} className={cls} title={titleAttr}>
+                        {label}
+                      </Link>
+                    ) : (
+                      <button
                         key={b.id}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded truncate ${s.bg} ${s.text} ${s.border} border`}
-                        title={`${b.title} (${b.start.toLocaleDateString("de-CH")}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH")}` : ""})`}
+                        type="button"
+                        onClick={() => setVermietungDetail(b)}
+                        className={cls}
+                        title={titleAttr}
                       >
-                        {isContinuation ? "↪" : b.title}
-                      </div>
+                        {label}
+                      </button>
                     );
                   })}
                   {dayBookings.length > 3 && (
@@ -265,6 +280,44 @@ export function PartnerBelegungsplan({ locationId }: Props) {
           <div className="p-3 text-center text-xs text-muted-foreground border-t">Lade…</div>
         )}
       </div>
+
+      {/* Modal: Read-Only-Details fuer fremde Vermietungen (EVENTLINE-
+          Eintraege an der Location — Partner hat keine eigene Detail-Page
+          dafuer, kleines Info-Modal reicht). */}
+      <Modal
+        open={!!vermietungDetail}
+        onClose={() => setVermietungDetail(null)}
+        title="Vermietung"
+        size="md"
+      >
+        {vermietungDetail && (() => {
+          const b = vermietungDetail;
+          const dateLabel = b.start.getTime() === b.end.getTime()
+            ? b.start.toLocaleDateString("de-CH", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })
+            : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
+          return (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Titel</p>
+                <p className="font-medium">{b.title}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Datum</p>
+                <p>{dateLabel}</p>
+              </div>
+              {b.customerName && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Kunde</p>
+                  <p>{b.customerName}</p>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground pt-1 border-t border-border">
+                Diese Vermietung wurde von EVENTLINE eingetragen. Fragen oder Änderungen direkt bei EVENTLINE.
+              </p>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Liste der Buchungen im sichtbaren Monat */}
       <div>
@@ -284,11 +337,9 @@ export function PartnerBelegungsplan({ locationId }: Props) {
               const dateLabel = b.start.getTime() === b.end.getTime()
                 ? b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
                 : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
-              return (
-                <div
-                  key={b.id}
-                  className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border ${s.bg} ${s.text} ${s.border}`}
-                >
+              const cls = `flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border ${s.bg} ${s.text} ${s.border} hover:opacity-90 transition-opacity cursor-pointer text-left w-full`;
+              const inner = (
+                <>
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
                     <div className="min-w-0">
@@ -299,7 +350,16 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                   <span className="text-[10px] font-medium uppercase tracking-wider opacity-70 shrink-0">
                     {s.label}
                   </span>
-                </div>
+                </>
+              );
+              return b.isOwn ? (
+                <Link key={b.id} href={`/partner/anfragen/${b.id}`} className={cls}>
+                  {inner}
+                </Link>
+              ) : (
+                <button key={b.id} type="button" onClick={() => setVermietungDetail(b)} className={cls}>
+                  {inner}
+                </button>
               );
             })}
           </div>
