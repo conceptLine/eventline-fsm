@@ -67,13 +67,13 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      // Partner-User darf nicht ueber das Firmenportal-Login einsteigen —
-      // hat ein eigenes Portal mit eigener Login-Seite. Wir loggen sofort
-      // aus (sonst haette er via /partner-Routen auch ohne re-Login Zugriff)
-      // und schicken ihn mit Hinweis-Reason an /partner/login.
+      // Partner-User: direkt ins Partner-Portal weiterleiten. Session bleibt
+      // (Auth ist domain-weit) — Partner muss nicht nochmal einloggen.
+      // Ein Toast auf der Ziel-Seite weist auf /partner/login als
+      // schnelleren Direkt-Weg hin (siehe useSearchParams in
+      // /partner/anfragen/page.tsx).
       if (profile && profile.role === "partner") {
-        await supabase.auth.signOut();
-        router.push("/partner/login?reason=wrong_portal");
+        router.push("/partner/anfragen?welcome=portal");
         return;
       }
     }

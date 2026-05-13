@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
 import { Plus, Clock, Check, XCircle, FileText, Search, Pencil, Archive } from "lucide-react";
+import { toast } from "sonner";
 
 interface PartnerAnfrage {
   id: string;
@@ -55,7 +56,22 @@ function todayIsoDate(): string {
 
 export default function PartnerAnfragenPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  // Wenn der Partner versehentlich uebers Firmen-/login gekommen ist
+  // (siehe /login: redirect mit ?welcome=portal), zeigen wir genau einmal
+  // einen Hinweis-Toast und entfernen den Query-Param wieder.
+  useEffect(() => {
+    if (searchParams.get("welcome") !== "portal") return;
+    toast.info("Willkommen im Partner-Portal — nutze nächstes Mal direkt /partner/login.", { duration: 6000 });
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("welcome");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [anfragen, setAnfragen] = useState<PartnerAnfrage[]>([]);
   const [assigneeNameById, setAssigneeNameById] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
