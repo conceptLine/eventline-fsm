@@ -17,6 +17,7 @@ import {
   Archive,
   X,
   Pencil,
+  Check,
   Send,
   ChevronDown,
   Loader2,
@@ -600,16 +601,6 @@ export default function AuftraegePage() {
             const noTermin = isActive && !hasAppointment && job.status !== "entwurf" && !isAnfrage;
             const terminUnassigned = isActive && hasAppointment && !hasAssignedAppointment && job.status !== "entwurf" && !isAnfrage;
             const allGood = isActive && hasAppointment && hasAssignedAppointment && job.status !== "entwurf" && !isAnfrage;
-            // Eindeutige Assignees ueber alle Termine sammeln — bei
-            // Mehrfach-Zuweisung pro Auftrag (mehrere Personen, ggf. mehrere
-            // Termine) wollen wir die Namen genau einmal anzeigen.
-            const assigneeNames = (() => {
-              if (!allGood || !appointments) return [];
-              const ids = Array.from(new Set(appointments.map((a) => a.assigned_to).filter((x): x is string => !!x)));
-              return ids
-                .map((id) => profiles.find((p) => p.id === id)?.full_name)
-                .filter((n): n is string => !!n);
-            })();
             const detailHref = isAnfrage ? `/auftraege/vermietentwurf/${job.id}` : `/auftraege/${job.id}`;
             const dateText = job.start_date
               ? new Date(job.start_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })
@@ -653,9 +644,11 @@ export default function AuftraegePage() {
                   <UserPlus className={iconCls} />
                 </button>
               );
-              // allGood: kein Action-Icon mehr — die Assignee-Namen werden
-              // als Text rechts angezeigt (siehe assigneeNames-Span unten).
-              if (allGood) return null;
+              if (allGood) return (
+                <span className={`${padCls} rounded-lg text-emerald-600 dark:text-emerald-400 inline-flex`} aria-label="Alles bereit">
+                  <Check className={iconCls} strokeWidth={3} />
+                </span>
+              );
               return null;
             }
 
@@ -826,11 +819,6 @@ export default function AuftraegePage() {
                       {!isAnfrage && terminUnassigned && (
                         <span className="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-300">
                           Termin nicht zugewiesen
-                        </span>
-                      )}
-                      {!isAnfrage && allGood && assigneeNames.length > 0 && (
-                        <span className="text-xs font-medium whitespace-nowrap text-emerald-700 dark:text-emerald-300 truncate max-w-[180px]" title={assigneeNames.join(", ")}>
-                          {assigneeNames.join(", ")}
                         </span>
                       )}
                       {renderActionIcon("sm")}
