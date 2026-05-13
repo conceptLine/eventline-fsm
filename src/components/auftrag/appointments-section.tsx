@@ -410,15 +410,19 @@ export function AppointmentsSection({
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setNotifyPopup(notifyPopup === appt.id ? null : appt.id)}
-                      className={`kasten ${notifiedAppts.has(appt.id) ? "kasten-green" : "kasten-blue"}`}
-                    >
-                      {notifiedAppts.has(appt.id) ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-                      {notifiedAppts.has(appt.id) ? "Gesendet" : "Benachrichtigen"}
-                    </button>
+                  {/* Termin-Bestaetigungs-Mail nur wenn Auftrag noch aktiv —
+                      bei abgeschlossenen/stornierten Auftraegen ergibt eine
+                      Termin-Erinnerung keinen Sinn. */}
+                  {!isClosed && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setNotifyPopup(notifyPopup === appt.id ? null : appt.id)}
+                        className={`kasten ${notifiedAppts.has(appt.id) ? "kasten-green" : "kasten-blue"}`}
+                      >
+                        {notifiedAppts.has(appt.id) ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                        {notifiedAppts.has(appt.id) ? "Gesendet" : "Benachrichtigen"}
+                      </button>
                       <Modal
                         open={notifyPopup === appt.id}
                         onClose={() => { setNotifyPopup(null); setEmailField1(""); setEmailField2(""); }}
@@ -454,8 +458,9 @@ export function AppointmentsSection({
                             <Send className="h-3.5 w-3.5" />Senden
                           </button>
                         </div>
-                    </Modal>
-                  </div>
+                      </Modal>
+                    </div>
+                  )}
                   {!isClosed && can("kalender:create") && (
                     <button
                       type="button"
