@@ -79,7 +79,13 @@ function PermCell({ active, locked, onToggle, label }: {
   );
 }
 
-export function RollenTab() {
+interface RollenTabProps {
+  /** "firma" = alle Rollen ausser partner, "partner" = nur partner.
+      Default "firma". Steuert Filter + UI-Texte. */
+  scope?: "firma" | "partner";
+}
+
+export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -97,9 +103,15 @@ export function RollenTab() {
     const res = await fetch("/api/admin/roles");
     const json = await res.json();
     if (json.success) {
-      setRoles(json.roles);
+      // Scope-Filter: firma = alle ausser partner, partner = nur partner.
+      // Trennung der zwei Rollen-Welten in /einstellungen (Firmenportal vs
+      // Partnerportal Haupt-Tabs).
+      const filtered: Role[] = (json.roles as Role[]).filter((r) =>
+        scope === "partner" ? r.slug === "partner" : r.slug !== "partner"
+      );
+      setRoles(filtered);
       const initial: Record<string, string[]> = {};
-      for (const r of json.roles as Role[]) initial[r.slug] = [...r.permissions];
+      for (const r of filtered) initial[r.slug] = [...r.permissions];
       setEdits(initial);
     }
     setLoading(false);
@@ -313,11 +325,15 @@ export function RollenTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm text-muted-foreground">
-          Pro Rolle steuerst du, welche Bereiche sichtbar sind und welche Aktionen erlaubt. Admin sieht und darf immer alles.
+          {scope === "partner"
+            ? "Berechtigungen der Partner-Rolle. Steuert was Locationspartner im Partner-Portal sehen und tun dürfen."
+            : "Pro Rolle steuerst du, welche Bereiche sichtbar sind und welche Aktionen erlaubt. Admin sieht und darf immer alles."}
         </p>
-        <button type="button" onClick={() => setShowCreate(true)} className="kasten kasten-red">
-          <Plus className="h-3.5 w-3.5" />Neue Rolle
-        </button>
+        {scope === "firma" && (
+          <button type="button" onClick={() => setShowCreate(true)} className="kasten kasten-red">
+            <Plus className="h-3.5 w-3.5" />Neue Rolle
+          </button>
+        )}
       </div>
 
       {loading ? (

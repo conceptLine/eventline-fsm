@@ -51,9 +51,16 @@ export function TeamTab() {
       supabase.rpc("get_all_profiles_admin"),
       fetch("/api/admin/roles").then((r) => r.json()),
     ]);
-    setProfiles((profRes.data as Profile[]) ?? []);
+    // Firmenportal-Team = nur EVENTLINE-interne Profile. Partner-User
+    // (role='partner') werden im Partnerportal/Partner-Tab verwaltet,
+    // sollen hier NICHT auftauchen.
+    const all = (profRes.data as Profile[]) ?? [];
+    setProfiles(all.filter((p) => p.role !== "partner"));
     if (rolesRes?.success) {
-      setRoles((rolesRes.roles as RoleOption[]).map((r) => ({ slug: r.slug, label: r.label })));
+      // Partner-Rolle aus dem Rollen-Dropdown entfernen — die kann nur
+      // ueber den Partner-Tab vergeben werden (braucht zusaetzlich
+      // partner_location_id).
+      setRoles((rolesRes.roles as RoleOption[]).filter((r) => r.slug !== "partner").map((r) => ({ slug: r.slug, label: r.label })));
     }
     setLoading(false);
   }
@@ -173,7 +180,7 @@ export function TeamTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Alle Benutzer im System. Neue User bekommen eine Einladungs-Mail und setzen sich selbst ein Passwort.
+          EVENTLINE-interne Mitarbeiter. Neue User bekommen eine Einladungs-Mail und setzen sich selbst ein Passwort.
         </p>
         <button type="button" onClick={() => setShowCreate(true)} className="kasten kasten-red">
           <Plus className="h-3.5 w-3.5" />Neuer Benutzer

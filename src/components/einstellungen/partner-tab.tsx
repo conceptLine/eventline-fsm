@@ -14,8 +14,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { Plus, Building2, KeyRound, UserX, UserCheck } from "lucide-react";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { Plus, Building2, KeyRound, Pencil, UserX, UserCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { TOAST } from "@/lib/messages";
 
 interface PartnerProfileRow {
   id: string;
@@ -31,6 +33,8 @@ interface LocationOption {
   name: string;
 }
 
+type EditState = { id: string; full_name: string; partner_location_id: string } | null;
+
 export function PartnerTab() {
   const supabase = createClient();
   const [profiles, setProfiles] = useState<PartnerProfileRow[]>([]);
@@ -39,7 +43,10 @@ export function PartnerTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ email: "", full_name: "", partner_location_id: "" });
+  const [edit, setEdit] = useState<EditState>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { confirm, ConfirmModalElement } = useConfirm();
 
   async function load() {
     setLoading(true);
@@ -97,6 +104,15 @@ export function PartnerTab() {
   }
 
   async function toggleActive(p: PartnerProfileRow) {
+    const ok = await confirm({
+      title: p.is_active ? "Partner deaktivieren?" : "Partner reaktivieren?",
+      message: p.is_active
+        ? `${p.full_name} kann sich nicht mehr ins Partner-Portal einloggen. Bestehende Anfragen bleiben sichtbar.`
+        : `${p.full_name} kann sich wieder einloggen.`,
+      confirmLabel: p.is_active ? "Deaktivieren" : "Reaktivieren",
+      variant: p.is_active ? "red" : "blue",
+    });
+    if (!ok) return;
     setBusyId(p.id);
     const res = await fetch(`/api/admin/users/${p.id}`, {
       method: "PATCH",
@@ -114,6 +130,13 @@ export function PartnerTab() {
   }
 
   async function resetPassword(p: PartnerProfileRow) {
+    const ok = await confirm({
+      title: "Passwort zurücksetzen?",
+      message: `${p.full_name} bekommt einen Link um sich selbst ein neues Passwort zu setzen.`,
+      confirmLabel: "Mail senden",
+      variant: "red",
+    });
+    if (!ok) return;
     setBusyId(p.id);
     const res = await fetch(`/api/admin/users/${p.id}/reset-password`, {
       method: "POST",
@@ -125,6 +148,60 @@ export function PartnerTab() {
       return;
     }
     toast.success("Reset-Mail versendet");
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!edit) return;
+    if (!edit.full_name.trim() || !edit.partner_location_id) {
+      toast.error("Name und Location sind Pflicht");
+      return;
+    }
+    setSavingEdit(true);
+    // Name + Location atomar updaten. Name via /api/admin/users (server-
+    // side weil das auch im auth-User-Metadata gespiegelt wird), Location
+    // direkt via PATCH auf profiles (RLS erlaubt admin).
+    const [userRes, locRes] = await Promise.all([
+      fetch(`/api/admin/users/${edit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full_name: edit.full_name.trim() }),
+      }),
+      supabase.from("profiles").update({ partner_location_id: edit.partner_location_id }).eq("id", edit.id),
+    ]);
+    const userJson = await userRes.json();
+    setSavingEdit(false);
+    if (!userJson.success) {
+      TOAST.errorOr(userJson.error);
+      return;
+    }
+    if (locRes.error) {
+      TOAST.supabaseError(locRes.error, "Location konnte nicht aktualisiert werden");
+      return;
+    }
+    toast.success("Gespeichert");
+    setEdit(null);
+    load();
+  }
+
+  async function hardDelete(p: PartnerProfileRow) {
+    const ok = await confirm({
+      title: "Endgültig löschen?",
+      message: `${p.full_name} wird unwiderruflich aus dem System entfernt. Anfragen, die der Partner erstellt hat, bleiben bestehen (Ersteller wird auf "—" gesetzt). Diese Aktion kann nicht rückgängig gemacht werden.`,
+      confirmLabel: "Endgültig löschen",
+      variant: "red",
+    });
+    if (!ok) return;
+    setBusyId(p.id);
+    const res = await fetch(`/api/admin/users/${p.id}`, { method: "DELETE" });
+    const json = await res.json();
+    setBusyId(null);
+    if (!json.success) {
+      TOAST.errorOr(json.error);
+      return;
+    }
+    toast.success(`${p.full_name} endgültig gelöscht`);
+    load();
   }
 
   return (
@@ -170,29 +247,86 @@ export function PartnerTab() {
                   <button
                     type="button"
                     onClick={() => resetPassword(p)}
-                    disabled={busyId === p.id}
+                    disabled={busyId === p.id || !p.is_active}
                     className="kasten kasten-muted"
                     data-tooltip="Passwort zurücksetzen"
                     aria-label="Passwort zurücksetzen"
                   >
                     <KeyRound className="h-3.5 w-3.5" />
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEdit({ id: p.id, full_name: p.full_name, partner_location_id: p.partner_location_id ?? "" })}
+                    className="kasten kasten-purple"
+                    data-tooltip="Bearbeiten"
+                    aria-label="Bearbeiten"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => toggleActive(p)}
                     disabled={busyId === p.id}
-                    className={`kasten ${p.is_active ? "kasten-red" : "kasten-green"}`}
-                    data-tooltip={p.is_active ? "Deaktivieren" : "Aktivieren"}
-                    aria-label={p.is_active ? "Deaktivieren" : "Aktivieren"}
+                    className={p.is_active ? "kasten kasten-muted" : "kasten kasten-green"}
+                    data-tooltip={p.is_active ? "Deaktivieren" : "Reaktivieren"}
+                    aria-label={p.is_active ? "Deaktivieren" : "Reaktivieren"}
                   >
                     {p.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
                   </button>
+                  {!p.is_active && (
+                    <button
+                      type="button"
+                      onClick={() => hardDelete(p)}
+                      disabled={busyId === p.id}
+                      className="kasten kasten-red"
+                      data-tooltip="Endgültig löschen"
+                      aria-label="Endgültig löschen"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Edit-Modal — Name + Location anpassen. */}
+      <Modal open={!!edit} onClose={() => !savingEdit && setEdit(null)} title="Partner-Benutzer bearbeiten" size="md">
+        {edit && (
+          <form onSubmit={saveEdit} className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/70 ml-1">Name *</p>
+              <Input
+                value={edit.full_name}
+                onChange={(e) => setEdit({ ...edit, full_name: e.target.value })}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/70 ml-1">Location *</p>
+              <select
+                value={edit.partner_location_id}
+                onChange={(e) => setEdit({ ...edit, partner_location_id: e.target.value })}
+                required
+                className="w-full h-9 px-3 text-sm rounded-xl border border-border bg-card"
+              >
+                <option value="">Auswählen…</option>
+                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setEdit(null)} disabled={savingEdit} className="kasten kasten-muted flex-1">Abbrechen</button>
+              <button type="submit" disabled={savingEdit || !edit.full_name.trim() || !edit.partner_location_id} className="kasten kasten-red flex-1">
+                {savingEdit ? "Speichert…" : "Speichern"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Neuer Partner-Benutzer" closable={!creating}>
         <form onSubmit={handleCreate} className="space-y-3">
@@ -243,6 +377,8 @@ export function PartnerTab() {
           </div>
         </form>
       </Modal>
+
+      {ConfirmModalElement}
     </div>
   );
 }

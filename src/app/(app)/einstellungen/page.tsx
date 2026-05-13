@@ -18,8 +18,10 @@ import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 
-type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner";
+type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen";
 type Portal = "firma" | "partner";
+
+const ALL_TABS: Tab[] = ["integrationen", "team", "rollen", "aktivitaet", "partner", "partner-rollen"];
 
 // Welcher Haupt-Tab gehoert welcher Portal-Gruppe. Beim Wechsel des
 // Haupt-Tabs springen wir automatisch auf den ersten Sub-Tab dieser
@@ -30,6 +32,7 @@ const PORTAL_OF: Record<Tab, Portal> = {
   aktivitaet: "firma",
   integrationen: "firma",
   partner: "partner",
+  "partner-rollen": "partner",
 };
 
 export default function EinstellungenPage() {
@@ -40,7 +43,7 @@ export default function EinstellungenPage() {
   // (Reihenfolge: Team → Rollen → Integrationen). Fuer Non-Admin wird
   // unten via useEffect auf "integrationen" umgeleitet sobald der
   // Admin-Status geladen ist.
-  const [tab, setTab] = useState<Tab>(urlTab && ["integrationen", "team", "rollen", "aktivitaet", "partner"].includes(urlTab) ? urlTab : "team");
+  const [tab, setTab] = useState<Tab>(urlTab && ALL_TABS.includes(urlTab) ? urlTab : "team");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   // Tab-Wechsel: state = sofortige UI-Quelle, URL parallel updaten via
@@ -77,7 +80,7 @@ export default function EinstellungenPage() {
       setIsAdmin(admin);
       // Non-Admin auf einem Admin-only-Tab → auf integrationen umlenken,
       // sonst sieht er einen leeren Tab.
-      if (!admin && (tab === "team" || tab === "rollen" || tab === "aktivitaet" || tab === "partner")) {
+      if (!admin && tab !== "integrationen") {
         selectTab("integrationen");
       }
     })();
@@ -94,10 +97,11 @@ export default function EinstellungenPage() {
     { key: "integrationen", label: "Integrationen", icon: <Plug className="h-4 w-4" /> },
   ];
 
-  // Partnerportal-Sub-Tabs — heute nur "Partner" (Mitarbeiter-Liste).
-  // Waechst spaeter um Partner-Rollen / Partner-Aktivitaet etc.
+  // Partnerportal-Sub-Tabs — Partner-Benutzerliste + Partner-Rollen.
+  // Spaeter ggf. Partner-Aktivitaet etc.
   const partnerTabs: { key: Tab; label: string; icon: React.ReactNode }[] = isAdmin ? [
     { key: "partner" as Tab, label: "Partner", icon: <Building2 className="h-4 w-4" /> },
+    { key: "partner-rollen" as Tab, label: "Rollen", icon: <Shield className="h-4 w-4" /> },
   ] : [];
 
   const subTabs = activePortal === "firma" ? firmaTabs : partnerTabs;
@@ -168,7 +172,9 @@ export default function EinstellungenPage() {
 
       {tab === "partner" && isAdmin && <PartnerTab />}
 
-      {tab === "rollen" && isAdmin && <RollenTab />}
+      {tab === "rollen" && isAdmin && <RollenTab scope="firma" />}
+
+      {tab === "partner-rollen" && isAdmin && <RollenTab scope="partner" />}
 
       {tab === "aktivitaet" && isAdmin && <AktivitaetTab />}
     </div>
