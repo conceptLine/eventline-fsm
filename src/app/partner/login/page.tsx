@@ -7,14 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
-import { Info } from "lucide-react";
+import { Info, ArrowLeft } from "lucide-react";
+import { appUrl } from "@/lib/app-url";
 
 // Partner-Login — eigene Seite, eigener Redirect-Pfad (/partner/anfragen).
 // Authentifizierung-Logik teilt sich mit /login, aber:
 //  - Nach erfolg: Profil-Rolle pruefen. Nur 'partner' darf bleiben. Andere
 //    Rollen werden mit Hinweis abgewiesen (sie sollen ueber /login rein).
-//  - Reset-Password-Flow ist hier nicht; Partner-Admin (Leo) loescht/legt
-//    den Partner neu an wenn was schief geht.
+//  - Passwort-Reset analog zu /login. Der Reset-Link fuehrt auf
+//    /passwort-reset; die Page erkennt nach dem Update die role und
+//    redirected den Partner zurueck zu /partner/anfragen.
 
 export default function PartnerLoginPage() {
   const searchParams = useSearchParams();
@@ -24,6 +26,8 @@ export default function PartnerLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const router = useRouter();
   const supabase = createClient();
   const fromWrongPortal = searchParams.get("reason") === "wrong_portal";
@@ -65,6 +69,25 @@ export default function PartnerLoginPage() {
     router.refresh();
   }
 
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: appUrl("/passwort-reset"),
+    });
+
+    if (error) {
+      setError("Fehler: " + error.message);
+      setLoading(false);
+      return;
+    }
+
+    setResetSent(true);
+    setLoading(false);
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-foreground/[0.04]">
       <Card className="w-full max-w-md border-foreground/10 shadow-xl">
@@ -80,7 +103,7 @@ export default function PartnerLoginPage() {
           </p>
         </CardHeader>
         <CardContent className="px-8 pb-10">
-          {fromWrongPortal && (
+          {fromWrongPortal && !resetMode && (
             <div className="mb-5 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2.5 text-xs">
               <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
               <div className="text-amber-800 dark:text-amber-200">
@@ -89,20 +112,83 @@ export default function PartnerLoginPage() {
               </div>
             </div>
           )}
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">E-Mail</Label>
-              <Input id="email" type="email" placeholder="partner@firma.ch" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus={!fromWrongPortal} className="h-10" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">Passwort</Label>
-              <Input id="password" type="password" placeholder="Passwort eingeben" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={fromWrongPortal} className="h-10" />
-            </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button type="submit" className="kasten kasten-red w-full !py-2.5 !text-sm" disabled={loading}>
-              {loading ? "Anmelden..." : "Anmelden"}
-            </button>
-          </form>
+          {resetMode ? (
+            resetSent ? (
+              <div className="text-center py-4">
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h3 className="font-semibold text-lg">E-Mail gesendet!</h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Prüfe dein Postfach bei <strong>{email}</strong>. Klicke auf den Link in der E-Mail um dein Passwort zurückzusetzen.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setResetMode(false); setResetSent(false); }}
+                  className="kasten kasten-muted mt-6"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Zurück zum Login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleReset} className="space-y-5">
+                <div className="text-center mb-2">
+                  <h3 className="font-semibold">Passwort zurücksetzen</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Gib deine E-Mail-Adresse ein</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="resetEmail" className="text-xs font-medium text-muted-foreground">E-Mail</Label>
+                  <Input
+                    id="resetEmail"
+                    type="email"
+                    placeholder="partner@firma.ch"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="h-10"
+                  />
+                </div>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+                <button
+                  type="submit"
+                  className="kasten kasten-red w-full !py-2.5 !text-sm"
+                  disabled={loading}
+                >
+                  {loading ? "Senden..." : "Link senden"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setResetMode(false); setError(""); }}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Zurück zum Login
+                </button>
+              </form>
+            )
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">E-Mail</Label>
+                <Input id="email" type="email" placeholder="partner@firma.ch" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus={!fromWrongPortal} className="h-10" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">Passwort</Label>
+                <Input id="password" type="password" placeholder="Passwort eingeben" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={fromWrongPortal} className="h-10" />
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button type="submit" className="kasten kasten-red w-full !py-2.5 !text-sm" disabled={loading}>
+                {loading ? "Anmelden..." : "Anmelden"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setResetMode(true); setError(""); }}
+                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Passwort vergessen?
+              </button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

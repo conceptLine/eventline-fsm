@@ -82,7 +82,18 @@ export default function PasswortResetPage() {
 
     setSuccess(true);
     setLoading(false);
-    setTimeout(() => router.push("/dashboard"), 2000);
+    // Rolle pruefen — Partner gehen nach /partner/anfragen, sonst Dashboard.
+    const { data: { user } } = await supabase.auth.getUser();
+    let target = "/dashboard";
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profile?.role === "partner") target = "/partner/anfragen";
+    }
+    setTimeout(() => router.push(target), 2000);
   }
 
   return (
