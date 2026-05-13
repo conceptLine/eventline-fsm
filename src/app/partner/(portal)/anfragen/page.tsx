@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/searchable-select";
 import { Plus, Clock, Check, XCircle, FileText, Search } from "lucide-react";
 
 interface PartnerAnfrage {
@@ -35,12 +36,12 @@ function statusStyle(status: string) {
 }
 
 type StatusFilter = "all" | "partner_anfrage" | "offen" | "storniert" | "abgeschlossen";
-const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: "all", label: "Alle" },
-  { key: "partner_anfrage", label: "Wartet" },
-  { key: "offen", label: "Bestätigt" },
-  { key: "abgeschlossen", label: "Abgeschlossen" },
-  { key: "storniert", label: "Abgelehnt" },
+const STATUS_FILTER_ITEMS = [
+  { id: "all" as StatusFilter, label: "Alle Status" },
+  { id: "partner_anfrage" as StatusFilter, label: "Wartet" },
+  { id: "offen" as StatusFilter, label: "Bestätigt" },
+  { id: "abgeschlossen" as StatusFilter, label: "Abgeschlossen" },
+  { id: "storniert" as StatusFilter, label: "Abgelehnt" },
 ];
 
 export default function PartnerAnfragenPage() {
@@ -49,22 +50,38 @@ export default function PartnerAnfragenPage() {
   const [anfragen, setAnfragen] = useState<PartnerAnfrage[]>([]);
   const [assigneeNameById, setAssigneeNameById] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
-  // Filter-State — Status-Wahl persistent in localStorage, Suche fluechtig.
+  // Filter-State — alle persistent in localStorage damit der Partner beim
+  // Tab-Wechsel nicht den Filter verliert.
   const [filterStatus, setFilterStatus] = useState<StatusFilter>(() =>
     typeof window !== "undefined"
       ? ((localStorage.getItem("partner-anfragen-status") as StatusFilter | null) || "all")
       : "all"
   );
-  const [searchInput, setSearchInput] = useState("");
+  const [searchNumber, setSearchNumber] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("partner-anfragen-search-number") || "" : ""
+  );
+  const [searchTitle, setSearchTitle] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("partner-anfragen-search-title") || "" : ""
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-status", filterStatus);
   }, [filterStatus]);
-
-  // DB-Query reagiert auf filterStatus (Suche bleibt client-seitig auf den
-  // geladenen Rows — Partner hat eh nur eine ueberschaubare Menge Anfragen).
   useEffect(() => {
-    (async () => {
+    if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-search-number", searchNumber);
+  }, [searchNumber]);
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-search-title", searchTitle);
+  }, [searchTitle]);
+
+  // Debounce: bei Tipp-Suche nicht jeden Tastenanschlag eine DB-Query.
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // DB-Query reagiert auf alle drei Filter — server-seitig damit es bei
+  // wachsendem Datenvolumen skaliert (siehe /auftraege im Firmenportal).
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(async () => {
       setLoading(true);
       // RLS laesst den Partner alle Jobs an seiner Location sehen (damit
       // der Belegungsplan funktioniert). Hier filtern wir aber explizit auf
@@ -76,13 +93,20 @@ export default function PartnerAnfragenPage() {
         .from("jobs")
         .select("id, job_number, title, start_date, end_date, status, created_at, partner_response_message, appointments:job_appointments(id, assigned_to)")
         .eq("created_by", user.id);
-      if (filterStatus !== "all") {
-        q = q.eq("status", filterStatus);
+      if (filterStatus !== "all") q = q.eq("status", filterStatus);
+      const titleQ = searchTitle.trim();
+      if (titleQ) q = q.ilike("title", `%${titleQ}%`);
+      const numQ = searchNumber.trim();
+      if (numQ.length === 6 && /^\d+$/.test(numQ)) {
+        // Exakte INT-Nr (6-stellig, Eventline-Konvention)
+        q = q.eq("job_number", parseInt(numQ, 10));
+      } else if (numQ.length >= 1 && /^\d+$/.test(numQ)) {
+        // Prefix-Match auf Job-Number als Text
+        q = q.filter("job_number::text", "like", `${numQ}%`);
       }
       const [jobsRes, usersRes] = await Promise.all([
         q
-          // Naechstes Event zuerst (kein start_date ans Ende — sind in der
-          // Praxis Anfragen die noch kein Datum haben).
+          // Naechstes Event zuerst — NULL-Datum ans Ende (Anfragen ohne Datum).
           .order("start_date", { ascending: true, nullsFirst: false })
           .limit(100),
         // SECURITY DEFINER-Funktion: liefert id/full_name aller aktiven
@@ -98,21 +122,12 @@ export default function PartnerAnfragenPage() {
       }
       setAssigneeNameById(map);
       setLoading(false);
-    })();
+    }, 250);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus]);
+  }, [filterStatus, searchTitle, searchNumber]);
 
-  // Client-Filter ueber die schon geladenen Rows — Titel + INT-Nummer.
-  // Bei max 100 Rows ist das instantan, kein Debounce noetig.
-  const filteredAnfragen = useMemo(() => {
-    const q = searchInput.trim().toLowerCase();
-    if (!q) return anfragen;
-    return anfragen.filter((a) => {
-      if (a.title.toLowerCase().includes(q)) return true;
-      if (a.job_number !== null && String(a.job_number).includes(q)) return true;
-      return false;
-    });
-  }, [anfragen, searchInput]);
+  const hasSearch = searchTitle.trim().length > 0 || searchNumber.trim().length > 0 || filterStatus !== "all";
 
   return (
     <div className="space-y-4">
@@ -133,29 +148,48 @@ export default function PartnerAnfragenPage() {
         </button>
       </div>
 
-      {/* Filter-Bar — Suche (Titel + INT-Nr) links, Status-Buttons rechts.
-          Gleiches Pattern wie /auftraege im Firmenportal. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      {/* Such- und Filter-Bar — exakt gleiche Struktur wie /auftraege im
+          Firmenportal: INT-Nr-Feld (numerisch, mono), Titel-Feld (flex-1),
+          Status-Dropdown (SearchableSelect). */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        {/* Suche Nummer */}
+        <div className="relative w-full sm:w-44">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-mono text-muted-foreground/60 pointer-events-none">
+            INT-
+          </span>
           <Input
-            placeholder="Suchen (Titel oder INT-Nr)…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9"
+            placeholder="000000"
+            value={searchNumber}
+            onChange={(e) => setSearchNumber(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className="pl-[3rem] h-9 font-mono"
+            aria-label="Anfragen-Nummer"
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilterStatus(f.key)}
-              className={filterStatus === f.key ? "kasten-active" : "kasten-toggle-off"}
-            >
-              {f.label}
-            </button>
-          ))}
+
+        {/* Suche Titel */}
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Titel suchen…"
+            value={searchTitle}
+            onChange={(e) => setSearchTitle(e.target.value)}
+            className="pl-9 h-9"
+            aria-label="Titel"
+          />
+        </div>
+
+        {/* Status-Filter */}
+        <div className="w-full sm:w-44">
+          <SearchableSelect
+            value={filterStatus}
+            onChange={(v) => setFilterStatus(v as StatusFilter)}
+            items={STATUS_FILTER_ITEMS.map((s) => ({ id: s.id, label: s.label }))}
+            searchable={false}
+            clearable={false}
+            active={filterStatus !== "all"}
+          />
         </div>
       </div>
 
@@ -169,25 +203,25 @@ export default function PartnerAnfragenPage() {
             </Card>
           ))}
         </div>
-      ) : filteredAnfragen.length === 0 ? (
+      ) : anfragen.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-16 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-foreground/10 dark:bg-foreground/15 flex items-center justify-center mb-4">
               <FileText className="h-7 w-7 text-foreground/40" />
             </div>
             <h3 className="font-semibold text-lg">
-              {anfragen.length === 0 ? "Noch keine Anfragen" : "Keine Treffer"}
+              {hasSearch ? "Keine Treffer" : "Noch keine Anfragen"}
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              {anfragen.length === 0
-                ? "Klick auf „Neue Anfrage“ um zu starten."
-                : "Versuch einen anderen Filter oder Suchbegriff."}
+              {hasSearch
+                ? "Versuch einen anderen Filter oder Suchbegriff."
+                : "Klick auf „Neue Anfrage“ um zu starten."}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-2">
-          {filteredAnfragen.map((a) => {
+          {anfragen.map((a) => {
             const s = statusStyle(a.status);
             const Icon = s.icon;
             // Termin-Zuweisungs-Anzeige nur fuer angenommene/laufende
