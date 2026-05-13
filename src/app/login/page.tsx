@@ -31,6 +31,18 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    // Pre-flight: Partner-User duerfen sich nicht ueber das Firmenportal-
+    // Login anmelden. Wenn die Email einem Partner gehoert, leiten wir
+    // direkt zur Partner-Login-Seite weiter (mit Email-Prefill), bevor
+    // ueberhaupt ein Auth-Versuch passiert. So braucht's kein signOut-Dance
+    // und Partner haben einen klaren UX-Hint dass sie das falsche Portal
+    // verwendet haben.
+    const { data: isPartner } = await supabase.rpc("is_partner_email", { p_email: email });
+    if (isPartner === true) {
+      router.push(`/partner/login?email=${encodeURIComponent(email)}&reason=wrong_portal`);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -67,13 +79,12 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      // Partner-User: direkt ins Partner-Portal weiterleiten. Session bleibt
-      // (Auth ist domain-weit) — Partner muss nicht nochmal einloggen.
-      // Ein Toast auf der Ziel-Seite weist auf /partner/login als
-      // schnelleren Direkt-Weg hin (siehe useSearchParams in
-      // /partner/anfragen/page.tsx).
+      // Sicherheits-Backstop falls die pre-flight-Email-Pruefung
+      // umgangen wurde (race condition, anderer email-Case etc.):
+      // sofort signOut + Redirect auf Partner-Login.
       if (profile && profile.role === "partner") {
-        router.push("/partner/anfragen?welcome=portal");
+        await supabase.auth.signOut();
+        router.push(`/partner/login?email=${encodeURIComponent(email)}&reason=wrong_portal`);
         return;
       }
     }

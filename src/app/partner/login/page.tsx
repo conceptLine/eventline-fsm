@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
+import { Info } from "lucide-react";
 
 // Partner-Login — eigene Seite, eigener Redirect-Pfad (/partner/anfragen).
 // Authentifizierung-Logik teilt sich mit /login, aber:
@@ -17,12 +18,16 @@ import { Logo } from "@/components/logo";
 //    den Partner neu an wenn was schief geht.
 
 export default function PartnerLoginPage() {
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  // Email aus URL-Prefill (kommt von /login wenn der Partner faelschlich
+  // dort gestartet hat) — spart das erneute Eintippen.
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const fromWrongPortal = searchParams.get("reason") === "wrong_portal";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -76,14 +81,23 @@ export default function PartnerLoginPage() {
           </p>
         </CardHeader>
         <CardContent>
+          {fromWrongPortal && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2.5 text-xs">
+              <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="text-amber-800 dark:text-amber-200">
+                <strong className="font-semibold">Als Location-Partner musst du hier rein.</strong>{" "}
+                Bitte Passwort eingeben.
+              </div>
+            </div>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">E-Mail</Label>
-              <Input id="email" type="email" placeholder="partner@firma.ch" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input id="email" type="email" placeholder="partner@firma.ch" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus={!fromWrongPortal} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Passwort</Label>
-              <Input id="password" type="password" placeholder="Passwort eingeben" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <Input id="password" type="password" placeholder="Passwort eingeben" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={fromWrongPortal} />
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white" disabled={loading}>
