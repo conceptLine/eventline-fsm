@@ -37,6 +37,16 @@ export default function PartnerLoginPage() {
     setLoading(true);
     setError("");
 
+    // Pre-flight: EVENTLINE-Mitarbeiter duerfen sich nicht ueber das
+    // Partner-Login anmelden. Wenn die Email zu einem internen User gehoert,
+    // direkt nach /login weiterleiten (mit Email-Prefill), bevor ueberhaupt
+    // ein Auth-Versuch passiert. Spiegel-Logik zu /login → /partner/login.
+    const { data: isEventline } = await supabase.rpc("is_eventline_email", { p_email: email });
+    if (isEventline === true) {
+      router.push(`/login?email=${encodeURIComponent(email)}&reason=wrong_portal`);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -57,10 +67,12 @@ export default function PartnerLoginPage() {
         setLoading(false);
         return;
       }
+      // Sicherheits-Backstop falls die pre-flight-Email-Pruefung
+      // umgangen wurde (race, anderer email-Case): sofort signOut +
+      // Redirect auf das richtige Portal.
       if (profile.role !== "partner") {
         await supabase.auth.signOut();
-        setError("Dieser Login ist nur für Location-Partner. EVENTLINE-Mitarbeiter bitte über die normale Login-Seite.");
-        setLoading(false);
+        router.push(`/login?email=${encodeURIComponent(email)}&reason=wrong_portal`);
         return;
       }
     }

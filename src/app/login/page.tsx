@@ -7,11 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft, Clock, Info } from "lucide-react";
 import { appUrl } from "@/lib/app-url";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  // Email-Prefill kommt von /partner/login wenn ein EVENTLINE-Mitarbeiter
+  // faelschlich dort gestartet hat — Spiegel zu /login→/partner/login.
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,9 +24,10 @@ export default function LoginPage() {
   const supabase = createClient();
   // ?reason=inactive — Login-Page wurde nach Inaktivitaets-Logout angesteuert.
   // Hinweis fuer den User damit er weiss warum er ausgeloggt wurde.
-  const reason = useSearchParams().get("reason");
+  const reason = searchParams.get("reason");
   const wasInactive = reason === "inactive";
   const wasDeactivated = reason === "deactivated";
+  const fromWrongPortal = reason === "wrong_portal";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -146,6 +150,15 @@ export default function LoginPage() {
               </div>
             </div>
           )}
+          {fromWrongPortal && !resetMode && (
+            <div className="mb-5 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2.5 text-xs">
+              <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="text-amber-800 dark:text-amber-200">
+                <strong className="font-semibold">Als EVENTLINE-Mitarbeiter musst du hier rein.</strong>{" "}
+                Bitte Passwort eingeben.
+              </div>
+            </div>
+          )}
           {resetMode ? (
             resetSent ? (
               <div className="text-center py-4">
@@ -211,6 +224,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoFocus={!fromWrongPortal}
                   className="h-10"
                 />
               </div>
@@ -219,6 +233,7 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  autoFocus={fromWrongPortal}
                   placeholder="Passwort eingeben"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
