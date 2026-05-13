@@ -215,7 +215,7 @@ export function PartnerTab() {
         </div>
         <button type="button" onClick={() => setShowCreate(true)} className="kasten kasten-red">
           <Plus className="h-3.5 w-3.5" />
-          Neuer Partner
+          Neuer Benutzer
         </button>
       </div>
 
