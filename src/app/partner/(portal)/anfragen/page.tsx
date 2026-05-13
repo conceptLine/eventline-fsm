@@ -16,6 +16,7 @@ interface PartnerAnfrage {
   status: string;
   created_at: string;
   partner_response_message: string | null;
+  appointments: { id: string; assigned_to: string | null }[] | null;
 }
 
 function statusStyle(status: string) {
@@ -36,6 +37,7 @@ export default function PartnerAnfragenPage() {
   const router = useRouter();
   const supabase = createClient();
   const [anfragen, setAnfragen] = useState<PartnerAnfrage[]>([]);
+  const [assigneeNameById, setAssigneeNameById] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,13 +48,25 @@ export default function PartnerAnfragenPage() {
       // entwuerfe an seinem Standort in "Meine Anfragen" auf.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
-      const { data } = await supabase
-        .from("jobs")
-        .select("id, job_number, title, start_date, end_date, status, created_at, partner_response_message")
-        .eq("created_by", user.id)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      setAnfragen((data ?? []) as PartnerAnfrage[]);
+      const [jobsRes, usersRes] = await Promise.all([
+        supabase
+          .from("jobs")
+          .select("id, job_number, title, start_date, end_date, status, created_at, partner_response_message, appointments:job_appointments(id, assigned_to)")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        // SECURITY DEFINER-Funktion: liefert id/full_name aller aktiven
+        // EVENTLINE-Mitarbeiter. Partner braucht das um assigned_to-UUIDs
+        // in lesbare Namen aufzuloesen — direkter Profile-Join scheitert an
+        // der profiles-RLS (eigenes Profil + Admin only).
+        supabase.rpc("get_assignable_users"),
+      ]);
+      setAnfragen((jobsRes.data ?? []) as PartnerAnfrage[]);
+      const map = new Map<string, string>();
+      for (const u of (usersRes.data as { id: string; full_name: string }[] | null) ?? []) {
+        map.set(u.id, u.full_name);
+      }
+      setAssigneeNameById(map);
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,6 +118,16 @@ export default function PartnerAnfragenPage() {
           {anfragen.map((a) => {
             const s = statusStyle(a.status);
             const Icon = s.icon;
+            // Termin-Zuweisungs-Anzeige nur fuer angenommene/laufende
+            // Anfragen sinnvoll. partner_anfrage = noch nicht angenommen;
+            // storniert = abgelehnt. abgeschlossen darf weiter Namen zeigen.
+            const showAssignmentInfo = a.status === "offen" || a.status === "abgeschlossen";
+            const appts = a.appointments ?? [];
+            const hasAppt = appts.length > 0;
+            const assignedIds = Array.from(new Set(appts.map((x) => x.assigned_to).filter((x): x is string => !!x)));
+            const assigneeNames = assignedIds.map((id) => assigneeNameById.get(id)).filter((n): n is string => !!n);
+            const isUnassigned = showAssignmentInfo && hasAppt && assigneeNames.length === 0;
+            const isAssigned = showAssignmentInfo && assigneeNames.length > 0;
             return (
               <Link
                 key={a.id}
@@ -138,7 +162,22 @@ export default function PartnerAnfragenPage() {
                           </p>
                         )}
                       </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
+                      {/* Rechte Seite: Termin-Zuweisungs-Status + Arrow.
+                          Gleiche Farb-Konvention wie /auftraege im Firmenportal
+                          (amber = nicht zugewiesen, emerald = zugewiesen). */}
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {isUnassigned && (
+                          <span className="text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-300">
+                            Termin nicht zugewiesen
+                          </span>
+                        )}
+                        {isAssigned && (
+                          <span className="text-xs font-medium whitespace-nowrap text-emerald-700 dark:text-emerald-300 truncate max-w-[180px]" title={assigneeNames.join(", ")}>
+                            {assigneeNames.join(", ")}
+                          </span>
+                        )}
+                        <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
