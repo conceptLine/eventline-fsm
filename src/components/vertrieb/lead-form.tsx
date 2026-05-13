@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Check, ArrowRight, AlertTriangle, Mail, Phone, Calendar, Filter, Plus, Trash2, PartyPopper, Building2, Users } from "lucide-react";
+import { X, Check, ArrowRight, AlertTriangle, Mail, Phone, Calendar, Filter, Plus, Trash2, PartyPopper, Building2, Users, RotateCcw } from "lucide-react";
 import type { VertriebContact, VertriebStatus, VertriebPriority } from "@/types";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS, STEPS, BEDARF_BEREICHE, type VertriebFormState } from "@/app/(app)/vertrieb/constants";
 
@@ -29,6 +29,7 @@ interface Props {
   onSubmit: (e: React.FormEvent) => void | Promise<void>;
   onClose: () => void;
   onAdvanceStep: () => void | Promise<void>;
+  onMarkRecontacted: () => void | Promise<void>;
   onOpenLost: (id: string) => void;
   onOpenBuchhaltung: () => void;
   onOpenVerbesserung: () => void;
@@ -62,6 +63,7 @@ export function LeadForm({
   onSubmit,
   onClose,
   onAdvanceStep,
+  onMarkRecontacted,
   onOpenLost,
   onOpenBuchhaltung,
   onOpenVerbesserung,
@@ -116,6 +118,14 @@ export function LeadForm({
                 {editingStep === 1 && (
                   <button type="button" onClick={onAdvanceStep} className="kasten kasten-blue">
                     <ArrowRight className="h-3.5 w-3.5" />Kontakt aufnehmen
+                  </button>
+                )}
+                {/* Erneut kontaktiert — ab Schritt 2: setzt nur datum_kontakt
+                    auf heute, kein Step-Sprung. Damit der Lead im Aging-Sort
+                    wieder "frisch" wird ohne den Flow abzuschneiden. */}
+                {editingStep > 1 && form.status !== "gewonnen" && (
+                  <button type="button" onClick={onMarkRecontacted} className="kasten kasten-muted">
+                    <RotateCcw className="h-3.5 w-3.5" />Erneut kontaktiert
                   </button>
                 )}
                 {/* Schritt 2-3-4 haben eigene Action-Bars im spezifischen Block */}
@@ -190,7 +200,7 @@ export function LeadForm({
                 <p className="text-xs text-blue-700 mb-2">Buchhaltung mit allen Verrechnungs-Infos benachrichtigen:</p>
                 <div className="flex gap-2 flex-wrap">
                   <button type="button" onClick={onOpenBuchhaltung} className="kasten kasten-blue">
-                    <Mail className="h-3.5 w-3.5" />Benachrichtigung senden
+                    <Mail className="h-3.5 w-3.5" />an Buchhaltung senden
                   </button>
                   <Button type="button" size="sm" onClick={onAdvanceStep} variant="outline" className="text-blue-700 border-blue-300">
                     <ArrowRight className="h-4 w-4 mr-1" />Weiter zu Finalisierung

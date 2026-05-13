@@ -224,6 +224,18 @@ export function LeadEditor({ contactId, onClose }: Props) {
     await load();
   }
 
+  // "Erneut kontaktiert": setzt nur das datum_kontakt auf heute, ohne den
+  // Step-Tracker zu beeinflussen. Use-case: Kunde wurde im aktuellen Schritt
+  // nochmal angerufen/angeschrieben — soll im Aging-Sort nicht rot werden.
+  async function markRecontacted() {
+    if (!contact) return;
+    const today = todayLocalDateString();
+    await supabase.from("vertrieb_contacts").update({ datum_kontakt: today }).eq("id", contact.id);
+    setForm((f) => ({ ...f, datum_kontakt: today }));
+    toast.success("Kontakt-Datum auf heute aktualisiert");
+    await load();
+  }
+
   function openLostModal() { setLostReason(""); setShowLostModal(true); }
   async function markLost() {
     if (!contact || !lostReason.trim()) { toast.error("Grund ist erforderlich"); return; }
@@ -532,6 +544,7 @@ export function LeadEditor({ contactId, onClose }: Props) {
         onSubmit={save}
         onClose={onClose}
         onAdvanceStep={advanceStep}
+        onMarkRecontacted={markRecontacted}
         onOpenLost={openLostModal}
         onOpenBuchhaltung={() => setShowBuchhaltung(true)}
         onOpenVerbesserung={() => setShowVerbesserung(true)}

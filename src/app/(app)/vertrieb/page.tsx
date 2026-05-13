@@ -413,6 +413,7 @@ export default function VertriebPage() {
           onSubmit={save}
           onClose={closeForm}
           onAdvanceStep={noopAsync}
+          onMarkRecontacted={noopAsync}
           onOpenLost={noop}
           onOpenBuchhaltung={noop}
           onOpenVerbesserung={noop}
