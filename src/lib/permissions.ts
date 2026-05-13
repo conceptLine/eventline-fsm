@@ -59,6 +59,22 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   // Wird via has_permission('admin:activity') gegated, Admin durch.
 ];
 
+// Partnerportal-Module — separater Permission-Namespace fuer Locations-
+// partner. Die zwei Portale (Firmenportal / Partnerportal) sind
+// eigenstaendige Welten, sollen aber das gleiche Permission-Format teilen
+// damit ein zukuenftiges has_permission()-Check beide Seiten gleich
+// behandelt. Slugs sind dashed ("partner-anfragen"), das Action-Trennzeichen
+// bleibt ":" wie im Firmenportal.
+//
+// Aktuell hat die partner-Rolle keine Granularitaet (Partnerportal-Layout
+// gated nur ueber role='partner'). Diese Module bereiten die Partner-
+// Sub-Rollen-Hierarchie vor (Partner-Admin vs Partner-Mitarbeiter), bei
+// der ein Partner seine eigenen Mitarbeiter mit reduzierten Rechten anlegt.
+export const PARTNER_PERMISSION_MODULES: PermissionModule[] = [
+  { slug: "partner-anfragen",      label: "Anfragen",      paths: ["/partner/anfragen"],      actions: ["view", "create", "edit", "delete"] },
+  { slug: "partner-belegungsplan", label: "Belegungsplan", paths: ["/partner/belegungsplan"], actions: ["view"] },
+];
+
 /** Pfade die fuer alle eingeloggten User erreichbar sind, unabhaengig von der Rolle. */
 const ALWAYS_ALLOWED_PREFIXES = ["/dashboard"];
 
@@ -119,6 +135,9 @@ export const PERMISSION_FEATURES: PermissionFeature[] = [
 export function allKnownPermissions(): string[] {
   const out: string[] = [];
   for (const m of PERMISSION_MODULES) {
+    for (const a of m.actions) out.push(`${m.slug}:${a}`);
+  }
+  for (const m of PARTNER_PERMISSION_MODULES) {
     for (const a of m.actions) out.push(`${m.slug}:${a}`);
   }
   for (const f of PERMISSION_FEATURES) out.push(f.key);

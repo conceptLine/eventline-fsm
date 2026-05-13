@@ -27,7 +27,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
-import { PERMISSION_MODULES, PERMISSION_FEATURES, type PermissionAction } from "@/lib/permissions";
+import { PERMISSION_MODULES, PARTNER_PERMISSION_MODULES, PERMISSION_FEATURES, type PermissionAction, type PermissionModule } from "@/lib/permissions";
 import { Plus, Trash2, Lock, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
@@ -86,6 +86,16 @@ interface RollenTabProps {
 }
 
 export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
+  // Welche Module in der Matrix erscheinen — Firmenportal hat seinen
+  // eigenen Modul-Katalog, Partnerportal seinen eigenen. Die zwei Welten
+  // teilen das Permission-Format (slug:action), aber nicht den Inhalt.
+  const modules: PermissionModule[] = scope === "partner" ? PARTNER_PERMISSION_MODULES : PERMISSION_MODULES;
+  // Zusatz-Features (z.B. Bexio) sind nur im Firmenportal relevant.
+  const features = scope === "partner" ? [] : PERMISSION_FEATURES;
+  // Action-Spalten dynamisch: nur Aktionen anzeigen die mind. ein Modul
+  // unterstuetzt — sonst hat Partnerportal leere "Archivieren"/"Genehmigen"-
+  // Spalten weil dort niemand diese Aktionen kennt.
+  const actionCols = ACTION_COLUMNS.filter((a) => modules.some((m) => m.actions.includes(a)));
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -231,13 +241,13 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
           <thead>
             <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
               <th className="text-left pb-1 pr-3">Bereich</th>
-              {ACTION_COLUMNS.map((a) => (
+              {actionCols.map((a) => (
                 <th key={a} className="text-center pb-1 px-1 w-16">{ACTION_LABELS[a]}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {PERMISSION_MODULES.map((mod) => {
+            {modules.map((mod) => {
               // Tooltip-Hinweise pro Modul wo es Sub-Pfade gibt die nicht
               // offensichtlich sind. Wird auf den Bereich-Namen gelegt.
               const moduleTooltip = mod.slug === "kalender"
@@ -255,18 +265,18 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
                         type="button"
                         onClick={() => setAllForModule(roleSlug, mod.slug, mod.actions)}
                         className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
-                        data-tooltip={`Alle ${ACTION_COLUMNS.filter(a => mod.actions.includes(a)).length} Aktionen toggeln`}
+                        data-tooltip={`Alle ${actionCols.filter(a => mod.actions.includes(a)).length} Aktionen toggeln`}
                       >
                         Alle
                       </button>
                     )}
                   </div>
                 </td>
-                {ACTION_COLUMNS.map((a) => {
+                {actionCols.map((a) => {
                   const supported = mod.actions.includes(a);
                   const perm = `${mod.slug}:${a}`;
                   const active = locked ? supported : currentPerms.includes(perm);
-                  const isLast = a === ACTION_COLUMNS[ACTION_COLUMNS.length - 1];
+                  const isLast = a === actionCols[actionCols.length - 1];
                   return (
                     <td key={a} className={`text-center py-1 px-1 ${isLast ? "rounded-r-lg" : ""}`}>
                       {supported ? (
@@ -292,14 +302,14 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
   }
 
   function renderFeatureGrid(currentPerms: string[], locked: boolean, onToggle: (perm: string) => void) {
-    if (PERMISSION_FEATURES.length === 0) return null;
+    if (features.length === 0) return null;
     return (
       <div className="space-y-2">
         <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           Zusatz-Funktionen
         </p>
         <div className="space-y-1">
-          {PERMISSION_FEATURES.map((f) => {
+          {features.map((f) => {
             const active = locked ? true : currentPerms.includes(f.key);
             return (
               <div key={f.key} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04]">
