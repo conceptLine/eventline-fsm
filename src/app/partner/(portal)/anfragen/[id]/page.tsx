@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Calendar, Clock, Plus, Trash2, StickyNote, Check, XCircle, AlertCircle, FileText, Upload, Eye, Download } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Plus, Trash2, StickyNote, Check, XCircle, AlertCircle, FileText, Upload, Eye, Download, Pencil, Send } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { useConfirm } from "@/components/ui/use-confirm";
@@ -66,14 +66,19 @@ export default function PartnerAnfrageDetailPage() {
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
 
   // Strukturelle Aktionen (Termin hinzufuegen/loeschen, Anfrage zurueckziehen)
-  // sind nach Annahme gesperrt — die Anfrage ist dann ein Auftrag und
-  // gehoert in EVENTLINE's Hand.
-  const isReadOnly = job ? job.status !== "partner_anfrage" : true;
+  // sind verfuegbar solange die Anfrage noch beim Partner liegt
+  // (partner_entwurf, partner_anfrage). Nach EVENTLINE-Annahme gesperrt.
+  const isEditable = job ? (job.status === "partner_entwurf" || job.status === "partner_anfrage") : false;
+  const isReadOnly = !isEditable;
   // Notizen und Dokumente bleiben kollaborativ — auch nach Annahme darf
   // der Partner noch nachreichen (z.B. geaenderter Ablauf, neue Files).
   // Bei "abgeschlossen"/"storniert" ist die Beziehung zu Ende → keine
   // Aenderungen mehr.
-  const canEditNotesAndDocs = job ? (job.status === "partner_anfrage" || job.status === "offen") : false;
+  const canEditNotesAndDocs = job ? (job.status === "partner_entwurf" || job.status === "partner_anfrage" || job.status === "offen") : false;
+  // Absende-Button nur bei Entwurf + min. 1 Termin sichtbar.
+  const isDraft = job?.status === "partner_entwurf";
+  const canSubmit = isDraft && termine.length > 0;
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -206,6 +211,26 @@ export default function PartnerAnfrageDetailPage() {
     a.click();
   }
 
+  async function submitAnfrage() {
+    if (!canSubmit) return;
+    const ok = await confirm({
+      title: "Anfrage an EVENTLINE absenden?",
+      message: "Nach dem Absenden kannst du den Termin nicht mehr selbst aendern — EVENTLINE pruft die Anfrage und meldet sich.",
+      confirmLabel: "Absenden",
+      variant: "red",
+    });
+    if (!ok) return;
+    setSubmitting(true);
+    const { error } = await supabase.rpc("partner_submit_anfrage", { p_job_id: id as string });
+    setSubmitting(false);
+    if (error) {
+      TOAST.supabaseError(error, "Anfrage konnte nicht abgeschickt werden");
+      return;
+    }
+    toast.success("Anfrage abgeschickt — EVENTLINE schaut sie an");
+    loadAll();
+  }
+
   async function addTermin(e: React.FormEvent) {
     e.preventDefault();
     if (!terminForm.title.trim() || !terminForm.date || !terminForm.time) {
@@ -317,6 +342,32 @@ export default function PartnerAnfrageDetailPage() {
       </div>
 
       {/* Status-Banner */}
+      {job.status === "partner_entwurf" && (
+        <Card className="bg-foreground/[0.04] dark:bg-foreground/10 border-foreground/15 dark:border-foreground/20">
+          <CardContent className="p-4 flex items-start gap-3">
+            <Pencil className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold text-foreground">Entwurf — noch nicht abgeschickt</p>
+              <p className="text-muted-foreground mt-0.5">
+                {canSubmit
+                  ? "Du kannst die Anfrage jetzt an EVENTLINE absenden."
+                  : "Trag mindestens einen Termin ein, dann kannst du die Anfrage an EVENTLINE absenden."}
+              </p>
+            </div>
+            {canSubmit && (
+              <button
+                type="button"
+                onClick={submitAnfrage}
+                disabled={submitting}
+                className="kasten kasten-red shrink-0"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {submitting ? "Sendet…" : "Anfrage senden"}
+              </button>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {job.status === "partner_anfrage" && (
         <Card className="bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30">
           <CardContent className="p-4 flex items-start gap-3">

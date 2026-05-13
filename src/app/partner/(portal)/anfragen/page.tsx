@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
-import { Plus, Clock, Check, XCircle, FileText, Search } from "lucide-react";
+import { Plus, Clock, Check, XCircle, FileText, Search, Pencil, Archive } from "lucide-react";
 
 interface PartnerAnfrage {
   id: string;
@@ -23,6 +23,9 @@ interface PartnerAnfrage {
 
 function statusStyle(status: string) {
   switch (status) {
+    case "partner_entwurf":
+      // Grau / neutral — soll klar "noch nicht abgeschickt" kommunizieren.
+      return { label: "Entwurf", icon: Pencil, bg: "bg-foreground/[0.05] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/15 dark:border-foreground/20" };
     case "partner_anfrage":
       return { label: "Anfrage offen", icon: Clock, bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-500/30" };
     case "offen":
@@ -35,14 +38,20 @@ function statusStyle(status: string) {
   }
 }
 
-type StatusFilter = "all" | "partner_anfrage" | "offen" | "storniert" | "abgeschlossen";
+type StatusFilter = "all" | "partner_entwurf" | "partner_anfrage" | "offen" | "storniert" | "abgeschlossen";
 const STATUS_FILTER_ITEMS = [
   { id: "all" as StatusFilter, label: "Alle Status" },
+  { id: "partner_entwurf" as StatusFilter, label: "Entwurf" },
   { id: "partner_anfrage" as StatusFilter, label: "Wartet" },
   { id: "offen" as StatusFilter, label: "Bestätigt" },
   { id: "abgeschlossen" as StatusFilter, label: "Abgeschlossen" },
   { id: "storniert" as StatusFilter, label: "Abgelehnt" },
 ];
+
+function todayIsoDate(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function PartnerAnfragenPage() {
   const router = useRouter();
@@ -63,6 +72,11 @@ export default function PartnerAnfragenPage() {
   const [searchTitle, setSearchTitle] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("partner-anfragen-search-title") || "" : ""
   );
+  // Archiv-Toggle: zeigt Anfragen deren Veranstaltungs-Datum vorbei ist
+  // (start_date < heute), egal welcher Status. Standard = false (Aktive).
+  const [showArchive, setShowArchive] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("partner-anfragen-archive") === "true" : false
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-status", filterStatus);
@@ -73,6 +87,9 @@ export default function PartnerAnfragenPage() {
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-search-title", searchTitle);
   }, [searchTitle]);
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("partner-anfragen-archive", String(showArchive));
+  }, [showArchive]);
 
   // Debounce: bei Tipp-Suche nicht jeden Tastenanschlag eine DB-Query.
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,6 +110,15 @@ export default function PartnerAnfragenPage() {
         .from("jobs")
         .select("id, job_number, title, start_date, end_date, status, created_at, partner_response_message, appointments:job_appointments(id, assigned_to)")
         .eq("created_by", user.id);
+      // Aktiv- vs Archiv-Split nach Datum: vergangene = Archiv. Anfragen
+      // OHNE start_date bleiben aktiv (Entwurf ohne Datum gehoert in den
+      // aktiven Bereich, damit man sie noch ausfuellen kann).
+      const today = todayIsoDate();
+      if (showArchive) {
+        q = q.not("start_date", "is", null).lt("start_date", today);
+      } else {
+        q = q.or(`start_date.is.null,start_date.gte.${today}`);
+      }
       if (filterStatus !== "all") q = q.eq("status", filterStatus);
       const titleQ = searchTitle.trim();
       if (titleQ) q = q.ilike("title", `%${titleQ}%`);
@@ -106,8 +132,8 @@ export default function PartnerAnfragenPage() {
       }
       const [jobsRes, usersRes] = await Promise.all([
         q
-          // Naechstes Event zuerst — NULL-Datum ans Ende (Anfragen ohne Datum).
-          .order("start_date", { ascending: true, nullsFirst: false })
+          // Aktiv: naechstes Event zuerst. Archiv: juengstes vergangenes zuerst.
+          .order("start_date", { ascending: !showArchive, nullsFirst: false })
           .limit(100),
         // SECURITY DEFINER-Funktion: liefert id/full_name aller aktiven
         // EVENTLINE-Mitarbeiter. Partner braucht das um assigned_to-UUIDs
@@ -125,7 +151,7 @@ export default function PartnerAnfragenPage() {
     }, 250);
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, searchTitle, searchNumber]);
+  }, [filterStatus, searchTitle, searchNumber, showArchive]);
 
   const hasSearch = searchTitle.trim().length > 0 || searchNumber.trim().length > 0 || filterStatus !== "all";
 
@@ -138,14 +164,25 @@ export default function PartnerAnfragenPage() {
             Erstelle Anfragen für Veranstaltungen an deinem Standort. EVENTLINE bestätigt oder lehnt ab.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/partner/anfragen/neu")}
-          className="kasten kasten-red"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Neue Anfrage
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowArchive((v) => !v)}
+            className={showArchive ? "kasten-active" : "kasten-toggle-off"}
+            data-tooltip={showArchive ? "Aktive Anfragen anzeigen" : "Vergangene Anfragen anzeigen"}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            {showArchive ? "Archiv" : "Archiv"}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/partner/anfragen/neu")}
+            className="kasten kasten-red"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Neue Anfrage
+          </button>
+        </div>
       </div>
 
       {/* Such- und Filter-Bar — exakt gleiche Struktur wie /auftraege im
@@ -210,12 +247,14 @@ export default function PartnerAnfragenPage() {
               <FileText className="h-7 w-7 text-foreground/40" />
             </div>
             <h3 className="font-semibold text-lg">
-              {hasSearch ? "Keine Treffer" : "Noch keine Anfragen"}
+              {hasSearch ? "Keine Treffer" : showArchive ? "Archiv ist leer" : "Noch keine Anfragen"}
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
               {hasSearch
                 ? "Versuch einen anderen Filter oder Suchbegriff."
-                : "Klick auf „Neue Anfrage“ um zu starten."}
+                : showArchive
+                  ? "Vergangene Anfragen landen automatisch hier."
+                  : "Klick auf „Neue Anfrage“ um zu starten."}
             </p>
           </CardContent>
         </Card>

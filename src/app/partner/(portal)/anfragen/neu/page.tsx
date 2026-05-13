@@ -101,14 +101,13 @@ export default function NeueAnfragePage() {
     return okCount;
   }
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
+  // Termin ist optional — wenn Felder leer, wird die Anfrage als Entwurf
+  // gespeichert. Termin ist Voraussetzung fuer "Anfrage senden".
+  const hasTerminInputs = Boolean(terminDate && terminStartTime && terminEndTime);
+
+  async function save(mode: "draft" | "send") {
     if (!title.trim() || !startDate) {
       toast.error("Titel und Veranstaltungs-Startdatum sind Pflicht");
-      return;
-    }
-    if (!terminDate || !terminStartTime || !terminEndTime) {
-      toast.error("Termin-Datum und -Uhrzeiten sind Pflicht");
       return;
     }
     if (!contactPerson.trim() || !contactPhone.trim()) {
@@ -124,16 +123,31 @@ export default function NeueAnfragePage() {
       toast.error("Veranstaltungs-Enddatum muss am oder nach Startdatum liegen");
       return;
     }
-    // Termin innerhalb der Veranstaltung
-    if (terminDate < startDate || terminDate > effectiveEndDate) {
-      toast.error("Termin-Datum muss innerhalb der Veranstaltung liegen");
+    // Termin-Validierung: wenn ANY der drei Felder gefuellt ist, muessen
+    // ALLE gefuellt sein UND die Range muss passen. Beim "Senden" sind sie
+    // sowieso Pflicht.
+    const someTerminFieldFilled = Boolean(terminDate || terminStartTime || terminEndTime);
+    if (mode === "send" && !hasTerminInputs) {
+      toast.error("Zum Absenden ist ein Termin (Datum + Zeit) Pflicht");
       return;
     }
-    const terminStartIso = toLocalIsoString(terminDate, terminStartTime);
-    const terminEndIso = toLocalIsoString(terminDate, terminEndTime);
-    if (new Date(terminEndIso).getTime() <= new Date(terminStartIso).getTime()) {
-      toast.error("Termin-Endzeit muss nach der Startzeit liegen");
+    if (someTerminFieldFilled && !hasTerminInputs) {
+      toast.error("Termin-Datum und Uhrzeiten muessen zusammen ausgefuellt werden");
       return;
+    }
+    let terminStartIso: string | null = null;
+    let terminEndIso: string | null = null;
+    if (hasTerminInputs) {
+      if (terminDate < startDate || terminDate > effectiveEndDate) {
+        toast.error("Termin-Datum muss innerhalb der Veranstaltung liegen");
+        return;
+      }
+      terminStartIso = toLocalIsoString(terminDate, terminStartTime);
+      terminEndIso = toLocalIsoString(terminDate, terminEndTime);
+      if (new Date(terminEndIso).getTime() <= new Date(terminStartIso).getTime()) {
+        toast.error("Termin-Endzeit muss nach der Startzeit liegen");
+        return;
+      }
     }
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -141,6 +155,7 @@ export default function NeueAnfragePage() {
       setSaving(false);
       return;
     }
+    const targetStatus = mode === "send" ? "partner_anfrage" : "partner_entwurf";
     const { data, error } = await supabase
       .from("jobs")
       .insert({
@@ -148,7 +163,7 @@ export default function NeueAnfragePage() {
         description: description.trim() || null,
         start_date: startDate,
         end_date: effectiveEndDate,
-        status: "partner_anfrage",
+        status: targetStatus,
         location_id: partnerLocationId,
         contact_person: contactPerson.trim(),
         contact_phone: contactPhone.trim(),
@@ -162,22 +177,23 @@ export default function NeueAnfragePage() {
       TOAST.supabaseError(error, "Anfrage konnte nicht erstellt werden");
       return;
     }
-    // Termin direkt mit anlegen — separater Datums-/Zeit-Block als Job-
-    // start/end (Veranstaltungs-Zeitspanne), der Termin ist der konkrete
-    // Anlass innerhalb dieser Zeitspanne.
-    const { error: terminErr } = await supabase
-      .from("job_appointments")
-      .insert({
-        job_id: data.id,
-        title: title.trim(),
-        start_time: terminStartIso,
-        end_time: terminEndIso,
-        description: null,
-      });
-    if (terminErr) {
-      // Job ist trotzdem da — wir warnen und schicken den User zum Detail,
-      // wo er den Termin manuell anlegen kann.
-      toast.warning("Anfrage erstellt, aber Termin konnte nicht angelegt werden — bitte auf Detail-Seite manuell hinzufügen");
+    // Termin nur anlegen wenn ausgefuellt — bei reinem Entwurf ohne Datum
+    // kommt der Termin spaeter auf der Detail-Page dazu.
+    let terminErr: { message: string } | null = null;
+    if (hasTerminInputs && terminStartIso && terminEndIso) {
+      const { error: tErr } = await supabase
+        .from("job_appointments")
+        .insert({
+          job_id: data.id,
+          title: title.trim(),
+          start_time: terminStartIso,
+          end_time: terminEndIso,
+          description: null,
+        });
+      if (tErr) {
+        terminErr = tErr;
+        toast.warning("Anfrage erstellt, aber Termin konnte nicht angelegt werden — bitte auf Detail-Seite manuell hinzufügen");
+      }
     }
     if (stagedFiles.length > 0) {
       const ok = await uploadStagedFiles(data.id, user.id);
@@ -186,7 +202,7 @@ export default function NeueAnfragePage() {
       }
     }
     setSaving(false);
-    if (!terminErr) toast.success("Anfrage erstellt");
+    if (!terminErr) toast.success(mode === "send" ? "Anfrage abgeschickt" : "Entwurf gespeichert");
     router.push(`/partner/anfragen/${data.id}`);
   }
 
@@ -206,7 +222,7 @@ export default function NeueAnfragePage() {
 
       <Card className="bg-card">
         <CardContent className="p-5">
-          <form onSubmit={save} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); save(hasTerminInputs ? "send" : "draft"); }} className="space-y-4">
             <div>
               <label className="text-xs font-medium">Titel *</label>
               <Input
@@ -249,11 +265,12 @@ export default function NeueAnfragePage() {
             </div>
 
             {/* Termin = der konkrete Anlass innerhalb der Veranstaltung
-                (z.B. Hauptfeier Sa 19:00–23:00). Ein-Tages mit Zeit-Range. */}
+                (z.B. Hauptfeier Sa 19:00–23:00). Optional — leer lassen
+                = Entwurf-Modus (Termin spaeter auf der Detail-Page). */}
             <div className="space-y-3 p-3 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04] border border-foreground/10 dark:border-foreground/15">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin (optional)</p>
               <div>
-                <label className="text-xs font-medium">Datum *</label>
+                <label className="text-xs font-medium">Datum</label>
                 <Input
                   type="date"
                   value={terminDate}
@@ -261,29 +278,26 @@ export default function NeueAnfragePage() {
                   className="mt-1"
                   min={startDate || undefined}
                   max={endDate || startDate || undefined}
-                  required
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">Muss innerhalb der Veranstaltung liegen.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Ohne Termin → als Entwurf speichern. Mit Termin kannst du direkt absenden.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium">Von *</label>
+                  <label className="text-xs font-medium">Von</label>
                   <Input
                     type="time"
                     value={terminStartTime}
                     onChange={(e) => setTerminStartTime(e.target.value)}
                     className="mt-1"
-                    required
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium">Bis *</label>
+                  <label className="text-xs font-medium">Bis</label>
                   <Input
                     type="time"
                     value={terminEndTime}
                     onChange={(e) => setTerminEndTime(e.target.value)}
                     className="mt-1"
-                    required
                   />
                 </div>
               </div>
@@ -395,7 +409,7 @@ export default function NeueAnfragePage() {
               )}
             </div>
 
-            <div className="flex gap-2 pt-2 border-t border-border">
+            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border">
               <button
                 type="button"
                 onClick={() => router.back()}
@@ -405,16 +419,26 @@ export default function NeueAnfragePage() {
                 Abbrechen
               </button>
               <button
-                type="submit"
+                type="button"
+                onClick={() => save("draft")}
                 disabled={saving}
-                className="kasten kasten-red flex-1"
+                className="kasten kasten-muted flex-1"
               >
-                {saving ? "Speichern…" : "Anfrage erstellen"}
+                {saving ? "Speichern…" : "Als Entwurf speichern"}
+              </button>
+              <button
+                type="button"
+                onClick={() => save("send")}
+                disabled={saving || !hasTerminInputs}
+                className="kasten kasten-red flex-1"
+                data-tooltip={!hasTerminInputs ? "Termin (Datum + Zeit) noetig zum Absenden" : undefined}
+              >
+                {saving ? "Sendet…" : "Anfrage senden"}
               </button>
             </div>
 
             <p className="text-[11px] text-muted-foreground pt-2">
-              Weitere Termine (Aufbau, Abbau, etc.) kannst du nach dem Speichern auf der Anfrage-Detail-Seite hinzufügen.
+              Ohne Termin landet die Anfrage als Entwurf in „Meine Anfragen“. Sobald du einen Termin eingegeben hast, kannst du „Anfrage senden“ drücken — EVENTLINE bekommt sie dann zur Prüfung.
             </p>
           </form>
         </CardContent>

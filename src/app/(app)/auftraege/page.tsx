@@ -198,7 +198,10 @@ export default function AuftraegePage() {
       .select(JOBS_SELECT)
       .neq("is_deleted", true)
       .or(cancelledFilter)
-      .not("status", "in", '("abgeschlossen","storniert")');
+      // partner_entwurf raus: Partner-Entwuerfe (vor dem Absenden) gehoeren
+      // nur ins Partnerportal — EVENTLINE sieht sie erst wenn der Partner
+      // den Status zu partner_anfrage promoted.
+      .not("status", "in", '("abgeschlossen","storniert","partner_entwurf")');
     if (cursor !== null) {
       // Composite-cursor: (start_date > c.start) OR (start_date = c.start AND id > c.id).
       // start_date null = Entwuerfe ohne Datum — kommen zuletzt (NULLS LAST).
