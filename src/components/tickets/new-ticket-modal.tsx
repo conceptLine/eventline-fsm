@@ -182,6 +182,7 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
         .from("profiles")
         .select("id, full_name, role")
         .eq("is_active", true)
+        .neq("role", "partner")
         .order("full_name");
       if (profs) setProfilesForApproval(profs as typeof profilesForApproval);
 

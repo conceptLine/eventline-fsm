@@ -179,6 +179,7 @@ export async function executeEveTool(name: string, args: ToolArgs): Promise<unkn
       const { data: hits } = await supabase
         .from("profiles")
         .select("id, full_name")
+        .neq("role", "partner")
         .or(`full_name.ilike.%${userSearch}%,email.ilike.%${userSearch}%`)
         .limit(5);
       const matched = (hits ?? []) as { id: string; full_name: string | null }[];

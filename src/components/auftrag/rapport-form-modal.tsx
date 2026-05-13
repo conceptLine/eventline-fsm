@@ -109,6 +109,7 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
         .from("profiles")
         .select("id, full_name")
         .eq("is_active", true)
+        .neq("role", "partner")
         .order("full_name");
       setProfiles((data as ProfileOption[]) ?? []);
 

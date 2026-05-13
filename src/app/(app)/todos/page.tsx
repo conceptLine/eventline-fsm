@@ -111,7 +111,7 @@ export default function TodosPage() {
   useEffect(() => {
     // Konkrete Spalten statt select("*") — bei 100+ Mitarbeitern macht sich
     // das in Bandbreite und Memory bemerkbar (Profile haben viele Felder).
-    supabase.from("profiles").select("id, full_name, role, is_active, email").eq("is_active", true).order("full_name")
+    supabase.from("profiles").select("id, full_name, role, is_active, email").eq("is_active", true).neq("role", "partner").order("full_name")
       .then(({ data }) => { if (data) setProfiles(data as Profile[]); });
     refreshCounts();
   }, [refreshCounts, supabase]);

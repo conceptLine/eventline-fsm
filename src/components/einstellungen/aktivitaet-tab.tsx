@@ -108,9 +108,12 @@ export function AktivitaetTab() {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
     const [profilesRes, sessionsRes] = await Promise.all([
+      // Firmenportal/Aktivitaet zeigt nur EVENTLINE-interne Sessions —
+      // Partner-User haben ihre eigene Welt (Partnerportal).
       supabase
         .from("profiles")
         .select("id, full_name, email, role, is_active")
+        .neq("role", "partner")
         .order("full_name", { ascending: true }),
       supabase
         .from("user_sessions")

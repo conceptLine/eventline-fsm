@@ -109,7 +109,8 @@ export default function AuftragDetailPage() {
       // Nur die Felder die das Form/Dropdown wirklich braucht — Profil-Listen
       // werden bei 100+ Mitarbeitern sonst pro Auftrags-Detail-View 100+ Rows
       // schwer.
-      supabase.from("profiles").select("id, full_name, role, is_active").eq("is_active", true).order("full_name"),
+      // Partner-User raus — die werden nicht Eventline-internen Auftraegen zugewiesen.
+      supabase.from("profiles").select("id, full_name, role, is_active").eq("is_active", true).neq("role", "partner").order("full_name"),
       supabase.from("service_reports").select("*, creator:profiles!created_by(full_name)").eq("job_id", id).order("created_at", { ascending: false }),
       supabase.from("maintenance_tasks").select("id", { head: true, count: "exact" }).eq("job_id", id),
     ]);

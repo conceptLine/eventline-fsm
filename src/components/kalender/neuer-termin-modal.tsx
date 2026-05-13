@@ -79,6 +79,7 @@ export function NeuerTerminModal({ open, onClose, items, onCreated, initialDate 
         .from("profiles")
         .select("id, email, full_name, phone, role, avatar_url, is_active, created_at, updated_at")
         .eq("is_active", true)
+        .neq("role", "partner")
         .order("full_name");
       if (error) {
         logError("kalender.neuer-termin.load-profiles", error);
