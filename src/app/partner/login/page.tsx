@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
+import { Info } from "lucide-react";
 
 // Partner-Login — eigene Seite, eigener Redirect-Pfad (/partner/anfragen).
 // Authentifizierung-Logik teilt sich mit /login, aber:
@@ -23,6 +24,10 @@ export default function PartnerLoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  // ?reason=… — wenn der Partner versehentlich uebers Firmen-Login kam,
+  // schiebt /login ihn hierher und wir zeigen einen kurzen Hinweis.
+  const reason = useSearchParams().get("reason");
+  const fromWrongPortal = reason === "wrong_portal";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +81,15 @@ export default function PartnerLoginPage() {
           </p>
         </CardHeader>
         <CardContent>
+          {fromWrongPortal && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2.5 text-xs">
+              <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="text-amber-800 dark:text-amber-200">
+                <strong className="font-semibold">Falsches Login.</strong>{" "}
+                Als Location-Partner musst du dich hier auf der Partner-Login-Seite anmelden. Bitte erneut einloggen.
+              </div>
+            </div>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">E-Mail</Label>

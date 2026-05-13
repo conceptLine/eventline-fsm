@@ -58,13 +58,22 @@ export default function LoginPage() {
     if (data.user) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("is_active")
+        .select("role, is_active")
         .eq("id", data.user.id)
         .maybeSingle();
       if (profile && profile.is_active === false) {
         await supabase.auth.signOut();
         setError("Dein Benutzer hat im Moment keinen Zugriff. Wende dich an einen Admin.");
         setLoading(false);
+        return;
+      }
+      // Partner-User darf nicht ueber das Firmenportal-Login einsteigen —
+      // hat ein eigenes Portal mit eigener Login-Seite. Wir loggen sofort
+      // aus (sonst haette er via /partner-Routen auch ohne re-Login Zugriff)
+      // und schicken ihn mit Hinweis-Reason an /partner/login.
+      if (profile && profile.role === "partner") {
+        await supabase.auth.signOut();
+        router.push("/partner/login?reason=wrong_portal");
         return;
       }
     }
