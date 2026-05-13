@@ -18,10 +18,10 @@ import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 
-type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen";
+type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet";
 type Portal = "firma" | "partner";
 
-const ALL_TABS: Tab[] = ["integrationen", "team", "rollen", "aktivitaet", "partner", "partner-rollen"];
+const ALL_TABS: Tab[] = ["integrationen", "team", "rollen", "aktivitaet", "partner", "partner-rollen", "partner-aktivitaet"];
 
 // Welcher Haupt-Tab gehoert welcher Portal-Gruppe. Beim Wechsel des
 // Haupt-Tabs springen wir automatisch auf den ersten Sub-Tab dieser
@@ -33,6 +33,7 @@ const PORTAL_OF: Record<Tab, Portal> = {
   integrationen: "firma",
   partner: "partner",
   "partner-rollen": "partner",
+  "partner-aktivitaet": "partner",
 };
 
 export default function EinstellungenPage() {
@@ -97,11 +98,11 @@ export default function EinstellungenPage() {
     { key: "integrationen", label: "Integrationen", icon: <Plug className="h-4 w-4" /> },
   ];
 
-  // Partnerportal-Sub-Tabs — Partner-Benutzerliste + Partner-Rollen.
-  // Spaeter ggf. Partner-Aktivitaet etc.
+  // Partnerportal-Sub-Tabs — Partner-Benutzerliste, Rollen, Aktivitaet.
   const partnerTabs: { key: Tab; label: string; icon: React.ReactNode }[] = isAdmin ? [
     { key: "partner" as Tab, label: "Partner", icon: <Building2 className="h-4 w-4" /> },
     { key: "partner-rollen" as Tab, label: "Rollen", icon: <Shield className="h-4 w-4" /> },
+    { key: "partner-aktivitaet" as Tab, label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
   ] : [];
 
   const subTabs = activePortal === "firma" ? firmaTabs : partnerTabs;
@@ -176,7 +177,9 @@ export default function EinstellungenPage() {
 
       {tab === "partner-rollen" && isAdmin && <RollenTab scope="partner" />}
 
-      {tab === "aktivitaet" && isAdmin && <AktivitaetTab />}
+      {tab === "aktivitaet" && isAdmin && <AktivitaetTab scope="firma" />}
+
+      {tab === "partner-aktivitaet" && isAdmin && <AktivitaetTab scope="partner" />}
     </div>
   );
 }

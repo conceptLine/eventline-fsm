@@ -95,7 +95,13 @@ function endReasonColor(reason: UserSession["end_reason"]): string {
   return "text-muted-foreground";
 }
 
-export function AktivitaetTab() {
+interface AktivitaetTabProps {
+  /** "firma" = alle Profile ausser partner, "partner" = nur partner.
+      Default "firma". Steuert welche User-Sessions sichtbar sind. */
+  scope?: "firma" | "partner";
+}
+
+export function AktivitaetTab({ scope = "firma" }: AktivitaetTabProps = {}) {
   const supabase = createClient();
   const [users, setUsers] = useState<UserStats[]>([]);
   const [allSessions, setAllSessions] = useState<UserSession[]>([]);
@@ -107,14 +113,20 @@ export function AktivitaetTab() {
 
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
+    // scope=firma → alle ausser partner; scope=partner → nur partner.
+    // Die beiden Aktivitaets-Tabs sind in /einstellungen pro Haupt-Tab
+    // getrennt; Partner-Sessions tauchen nicht in der Firmen-Ansicht auf
+    // und umgekehrt.
+    let profilesQuery = supabase
+      .from("profiles")
+      .select("id, full_name, email, role, is_active");
+    if (scope === "partner") {
+      profilesQuery = profilesQuery.eq("role", "partner");
+    } else {
+      profilesQuery = profilesQuery.neq("role", "partner");
+    }
     const [profilesRes, sessionsRes] = await Promise.all([
-      // Firmenportal/Aktivitaet zeigt nur EVENTLINE-interne Sessions —
-      // Partner-User haben ihre eigene Welt (Partnerportal).
-      supabase
-        .from("profiles")
-        .select("id, full_name, email, role, is_active")
-        .neq("role", "partner")
-        .order("full_name", { ascending: true }),
+      profilesQuery.order("full_name", { ascending: true }),
       supabase
         .from("user_sessions")
         .select("id, user_id, started_at, last_seen_at, ended_at, end_reason")
@@ -187,7 +199,7 @@ export function AktivitaetTab() {
 
     setUsers(stats);
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, scope]);
 
   useEffect(() => { load(); }, [load]);
 
