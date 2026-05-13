@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
@@ -93,12 +94,16 @@ interface Props {
 }
 
 export function PartnerBelegungsplan({ locationId }: Props) {
+  const supabase = createClient();
   const [anchor, setAnchor] = useState<Date>(() => {
     const d = startOfDay(new Date());
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  // job_id → Namen der zugewiesenen EVENTLINE-Techniker. Wird nach den
+  // Bookings nachgeladen (eigene Anfragen + per RLS sichtbare Termine).
+  const [assigneesByJobId, setAssigneesByJobId] = useState<Map<string, string[]>>(new Map());
   // Foreign-Vermietung-Detail-Modal — eigene Anfragen gehen ueber Link
   // auf die /partner/anfragen/[id]-Page, Vermietungen (kein Partner-Owner)
   // haben keine eigene Detail-Page → leichtes Modal mit Title/Datum/Kunde.
@@ -151,7 +156,38 @@ export function PartnerBelegungsplan({ locationId }: Props) {
       }
       setBookings(all);
       setLoading(false);
+
+      // Termin-Assignees nachladen — fuer die Liste unten zeigen wir
+      // pro Buchung wer von EVENTLINE zugewiesen ist. Nur eigene Anfragen
+      // brauchen die Info (Vermietungen sind fremde Buchungen).
+      const ownIds = all.filter((b) => b.isOwn).map((b) => b.id);
+      if (ownIds.length === 0) {
+        setAssigneesByJobId(new Map());
+        return;
+      }
+      const [apptsRes, usersRes] = await Promise.all([
+        supabase.from("job_appointments").select("job_id, assigned_to").in("job_id", ownIds),
+        // SECURITY DEFINER: Partner darf profiles nicht direkt lesen (siehe
+        // 053_profile_rls_tighten), aber get_assignable_users() bypasst RLS
+        // mit den noetigen Public-Feldern (id, full_name).
+        supabase.rpc("get_assignable_users"),
+      ]);
+      const nameById = new Map<string, string>();
+      for (const u of (usersRes.data as { id: string; full_name: string }[] | null) ?? []) {
+        nameById.set(u.id, u.full_name);
+      }
+      const m = new Map<string, string[]>();
+      for (const a of (apptsRes.data as { job_id: string; assigned_to: string | null }[] | null) ?? []) {
+        if (!a.assigned_to) continue;
+        const name = nameById.get(a.assigned_to);
+        if (!name) continue;
+        const arr = m.get(a.job_id) ?? [];
+        if (!arr.includes(name)) arr.push(name);
+        m.set(a.job_id, arr);
+      }
+      setAssigneesByJobId(m);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridStart, gridEnd, locationId]);
 
   const days = useMemo(() => {
@@ -340,13 +376,22 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                 ? b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
                 : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
               const cls = `flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border ${s.bg} ${s.text} ${s.border} hover:opacity-90 transition-opacity cursor-pointer text-left w-full`;
+              const assignees = assigneesByJobId.get(b.id) ?? [];
               const inner = (
                 <>
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{b.title}</p>
-                      <p className="text-[11px] opacity-80">{dateLabel}</p>
+                      <p className="text-[11px] opacity-80">
+                        {dateLabel}
+                        {assignees.length > 0 && (
+                          <>
+                            <span className="opacity-50"> · </span>
+                            <span>Zugewiesen: {assignees.join(", ")}</span>
+                          </>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <span className="text-[10px] font-medium uppercase tracking-wider opacity-70 shrink-0">
