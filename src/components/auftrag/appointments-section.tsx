@@ -290,14 +290,14 @@ export function AppointmentsSection({
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Calendar className="h-4 w-4" />Termine ({appointments.length})
           </CardTitle>
-          {can("kalender:create") && (
+          {!isClosed && can("kalender:create") && (
             <button type="button" onClick={() => setShowApptForm(!showApptForm)} className="kasten kasten-blue">
               <Plus className="h-3.5 w-3.5" />Termin
             </button>
           )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {showApptForm && (
+          {showApptForm && !isClosed && (
             <form onSubmit={addAppointment} className="p-4 rounded-xl bg-foreground/[0.03] border border-foreground/10 dark:bg-foreground/5 dark:border-foreground/15 space-y-3">
               <Input placeholder="Termin-Titel *" value={apptForm.title} onChange={(e) => setApptForm({ ...apptForm, title: e.target.value })} required />
               <div className="grid grid-cols-3 gap-3">
