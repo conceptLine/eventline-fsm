@@ -22,6 +22,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { JobNumber } from "@/components/job-number";
+import { toDbDate } from "@/lib/format";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -127,8 +128,8 @@ export default function VermietentwurfBearbeitenPage() {
         description: form.description.trim() || null,
         customer_id: form.customer_id,
         location_id: form.location_id,
-        start_date: form.start_date || null,
-        end_date: form.end_date || null,
+        start_date: toDbDate(form.start_date),
+        end_date: toDbDate(form.end_date),
         event_type: form.event_type.trim(),
         guest_count: parseInt(form.guest_count, 10),
         extended_services: form.extended_services.trim() || null,

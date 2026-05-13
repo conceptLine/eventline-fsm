@@ -28,7 +28,7 @@ import { BEDARF_LABELS, emptyForm } from "@/app/(app)/vertrieb/constants";
 import { parseVertriebNotes, type VertriebDetails, type VertriebNotes } from "@/lib/vertrieb-notes";
 import { TerminModalBody } from "@/components/vertrieb/termin-modal-body";
 import { AuftragModalBody } from "@/components/vertrieb/auftrag-modal-body";
-import { toLocalIsoString, todayLocalDateString } from "@/lib/format";
+import { toLocalIsoString, todayLocalDateString, toDbDate } from "@/lib/format";
 import { BuchhaltungModalBody } from "@/components/vertrieb/buchhaltung-modal-body";
 import { VerbesserungModalBody } from "@/components/vertrieb/verbesserung-modal-body";
 import { LostModalBody } from "@/components/vertrieb/lost-modal-body";
@@ -456,8 +456,8 @@ export function LeadEditor({ contactId, onClose }: Props) {
       title: auftragForm.title, description: descriptionParts.join("\n\n") || null,
       status: "offen", priority: auftragForm.priority, customer_id: customerId,
       location_id: auftragForm.location_id || details.location_id || null,
-      start_date: auftragForm.start_date || null,
-      end_date: auftragForm.end_date || auftragForm.start_date || null,
+      start_date: toDbDate(auftragForm.start_date),
+      end_date: toDbDate(auftragForm.end_date || auftragForm.start_date),
       created_by: user?.id,
     }).select("id, job_number, title").single();
     if (error || !newJob) { TOAST.supabaseError(error, "Auftrag konnte nicht angelegt werden"); setCreatingAuftrag(false); return; }

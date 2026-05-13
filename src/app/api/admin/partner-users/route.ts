@@ -83,9 +83,13 @@ export async function POST(request: Request) {
     // Setup-Mail wie bei /api/admin/users (Reset-Link mit Eventline-Branding).
     // Setup-Mail nutzt denselben /passwort-reset-Flow — Partner setzt sein
     // Passwort dort und loggt sich danach auf /partner/login ein.
-    await sendSetupMail({ supabaseUrl, serviceKey, email, fullName: full_name });
+    const mail = await sendSetupMail({ supabaseUrl, serviceKey, email, fullName: full_name });
 
-    return NextResponse.json({ success: true, userId: created.userId });
+    return NextResponse.json({
+      success: true,
+      userId: created.userId,
+      mail_warning: mail.success ? undefined : mail.error,
+    });
   } catch (e) {
     logError("admin.partner-users.exception", e);
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : "Interner Fehler" }, { status: 500 });

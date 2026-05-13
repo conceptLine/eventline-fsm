@@ -49,24 +49,46 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     const userClient = await createClient();
 
-    const [allRes, visibleRes] = await Promise.all([
-      admin
-        .from("jobs")
-        .select("id, job_number, title, status, was_anfrage, start_date, end_date, location_id, created_by, customer:customers(name)")
-        .neq("is_deleted", true)
-        .not("location_id", "is", null)
-        .or(`start_date.gte.${start},end_date.gte.${start}`)
-        .lt("start_date", end),
-      // Identische Query mit User-Session — RLS filtert auf "der User darf
-      // das sehen". Wir brauchen nur die ids.
-      userClient
-        .from("jobs")
-        .select("id")
-        .neq("is_deleted", true)
-        .not("location_id", "is", null)
-        .or(`start_date.gte.${start},end_date.gte.${start}`)
-        .lt("start_date", end),
-    ]);
+    // Partner-Rolle: server-seitig auf eigene Location einschraenken — der
+    // Partner sieht eh nur jobs an seiner Location (jobs_select RLS), aber
+    // die Service-Role-Query nimmt sonst alle Locations und schickt mehr
+    // Daten als noetig durchs Netz.
+    const { data: callerProfile } = await admin
+      .from("profiles")
+      .select("role, partner_location_id")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+    const partnerLocationId =
+      callerProfile?.role === "partner" ? callerProfile.partner_location_id : null;
+
+    // Range-Filter:
+    //   start_date < end          (Booking beginnt vor Range-Ende)
+    //   AND (end_date >= start OR end_date IS NULL AND start_date >= start)
+    //     (Booking endet im oder nach Range-Anfang — Mehrtages-Events die
+    //      vor Range-Anfang begannen aber noch laufen, bleiben drin)
+    // Frueher: or(start.gte || end.gte) AND lt(start, end) — das hat
+    // mehrtaegige Bookings rausgefiltert die mit start_date < range_start
+    // aber end_date > range_start. Bug Audit #7.
+    const rangeFilter = `and(start_date.lt.${end},or(end_date.gte.${start},and(end_date.is.null,start_date.gte.${start})))`;
+
+    let adminQuery = admin
+      .from("jobs")
+      .select("id, job_number, title, status, was_anfrage, start_date, end_date, location_id, created_by, customer:customers(name)")
+      .neq("is_deleted", true)
+      .not("location_id", "is", null)
+      .or(rangeFilter);
+    let userQuery = userClient
+      .from("jobs")
+      .select("id")
+      .neq("is_deleted", true)
+      .not("location_id", "is", null)
+      .or(rangeFilter);
+    if (partnerLocationId) {
+      adminQuery = adminQuery.eq("location_id", partnerLocationId);
+      userQuery = userQuery.eq("location_id", partnerLocationId);
+    }
+
+    const [allRes, visibleRes] = await Promise.all([adminQuery, userQuery]);
 
     if (allRes.error) {
       logError("api.belegungsplan.admin", allRes.error);

@@ -18,6 +18,7 @@ import { TOAST } from "@/lib/messages";
 import { JobNumber } from "@/components/job-number";
 import { popFormDraft, saveFormDraft } from "@/lib/form-resume";
 import { JOB_FORM_FIELDS } from "@/lib/constants";
+import { toDbDate } from "@/lib/format";
 
 function dateToISODate(d: string | null): string {
   if (!d) return "";
@@ -192,8 +193,8 @@ export default function AuftragBearbeitenPage() {
       location_id: form.job_type === "location" && form.location_id ? form.location_id : null,
       room_id: form.job_type === "extern" && form.room_id ? form.room_id : null,
       external_address: form.job_type === "extern" ? form.external_address.trim() || null : null,
-      start_date: form.start_date || null,
-      end_date: form.end_date || null,
+      start_date: toDbDate(form.start_date),
+      end_date: toDbDate(form.end_date),
       // Kontakt-Felder bleiben im Form-State (UX-Recovery), werden aber
       // bei extern-Auftraegen NICHT persistiert — der Customer ist dort
       // selber der Kontakt.

@@ -227,7 +227,7 @@ export default function PartnerAnfragenPage() {
           <SearchableSelect
             value={filterStatus}
             onChange={(v) => setFilterStatus(v as StatusFilter)}
-            items={STATUS_FILTER_ITEMS.map((s) => ({ id: s.id, label: s.label }))}
+            items={STATUS_FILTER_ITEMS}
             searchable={false}
             clearable={false}
             active={filterStatus !== "all"}
@@ -311,6 +311,11 @@ export default function PartnerAnfragenPage() {
                       </div>
                       {rightSide && <div className="shrink-0">{rightSide}</div>}
                     </div>
+                    {a.status === "storniert" && a.partner_response_message && (
+                      <p className="text-[11px] text-red-700 dark:text-red-300 truncate" title={a.partner_response_message}>
+                        Grund: {a.partner_response_message}
+                      </p>
+                    )}
                   </div>
 
                   {/* Desktop: Grid-Layout. INT-Spalte gegenueber dem
@@ -325,8 +330,15 @@ export default function PartnerAnfragenPage() {
                       {s.label}
                     </span>
 
-                    {/* Col 2: Titel */}
-                    <span className="auftrag-card-title font-medium text-sm truncate transition-colors min-w-0">{a.title}</span>
+                    {/* Col 2: Titel + ggf. Grund bei Stornierung */}
+                    <div className="min-w-0">
+                      <span className="auftrag-card-title font-medium text-sm truncate transition-colors block">{a.title}</span>
+                      {a.status === "storniert" && a.partner_response_message && (
+                        <span className="text-[11px] text-red-700 dark:text-red-300 truncate block" title={a.partner_response_message}>
+                          Grund: {a.partner_response_message}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Col 3: Spacer */}
                     <div />

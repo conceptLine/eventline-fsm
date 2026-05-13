@@ -111,14 +111,24 @@ export default function PartnerAnfrageDetailPage() {
     setJob(jobRes.data as AnfrageDetail);
     // Notizen-Parser: ältere Aufträge tragen das Firmenportal-_notes-JSON
     // (`{"_notes":[{content,author,created_at}, ...]}`) als String. Wir
-    // joinen die Inhalte zu einem Plain-Text-Block (gleiche Logik wie im
-    // Firmenportal /auftraege/[id]). Plain-Text bleibt as-is.
+    // rendern die History mit "[Author, Datum]"-Headern pro Eintrag, damit
+    // der Partner Audit-Trail sieht bevor er drüber schreibt. Plain-Text-
+    // Notes bleiben as-is.
     let initialNotes = "";
     if (jobRes.data.notes) {
       try {
         const parsed = JSON.parse(jobRes.data.notes);
         if (parsed && Array.isArray(parsed._notes)) {
-          initialNotes = parsed._notes.map((n: { content: string }) => n.content).join("\n\n");
+          initialNotes = parsed._notes
+            .map((n: { content: string; author?: string; created_at?: string }) => {
+              const header: string[] = [];
+              if (n.author) header.push(n.author);
+              if (n.created_at) {
+                try { header.push(new Date(n.created_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })); } catch { /* ignore */ }
+              }
+              return header.length > 0 ? `[${header.join(", ")}]\n${n.content}` : n.content;
+            })
+            .join("\n\n");
         } else {
           initialNotes = jobRes.data.notes;
         }
@@ -215,7 +225,7 @@ export default function PartnerAnfrageDetailPage() {
     if (!canSubmit) return;
     const ok = await confirm({
       title: "Anfrage an EVENTLINE absenden?",
-      message: "Nach dem Absenden kannst du den Termin nicht mehr selbst aendern — EVENTLINE pruft die Anfrage und meldet sich.",
+      message: "Nach dem Absenden kannst du den Termin nicht mehr selbst ändern — EVENTLINE prüft die Anfrage und meldet sich.",
       confirmLabel: "Absenden",
       variant: "red",
     });
@@ -235,6 +245,18 @@ export default function PartnerAnfrageDetailPage() {
     e.preventDefault();
     if (!terminForm.title.trim() || !terminForm.date || !terminForm.time) {
       toast.error("Titel, Datum und Startzeit sind Pflicht");
+      return;
+    }
+    // Termin muss im Event-Zeitraum liegen (Datums-Vergleich auf YYYY-MM-DD).
+    // job.start_date/end_date sind timestamptz; nur die ersten 10 Zeichen.
+    const startDay = job?.start_date?.slice(0, 10);
+    const endDay = job?.end_date?.slice(0, 10);
+    if (startDay && terminForm.date < startDay) {
+      toast.error("Termin liegt vor dem Veranstaltungsbeginn");
+      return;
+    }
+    if (endDay && terminForm.date > endDay) {
+      toast.error("Termin liegt nach dem Veranstaltungsende");
       return;
     }
     setSavingTermin(true);
@@ -285,29 +307,21 @@ export default function PartnerAnfrageDetailPage() {
       variant: "red",
     });
     if (!ok) return;
-    // Storage-Files + DB-Rows zuerst — kein CASCADE annehmen.
-    const { data: docs } = await supabase
-      .from("documents")
-      .select("storage_path")
-      .eq("job_id", id);
-    if (docs && docs.length > 0) {
-      await supabase.storage.from("documents").remove(docs.map((d) => d.storage_path));
-    }
-    await supabase.from("documents").delete().eq("job_id", id);
-    await supabase.from("job_appointments").delete().eq("job_id", id);
-    const { error, count } = await supabase
-      .from("jobs")
-      .delete({ count: "exact" })
-      .eq("id", id);
+    // Atomares Löschen via SECURITY-DEFINER-RPC partner_withdraw_anfrage:
+    // Status-Check, Cascade (documents → appointments → job), alles in
+    // einer Transaktion. RPC gibt die storage_paths zurück damit wir
+    // danach die Files aus dem Storage entfernen können.
+    const { data, error } = await supabase.rpc("partner_withdraw_anfrage", { p_job_id: id as string });
     if (error) {
-      TOAST.deleteError(error.message);
+      TOAST.supabaseError(error, "Anfrage konnte nicht zurückgezogen werden");
       return;
     }
-    if (count === 0) {
-      toast.error("Anfrage konnte nicht gelöscht werden — keine Berechtigung");
-      return;
+    // RPC returnt eine Zeile mit dem text[]-Spalte storage_paths
+    const paths = ((data as unknown as { storage_paths: string[] }[] | null) ?? [])[0]?.storage_paths ?? [];
+    if (paths.length > 0) {
+      await supabase.storage.from("documents").remove(paths);
     }
-    toast.success("Anfrage gelöscht");
+    toast.success("Anfrage zurückgezogen");
     router.push("/partner/anfragen");
   }
 
@@ -477,7 +491,15 @@ export default function PartnerAnfrageDetailPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[11px] font-medium">Datum *</label>
-                  <Input type="date" value={terminForm.date} onChange={(e) => setTerminForm({ ...terminForm, date: e.target.value })} className="mt-1" required />
+                  <Input
+                    type="date"
+                    value={terminForm.date}
+                    onChange={(e) => setTerminForm({ ...terminForm, date: e.target.value })}
+                    min={job?.start_date?.slice(0, 10) || undefined}
+                    max={job?.end_date?.slice(0, 10) || undefined}
+                    className="mt-1"
+                    required
+                  />
                 </div>
                 <div>
                   <label className="text-[11px] font-medium">Von *</label>
@@ -548,6 +570,7 @@ export default function PartnerAnfrageDetailPage() {
                     className="kasten kasten-red shrink-0"
                     aria-label="Termin löschen"
                     data-tooltip="Löschen"
+                    data-tooltip-side="top"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -633,6 +656,7 @@ export default function PartnerAnfrageDetailPage() {
                     onClick={() => openDocPreview(doc)}
                     className="kasten kasten-blue"
                     data-tooltip="Vorschau"
+                    data-tooltip-side="top"
                     aria-label="Vorschau"
                   >
                     <Eye className="h-3.5 w-3.5" />
@@ -642,6 +666,7 @@ export default function PartnerAnfrageDetailPage() {
                     onClick={() => downloadDoc(doc)}
                     className="kasten kasten-muted"
                     data-tooltip="Herunterladen"
+                    data-tooltip-side="top"
                     aria-label="Herunterladen"
                   >
                     <Download className="h-3.5 w-3.5" />

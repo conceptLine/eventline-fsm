@@ -40,3 +40,14 @@ export function todayLocalDateString(): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+// Tages-Datum (YYYY-MM-DD) → timestamptz-String fuer DB-Inserts in Spalten
+// die start_date/end_date als timestamptz fuehren. Anchor auf Mitternacht
+// LOKAL (mit TZ-Suffix), damit das DB-Datum dem User-eingegebenen Tag
+// entspricht. Ohne diesen Cast wird "2026-05-15" als UTC-Mitternacht
+// interpretiert → in CEST am Vortag 22:00 (UI zeigt dann den falschen Tag).
+// null-safe: null/leer-String bleibt null.
+export function toDbDate(date: string | null | undefined): string | null {
+  if (!date) return null;
+  return toLocalIsoString(date, "00:00");
+}

@@ -9,7 +9,7 @@ import { ArrowLeft, Upload, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { validateFileList } from "@/lib/file-upload";
-import { toLocalIsoString } from "@/lib/format";
+import { toLocalIsoString, toDbDate } from "@/lib/format";
 
 // Minimaler Form fuer Partner-Anfrage. Erstellt Job mit status='partner_anfrage'.
 // Optional koennen Dokumente direkt mit angehaengt werden — die werden
@@ -132,7 +132,7 @@ export default function NeueAnfragePage() {
       return;
     }
     if (someTerminFieldFilled && !hasTerminInputs) {
-      toast.error("Termin-Datum und Uhrzeiten muessen zusammen ausgefuellt werden");
+      toast.error("Termin-Datum und Uhrzeiten müssen zusammen ausgefüllt werden");
       return;
     }
     let terminStartIso: string | null = null;
@@ -161,8 +161,8 @@ export default function NeueAnfragePage() {
       .insert({
         title: title.trim(),
         description: description.trim() || null,
-        start_date: startDate,
-        end_date: effectiveEndDate,
+        start_date: toDbDate(startDate),
+        end_date: toDbDate(effectiveEndDate),
         status: targetStatus,
         location_id: partnerLocationId,
         contact_person: contactPerson.trim(),
@@ -431,7 +431,7 @@ export default function NeueAnfragePage() {
                 onClick={() => save("send")}
                 disabled={saving || !hasTerminInputs}
                 className="kasten kasten-red flex-1"
-                data-tooltip={!hasTerminInputs ? "Termin (Datum + Zeit) noetig zum Absenden" : undefined}
+                data-tooltip={!hasTerminInputs ? "Termin (Datum + Zeit) nötig zum Absenden" : undefined}
               >
                 {saving ? "Sendet…" : "Anfrage senden"}
               </button>

@@ -15,6 +15,7 @@ import { TOAST } from "@/lib/messages";
 import { popFormDraft, saveFormDraft } from "@/lib/form-resume";
 import { validateFileList } from "@/lib/file-upload";
 import { logError } from "@/lib/log";
+import { toDbDate } from "@/lib/format";
 
 const RETURN_PATH = "/auftraege/vermietentwurf/neu";
 
@@ -137,8 +138,8 @@ function NeueAnfragePageContent() {
         job_type: "location",
         customer_id: form.customer_id,
         location_id: form.location_id,
-        start_date: form.start_date || null,
-        end_date: form.end_date || null,
+        start_date: toDbDate(form.start_date),
+        end_date: toDbDate(form.end_date),
         request_step: 1,
         event_type: form.event_type.trim(),
         guest_count: parseInt(form.guest_count, 10),

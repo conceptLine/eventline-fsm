@@ -81,9 +81,13 @@ export async function POST(request: Request) {
   // ist unzuverlaessig (Rate-Limit, Spam-Filter). Wir generieren den
   // Recovery-Link via Auth-Admin-API und schicken die Mail dann selbst
   // ueber Resend, das die App eh schon fuer Termin-Mails nutzt.
-  await sendSetupMail({ supabaseUrl, serviceKey, email, fullName: full_name });
+  const mail = await sendSetupMail({ supabaseUrl, serviceKey, email, fullName: full_name });
 
-  return NextResponse.json({ success: true, user_id: created.userId });
+  return NextResponse.json({
+    success: true,
+    user_id: created.userId,
+    mail_warning: mail.success ? undefined : mail.error,
+  });
   } catch (err) {
     // Statt generic 500 → konkrete Meldung zurueck. Hilft beim Debugging
     // von Edge-Cases (Service-Role-Key falsch, Trigger-Konflikte, etc.)
