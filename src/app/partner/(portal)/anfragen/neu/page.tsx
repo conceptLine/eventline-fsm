@@ -268,7 +268,7 @@ export default function NeueAnfragePage() {
                 (z.B. Hauptfeier Sa 19:00–23:00). Optional — leer lassen
                 = Entwurf-Modus (Termin spaeter auf der Detail-Page). */}
             <div className="space-y-3 p-3 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04] border border-foreground/10 dark:border-foreground/15">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin (optional)</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Termin <span className="normal-case font-normal tracking-normal">— ohne Termin kann nur als Entwurf gespeichert werden</span></p>
               <div>
                 <label className="text-xs font-medium">Datum</label>
                 <Input

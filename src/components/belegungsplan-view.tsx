@@ -135,6 +135,10 @@ export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
     for (const j of (bpRes.bookings ?? []) as ApiBooking[]) {
       if (!j.start_date || !j.location_id) continue;
       if (j.status === "storniert") continue;
+      // Partner-Entwuerfe sind nicht abgeschickt → fuer EVENTLINE keine
+      // reale Buchung. Sie tauchen erst auf wenn der Partner status auf
+      // partner_anfrage promoted.
+      if (j.status === "partner_entwurf") continue;
       // Partner-Modus: nur Bookings der eigenen Location, sonst gar nichts.
       if (restrictToLocationId && j.location_id !== restrictToLocationId) continue;
       const kind: BookingKind =

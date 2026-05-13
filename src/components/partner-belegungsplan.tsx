@@ -14,7 +14,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
-type BookingKind = "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung";
+type BookingKind = "entwurf" | "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung";
 
 interface Booking {
   id: string;
@@ -63,6 +63,7 @@ function isInRange(day: Date, start: Date, end: Date): boolean {
 function kindFromBooking(b: ApiBooking): BookingKind | null {
   // Eigene Anfrage des Partners → nach Workflow-Status faerben.
   if (b.is_own) {
+    if (b.status === "partner_entwurf") return "entwurf";
     if (b.status === "partner_anfrage") return "partner_anfrage";
     if (b.status === "storniert") return "storniert";
     // status in (offen, abgeschlossen) → EVENTLINE hat angenommen.
@@ -80,6 +81,7 @@ function kindFromBooking(b: ApiBooking): BookingKind | null {
 }
 
 const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; border: string; label: string }> = {
+  entwurf:         { dot: "bg-gray-400 dark:bg-gray-500", bg: "bg-foreground/[0.05] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/15 dark:border-foreground/20", label: "Entwurf" },
   partner_anfrage: { dot: "bg-amber-500",  bg: "bg-amber-50 dark:bg-amber-500/15",   text: "text-amber-800 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-500/30",     label: "Deine offene Anfrage" },
   bestaetigt:      { dot: "bg-green-500",  bg: "bg-green-50 dark:bg-green-500/15",   text: "text-green-800 dark:text-green-300",     border: "border-green-200 dark:border-green-500/30",     label: "Bestätigt" },
   storniert:       { dot: "bg-red-500",    bg: "bg-red-50 dark:bg-red-500/15",       text: "text-red-800 dark:text-red-300",         border: "border-red-200 dark:border-red-500/30",         label: "Abgelehnt" },
@@ -202,7 +204,7 @@ export function PartnerBelegungsplan({ locationId }: Props) {
           <h2 className="text-lg font-semibold ml-3">{monthLabel}</h2>
         </div>
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-          {(["partner_anfrage", "bestaetigt", "storniert", "vermietung"] as const).map((k) => {
+          {(["entwurf", "partner_anfrage", "bestaetigt", "storniert", "vermietung"] as const).map((k) => {
             const s = KIND_STYLE[k];
             return (
               <div key={k} className="flex items-center gap-1.5">
