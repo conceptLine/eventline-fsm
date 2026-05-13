@@ -5,9 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { PartnerBelegungsplan } from "@/components/partner-belegungsplan";
 
 // Partner-Belegungsplan: Monats-Kalender + Buchungs-Liste fuer die
-// zugewiesene Location. Eigene Anfragen mit Titel sichtbar, Eventline-
-// interne Buchungen als "Belegt" maskiert (Maskierung macht das
-// /api/belegungsplan-Endpoint anhand der user_can_see_job-RLS).
+// zugewiesene Location. Eigene Anfragen status-gefaerbt (Entwurf,
+// Wartet, Bestaetigt, Abgelehnt), EVENTLINE-Vermietungen als blaue
+// "Vermietung"-Kategorie sichtbar (was_anfrage=true / Vermietentwurf).
+// Reine EVENTLINE-Auftraege ohne Vermietungs-Tag werden nicht angezeigt.
 
 export default function PartnerBelegungsplanPage() {
   const supabase = createClient();
@@ -48,7 +49,7 @@ export default function PartnerBelegungsplanPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Belegungsplan</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Übersicht deiner Location. EVENTLINE-interne Buchungen erscheinen als „Belegt" ohne Details.
+          Übersicht deiner Location — eigene Anfragen und EVENTLINE-Vermietungen.
         </p>
       </div>
       <PartnerBelegungsplan locationId={locationId} />
