@@ -43,7 +43,10 @@ export function LeadCard({ contact: c, onClick, onDelete, canDelete = true, sale
     }
     return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
   })();
-  const isStale = daysSinceStep !== null && daysSinceStep > 7;
+  // Rot-Markierung nur wenn der Lead mindestens schon kontaktiert wurde
+  // (step >= 2). Nur erfasste Leads (step=1) bleiben neutral — die liegen
+  // in der "Erfasst"-Spalte und sind die ohnehin oberste Priority des Tages.
+  const isStale = daysSinceStep !== null && daysSinceStep > 7 && currentStepNr >= 2;
 
   let jobNumber: number | null = null;
   let eventStart: string | null = null;
