@@ -67,9 +67,7 @@ export default function PartnerLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-foreground/[0.04]">
-      <Card className="w-full max-w-md border-foreground/10 shadow-xl overflow-hidden relative">
-        {/* Roter Akzent-Streifen oben — visuelles "anders als Firmenportal"-Signal */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-red-600" />
+      <Card className="w-full max-w-md border-foreground/10 shadow-xl">
         <CardHeader className="text-center pb-4 pt-12">
           <div className="flex justify-center items-start gap-3 mb-6">
             <Logo size="lg" />
@@ -78,7 +76,7 @@ export default function PartnerLoginPage() {
             </p>
           </div>
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Location-Portal
+            Partnerportal
           </p>
         </CardHeader>
         <CardContent className="px-8 pb-10">
