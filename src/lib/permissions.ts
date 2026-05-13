@@ -37,7 +37,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { slug: "vertrieb",      label: "Vertrieb",      paths: ["/vertrieb"],                                         actions: ["view", "create", "edit", "delete"] },
   { slug: "locations",     label: "Locations",     paths: ["/locations", "/standorte", "/raeume"], actions: ["view", "create", "edit", "delete"] },
   { slug: "kunden",        label: "Kunden",        paths: ["/kunden"],                                           actions: ["view", "create", "edit", "archive", "delete"] },
-  { slug: "partner",       label: "Partner",       paths: ["/partner"],                                          actions: ["view", "create", "edit", "delete"] },
+  { slug: "lieferanten",   label: "Lieferanten",   paths: ["/lieferanten"],                                      actions: ["view", "create", "edit", "delete"] },
   // Todos sind personal (RLS ueber created_by/assigned_to). Permissions
   // gaten nur den UI-Pfad: view = Sidebar+Page, create = Anlegen-Button.
   // Edit/Delete eigener Todos ist immer erlaubt (RLS-Owner) — daher nicht

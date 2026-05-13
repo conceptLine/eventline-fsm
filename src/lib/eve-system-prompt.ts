@@ -52,7 +52,7 @@ Aufträge mit Status *anfrage* werden auf der /auftraege-Liste mit lila Badge "V
 - /vertrieb — Sales-Pipeline mit Leads
 - /kunden — Kunden-Liste, kann mit Bexio verknuepft werden
 - /standorte — Locations + Raeume
-- /partner — externe Partner
+- /lieferanten — externe Lieferanten (Catering, Technik, AV, etc.)
 - /tickets — interne Anfragen
 - /todos — persoenliche/zugewiesene Todos
 - /ferien — Abwesenheits-Antraege

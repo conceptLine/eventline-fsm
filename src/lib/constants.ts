@@ -156,7 +156,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Kontakte",
     items: [
       { href: "/kunden", label: "Kunden", icon: "Users" },
-      { href: "/partner", label: "Partner", icon: "Handshake" },
+      { href: "/lieferanten", label: "Lieferanten", icon: "Handshake" },
     ],
   },
 ];

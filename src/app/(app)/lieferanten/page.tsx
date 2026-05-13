@@ -22,10 +22,10 @@ import { usePermissions } from "@/lib/use-permissions";
 import { useConfirm } from "@/components/ui/use-confirm";
 
 // Color-Konvention: lila ist app-weit IT-Tickets, gruen ist Stempel.
-// Partner-Typen vermeiden diese beiden Farben damit es nicht visuell
+// Lieferanten-Typen vermeiden diese beiden Farben damit es nicht visuell
 // kollidiert. Catering/Technik/AV bleiben warme/neutrale Toene; Mobiliar
 // wechselt von emerald (= Stempel) auf yellow (visuell distinct).
-const PARTNER_TYPES = {
+const LIEFERANT_TYPES = {
   catering: { label: "Catering", color: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300" },
   technik: { label: "Technik", color: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
   av: { label: "AV / Sound", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300" },
@@ -36,12 +36,12 @@ const PARTNER_TYPES = {
   sonstiges: { label: "Sonstiges", color: "bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300" },
 } as const;
 
-type PartnerType = keyof typeof PARTNER_TYPES;
+type LieferantType = keyof typeof LIEFERANT_TYPES;
 
-type Partner = {
+type Lieferant = {
   id: string;
   name: string;
-  type: PartnerType;
+  type: LieferantType;
   contact_person: string | null;
   email: string | null;
   phone: string | null;
@@ -51,7 +51,7 @@ type Partner = {
   is_active: boolean;
 };
 
-const EMPTY_FORM: Omit<Partner, "id" | "is_active"> = {
+const EMPTY_FORM: Omit<Lieferant, "id" | "is_active"> = {
   name: "",
   type: "catering",
   contact_person: "",
@@ -62,12 +62,12 @@ const EMPTY_FORM: Omit<Partner, "id" | "is_active"> = {
   notes: "",
 };
 
-export default function PartnerPage() {
+export default function LieferantenPage() {
   const supabase = createClient();
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [lieferanten, setLieferanten] = useState<Lieferant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<Partner | null>(null);
+  const [editing, setEditing] = useState<Lieferant | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -80,11 +80,11 @@ export default function PartnerPage() {
 
   async function load() {
     const { data } = await supabase
-      .from("partners")
+      .from("lieferanten")
       .select("*")
       .eq("is_active", true)
       .order("name");
-    setPartners((data as Partner[]) ?? []);
+    setLieferanten((data as Lieferant[]) ?? []);
     setLoading(false);
   }
 
@@ -94,7 +94,7 @@ export default function PartnerPage() {
     setShowForm(true);
   }
 
-  function openEdit(p: Partner) {
+  function openEdit(p: Lieferant) {
     setEditing(p);
     setForm({
       name: p.name,
@@ -128,7 +128,7 @@ export default function PartnerPage() {
     };
     if (editing) {
       const { error } = await supabase
-        .from("partners")
+        .from("lieferanten")
         .update(payload)
         .eq("id", editing.id);
       if (error) {
@@ -138,29 +138,29 @@ export default function PartnerPage() {
       }
       toast.success("Aktualisiert");
     } else {
-      const { error } = await supabase.from("partners").insert(payload);
+      const { error } = await supabase.from("lieferanten").insert(payload);
       if (error) {
         TOAST.supabaseError(error, "Speichern fehlgeschlagen");
         setSaving(false);
         return;
       }
-      toast.success("Partner angelegt");
+      toast.success("Lieferant angelegt");
     }
     setShowForm(false);
     setSaving(false);
     load();
   }
 
-  async function handleDelete(p: Partner) {
+  async function handleDelete(p: Lieferant) {
     const ok = await confirm({
-      title: "Partner löschen?",
+      title: "Lieferant löschen?",
       message: `"${p.name}" wird entfernt.`,
       confirmLabel: "Löschen",
       variant: "red",
     });
     if (!ok) return;
     const { error } = await supabase
-      .from("partners")
+      .from("lieferanten")
       .update({ is_active: false })
       .eq("id", p.id);
     if (error) {
@@ -171,7 +171,7 @@ export default function PartnerPage() {
     load();
   }
 
-  const filtered = partners.filter((p) => {
+  const filtered = lieferanten.filter((p) => {
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -188,19 +188,19 @@ export default function PartnerPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Partner</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Lieferanten</h1>
           {/* Leerer Subtitle-Platzhalter — Header-Hoehe identisch zu /kunden,
               damit die Action-Buttons rechts auf gleicher Linie sitzen. */}
           <p className="text-sm text-muted-foreground mt-1" aria-hidden="true">&nbsp;</p>
         </div>
-        {can("partner:create") && (
+        {can("lieferanten:create") && (
           <button
             type="button"
             onClick={openNew}
             className="kasten kasten-red"
           >
             <Plus className="h-3.5 w-3.5" />
-            Neuer Partner
+            Neuer Lieferant
           </button>
         )}
       </div>
@@ -226,17 +226,17 @@ export default function PartnerPage() {
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed p-10 text-center">
           <p className="text-sm text-muted-foreground">
-            {partners.length === 0
-              ? "Noch keine Partner angelegt."
-              : "Keine Partner für diese Filter gefunden."}
+            {lieferanten.length === 0
+              ? "Noch keine Lieferanten angelegt."
+              : "Keine Lieferanten für diese Filter gefunden."}
           </p>
-          {partners.length === 0 && can("partner:create") && (
+          {lieferanten.length === 0 && can("lieferanten:create") && (
             <button
               type="button"
               onClick={openNew}
               className="mt-4 kasten kasten-red"
             >
-              Ersten Partner anlegen
+              Ersten Lieferanten anlegen
             </button>
           )}
         </div>
@@ -250,14 +250,14 @@ export default function PartnerPage() {
                     <h3 className="font-semibold truncate">{p.name}</h3>
                     <span
                       className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                        PARTNER_TYPES[p.type].color
+                        LIEFERANT_TYPES[p.type].color
                       }`}
                     >
-                      {PARTNER_TYPES[p.type].label}
+                      {LIEFERANT_TYPES[p.type].label}
                     </span>
                   </div>
                   <div className="flex gap-1">
-                    {can("partner:edit") && (
+                    {can("lieferanten:edit") && (
                       <button
                         onClick={() => openEdit(p)}
                         className="icon-btn icon-btn-purple"
@@ -266,7 +266,7 @@ export default function PartnerPage() {
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                     )}
-                    {can("partner:delete") && (
+                    {can("lieferanten:delete") && (
                       <button
                         onClick={() => handleDelete(p)}
                         className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
@@ -341,7 +341,7 @@ export default function PartnerPage() {
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Partner bearbeiten" : "Neuer Partner"}
+        title={editing ? "Lieferant bearbeiten" : "Neuer Lieferant"}
         size="lg"
         closable={!saving}
       >
@@ -363,13 +363,13 @@ export default function PartnerPage() {
                 id="type"
                 value={form.type}
                 onChange={(e) =>
-                  setForm({ ...form, type: e.target.value as PartnerType })
+                  setForm({ ...form, type: e.target.value as LieferantType })
                 }
                 className="mt-1.5 w-full h-9 rounded-xl border bg-background px-3 text-sm"
               >
-                {(Object.keys(PARTNER_TYPES) as PartnerType[]).map((t) => (
+                {(Object.keys(LIEFERANT_TYPES) as LieferantType[]).map((t) => (
                   <option key={t} value={t}>
-                    {PARTNER_TYPES[t].label}
+                    {LIEFERANT_TYPES[t].label}
                   </option>
                 ))}
               </select>
