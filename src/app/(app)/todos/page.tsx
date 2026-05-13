@@ -2,10 +2,10 @@
 
 /**
  * Todos — Liste, server-seitig gefiltert+paginiert (PAGE_SIZE 50).
- * RLS scoped jeden Account auf eigene Todos (created_by oder assigned_to)
- * → kein Personen-Filter noetig, jeder sieht eh nur seine. Layout 1:1 nach
- * /auftraege: Header + Search + Status-Filter + Cards mit auftrag-card-hover.
- * Anhaenge in eigener Tabelle todo_attachments.
+ * RLS scoped Non-Admins auf eigene Todos (created_by oder assigned_to);
+ * Admins sehen alles und kriegen einen Personen-Filter in der UI.
+ * Layout 1:1 nach /auftraege: Header + Search + Status-Filter + Cards
+ * mit auftrag-card-hover. Anhaenge in eigener Tabelle todo_attachments.
  */
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -56,6 +56,12 @@ export default function TodosPage() {
   const [archiveCount, setArchiveCount] = useState(0);
   const [showArchive, setShowArchive] = useState(false);
   const [search, setSearch] = useState("");
+  // Admin-only: Personen-Filter. "all" = keine Einschraenkung, sonst die
+  // UUID — wir filtern serverseitig auf (created_by=X OR assigned_to=X).
+  // Persistent in localStorage damit Tab-Wechsel den Filter nicht wegnimmt.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(() =>
+    typeof window !== "undefined" ? localStorage.getItem("todos-assignee") || "all" : "all"
+  );
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", urgent: false, due_date: "", assigned_to: "" });
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
@@ -65,8 +71,13 @@ export default function TodosPage() {
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  const isAdmin = role === "admin";
   const { confirm, ConfirmModalElement } = useConfirm();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("todos-assignee", assigneeFilter);
+  }, [assigneeFilter]);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryIdRef = useRef(0);
@@ -81,6 +92,12 @@ export default function TodosPage() {
       const like = `%${term}%`;
       q = q.or(`title.ilike.${like},description.ilike.${like}`);
     }
+    // Admin-Personen-Filter: zeige Todos die diese Person erstellt hat
+    // ODER an die sie zugewiesen ist. Non-Admins werden eh via RLS auf
+    // sich selbst beschraenkt — fuer die ist der Filter UI-mässig unsichtbar.
+    if (isAdmin && assigneeFilter !== "all") {
+      q = q.or(`created_by.eq.${assigneeFilter},assigned_to.eq.${assigneeFilter}`);
+    }
     if (cursor !== null) {
       q = q.lt("id", cursor.id);
     }
@@ -88,7 +105,7 @@ export default function TodosPage() {
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("id", { ascending: false })
       .limit(PAGE_SIZE + 1);
-  }, [supabase, showArchive, search]);
+  }, [supabase, showArchive, search, isAdmin, assigneeFilter]);
 
   const loadTodos = useCallback(async () => {
     const myId = ++queryIdRef.current;
@@ -485,7 +502,8 @@ export default function TodosPage() {
         </Card>
       )}
 
-      {/* Such-Bar — schlank, nur ein Such-Feld (RLS scoped eh auf eigene). */}
+      {/* Such-Bar + (Admin-only) Personen-Filter. RLS scoped Non-Admins
+          eh auf eigene Todos — fuer die ist der Filter ausgeblendet. */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -496,6 +514,21 @@ export default function TodosPage() {
             className="pl-9 h-9"
           />
         </div>
+        {isAdmin && (
+          <div className="w-full sm:w-56">
+            <SearchableSelect
+              value={assigneeFilter}
+              onChange={(v) => setAssigneeFilter(v)}
+              items={[
+                { id: "all", label: "Alle Personen" },
+                ...profiles.map((p) => ({ id: p.id, label: p.full_name })),
+              ]}
+              clearable={false}
+              active={assigneeFilter !== "all"}
+              placeholder="Person filtern…"
+            />
+          </div>
+        )}
         {search && (
           <button
             type="button"
