@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -71,14 +70,14 @@ export default function PartnerLoginPage() {
       <Card className="w-full max-w-md border-foreground/10 shadow-xl overflow-hidden relative">
         {/* Roter Akzent-Streifen oben — visuelles "anders als Firmenportal"-Signal */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-red-600" />
-        <CardHeader className="text-center pb-4 pt-10">
-          <div className="flex justify-center items-start gap-4">
-            <Logo size="xl" />
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-red-600 dark:text-red-400 mt-2">
+        <CardHeader className="text-center pb-4 pt-12">
+          <div className="flex justify-center items-start gap-3 mb-6">
+            <Logo size="lg" />
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground mt-1">
               Partner
             </p>
           </div>
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground mt-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             Location-Portal
           </p>
         </CardHeader>
@@ -102,9 +101,9 @@ export default function PartnerLoginPage() {
               <Input id="password" type="password" placeholder="Passwort eingeben" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={fromWrongPortal} className="h-10" />
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button type="submit" className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold shadow-sm" disabled={loading}>
+            <button type="submit" className="kasten kasten-red w-full !py-2.5 !text-sm" disabled={loading}>
               {loading ? "Anmelden..." : "Anmelden"}
-            </Button>
+            </button>
           </form>
         </CardContent>
       </Card>

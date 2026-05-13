@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -120,11 +119,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-foreground/[0.04]">
       <Card className="w-full max-w-md border-foreground/10 shadow-xl">
-        <CardHeader className="text-center pb-4 pt-10">
-          <div className="flex justify-center">
-            <Logo size="xl" />
+        <CardHeader className="text-center pb-4 pt-12">
+          <div className="flex justify-center mb-6">
+            <Logo size="lg" />
           </div>
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground mt-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             Field Service Management
           </p>
         </CardHeader>
@@ -157,14 +156,14 @@ export default function LoginPage() {
                 <p className="text-sm text-gray-500 mt-2">
                   Prüfe dein Postfach bei <strong>{email}</strong>. Klicke auf den Link in der E-Mail um dein Passwort zurückzusetzen.
                 </p>
-                <Button
+                <button
+                  type="button"
                   onClick={() => { setResetMode(false); setResetSent(false); }}
-                  variant="outline"
-                  className="mt-6"
+                  className="kasten kasten-muted mt-6"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeft className="h-3.5 w-3.5" />
                   Zurück zum Login
-                </Button>
+                </button>
               </div>
             ) : (
               <form onSubmit={handleReset} className="space-y-5">
@@ -185,13 +184,13 @@ export default function LoginPage() {
                   />
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
-                <Button
+                <button
                   type="submit"
-                  className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold shadow-sm"
+                  className="kasten kasten-red w-full !py-2.5 !text-sm"
                   disabled={loading}
                 >
                   {loading ? "Senden..." : "Link senden"}
-                </Button>
+                </button>
                 <button
                   type="button"
                   onClick={() => { setResetMode(false); setError(""); }}
@@ -230,13 +229,13 @@ export default function LoginPage() {
               {error && (
                 <p className="text-sm text-red-600">{error}</p>
               )}
-              <Button
+              <button
                 type="submit"
-                className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold shadow-sm"
+                className="kasten kasten-red w-full !py-2.5 !text-sm"
                 disabled={loading}
               >
                 {loading ? "Anmelden..." : "Anmelden"}
-              </Button>
+              </button>
               <button
                 type="button"
                 onClick={() => { setResetMode(true); setError(""); }}
