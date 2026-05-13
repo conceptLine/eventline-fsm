@@ -56,7 +56,7 @@ function isInRange(day: Date, start: Date, end: Date): boolean {
   return d >= startOfDay(start).getTime() && d <= startOfDay(end).getTime();
 }
 
-function kindFromBooking(b: ApiBooking): BookingKind {
+function kindFromBooking(b: ApiBooking): BookingKind | null {
   // Eigene Anfrage des Partners → nach Workflow-Status faerben.
   if (b.is_own) {
     if (b.status === "partner_anfrage") return "partner_anfrage";
@@ -64,11 +64,15 @@ function kindFromBooking(b: ApiBooking): BookingKind {
     // status in (offen, abgeschlossen) → EVENTLINE hat angenommen.
     return "bestaetigt";
   }
-  // Fremd = EVENTLINE-Eintrag an der Location (Partner sieht via Location-
-  // RLS dass sein Standort gebucht ist). Aus Partner-Sicht ist das immer
-  // eine Vermietung — egal ob Vermietentwurf, akzeptierte Vermietung oder
-  // Direkt-Auftrag, fuer den Partner heisst es: Standort ist vermietet.
-  return "vermietung";
+  // Fremd = EVENTLINE-Eintrag an der Location. Nur als Vermietung
+  // anzeigen wenn EVENTLINE den Job auch als Vermietung gefuehrt hat
+  // (was_anfrage=true ODER Vermietentwurf-Status). Reine Eventline-eigene
+  // Aufträge (Wartung/Einrichten/Übergabe ohne Vermietungs-Tag) sind fuer
+  // den Partner irrelevant und werden NICHT angezeigt — null = skip.
+  if (b.was_anfrage === true || b.status === "anfrage" || b.status === "entwurf") {
+    return "vermietung";
+  }
+  return null;
 }
 
 const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; border: string; label: string }> = {
@@ -122,13 +126,15 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         // stornierte = abgelehnte Anfragen → behalten, damit der Partner
         // sieht "diesen Tag hatte ich angefragt, wurde abgelehnt".
         if (b.status === "storniert" && !b.is_own) continue;
+        const kind = kindFromBooking(b);
+        if (kind === null) continue; // fremde Nicht-Vermietungen ausblenden
         // Fremde Titel maskieren — Partner sieht "Vermietung" statt
         // EVENTLINE-Kundendetails (Datenschutz, gleiches Versprechen wie
         // im Page-Header "ohne Details").
         const titleForPartner = b.is_own ? (b.title ?? "Anfrage") : "Vermietung";
         all.push({
           id: b.id,
-          kind: kindFromBooking(b),
+          kind,
           title: titleForPartner,
           status: b.status,
           start: startOfDay(new Date(b.start_date)),
