@@ -37,7 +37,7 @@ export default function PartnerBelegungsplanPage() {
     return (
       <div className="rounded-xl border border-dashed bg-card p-6 text-center">
         <p className="text-sm text-muted-foreground">
-          Deinem Profil ist keine Location zugewiesen. Wende dich an Eventline.
+          Deinem Profil ist keine Location zugewiesen. Wende dich an EVENTLINE.
         </p>
       </div>
     );
@@ -48,7 +48,7 @@ export default function PartnerBelegungsplanPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Belegungsplan</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Übersicht deiner Location. Eventline-interne Buchungen erscheinen als „Belegt" ohne Details.
+          Übersicht deiner Location. EVENTLINE-interne Buchungen erscheinen als „Belegt" ohne Details.
         </p>
       </div>
       <PartnerBelegungsplan locationId={locationId} />

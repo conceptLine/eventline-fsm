@@ -45,13 +45,13 @@ export default function PartnerLoginPage() {
         .maybeSingle();
       if (!profile || profile.is_active === false) {
         await supabase.auth.signOut();
-        setError("Dein Benutzer hat im Moment keinen Zugriff. Wende dich an Eventline.");
+        setError("Dein Benutzer hat im Moment keinen Zugriff. Wende dich an EVENTLINE.");
         setLoading(false);
         return;
       }
       if (profile.role !== "partner") {
         await supabase.auth.signOut();
-        setError("Dieser Login ist nur für Location-Partner. Eventline-Mitarbeiter bitte über die normale Login-Seite.");
+        setError("Dieser Login ist nur für Location-Partner. EVENTLINE-Mitarbeiter bitte über die normale Login-Seite.");
         setLoading(false);
         return;
       }

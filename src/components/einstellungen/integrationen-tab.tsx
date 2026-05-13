@@ -80,7 +80,7 @@ export function IntegrationenTab() {
     <div className="space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">
-          Verknüpfe Eventline mit externen Tools — z.B. Bexio für Kontaktverwaltung
+          Verknüpfe EVENTLINE mit externen Tools — z.B. Bexio für Kontaktverwaltung
           oder Google Calendar für persönliche Terminübersicht.
         </p>
       </div>

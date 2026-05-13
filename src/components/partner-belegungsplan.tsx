@@ -69,7 +69,7 @@ const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; b
   auftrag:         { dot: "bg-red-500",    bg: "bg-red-50 dark:bg-red-500/15",     text: "text-red-800 dark:text-red-300",     border: "border-red-200 dark:border-red-500/30",     label: "Auftrag" },
   draft:           { dot: "bg-purple-500", bg: "bg-purple-50 dark:bg-purple-500/15", text: "text-purple-800 dark:text-purple-300", border: "border-purple-200 dark:border-purple-500/30", label: "Auftrag in Vorbereitung" },
   partner_anfrage: { dot: "bg-amber-500",  bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-500/30", label: "Deine offene Anfrage" },
-  masked:          { dot: "bg-gray-400 dark:bg-gray-500", bg: "bg-foreground/[0.04] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/10 dark:border-foreground/15", label: "Belegt (Eventline)" },
+  masked:          { dot: "bg-gray-400 dark:bg-gray-500", bg: "bg-foreground/[0.04] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/10 dark:border-foreground/15", label: "Belegt (EVENTLINE)" },
 };
 
 interface Props {

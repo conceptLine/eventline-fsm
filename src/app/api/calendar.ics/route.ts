@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
 
   let userId: string | null = null;
   let isAdmin = false;
-  let calendarName = "Eventline";
+  let calendarName = "EVENTLINE";
 
   if (companyRow?.company_calendar_token === token) {
     isAdmin = true;
-    calendarName = "Eventline — Firma";
+    calendarName = "EVENTLINE — Firma";
   } else {
     // 2) User-Token? Nur aktive Profile akzeptieren — deaktivierte User
     //    sollen keinen Feed mehr bekommen.
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     userId = profile.id;
     isAdmin = profile.role === "admin";
-    calendarName = `Eventline — ${profile.full_name ?? "Mein Kalender"}`;
+    calendarName = `EVENTLINE — ${profile.full_name ?? "Mein Kalender"}`;
   }
 
   // Welche Job-IDs darf der User sehen?

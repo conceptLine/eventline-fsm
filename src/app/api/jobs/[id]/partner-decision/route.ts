@@ -71,7 +71,7 @@ export async function POST(
       await admin.from("notifications").insert({
         user_id: existing.created_by,
         title: `Anfrage angenommen: ${existing.title}`,
-        message: message || "Eventline kümmert sich.",
+        message: message || "EVENTLINE kümmert sich.",
         link: `/partner/anfragen/${id}`,
       });
     }

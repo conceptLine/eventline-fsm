@@ -64,7 +64,7 @@ export default function PartnerAnfragenPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Meine Anfragen</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Erstelle Anfragen für Veranstaltungen an deinem Standort. Eventline bestätigt oder lehnt ab.
+            Erstelle Anfragen für Veranstaltungen an deinem Standort. EVENTLINE bestätigt oder lehnt ab.
           </p>
         </div>
         <button

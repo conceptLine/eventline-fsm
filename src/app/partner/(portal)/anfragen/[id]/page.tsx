@@ -209,9 +209,9 @@ export default function PartnerAnfrageDetailPage() {
           <CardContent className="p-4 flex items-start gap-3">
             <Clock className="h-5 w-5 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold text-amber-800 dark:text-amber-200">Wartet auf Eventline</p>
+              <p className="font-semibold text-amber-800 dark:text-amber-200">Wartet auf EVENTLINE</p>
               <p className="text-amber-700 dark:text-amber-300 mt-0.5">
-                Eventline prüft die Anfrage und meldet sich. Du kannst Termine und Notizen jetzt noch anpassen.
+                EVENTLINE prüft die Anfrage und meldet sich. Du kannst Termine und Notizen jetzt noch anpassen.
               </p>
             </div>
           </CardContent>
@@ -223,10 +223,10 @@ export default function PartnerAnfrageDetailPage() {
             <Check className="h-5 w-5 text-green-700 dark:text-green-300 shrink-0 mt-0.5" />
             <div className="text-sm">
               <p className="font-semibold text-green-800 dark:text-green-200">
-                {job.status === "offen" ? "Bestätigt — Eventline kümmert sich" : "Abgeschlossen"}
+                {job.status === "offen" ? "Bestätigt — EVENTLINE kümmert sich" : "Abgeschlossen"}
               </p>
               <p className="text-green-700 dark:text-green-300 mt-0.5">
-                Änderungen bitte direkt an Eventline melden.
+                Änderungen bitte direkt an EVENTLINE melden.
               </p>
             </div>
           </CardContent>
@@ -382,7 +382,7 @@ export default function PartnerAnfrageDetailPage() {
           <textarea
             value={notesText}
             onChange={(e) => setNotesText(e.target.value)}
-            placeholder={isReadOnly ? "Keine Notizen." : "Was Eventline noch wissen sollte… (wird automatisch gespeichert)"}
+            placeholder={isReadOnly ? "Keine Notizen." : "Was EVENTLINE noch wissen sollte… (wird automatisch gespeichert)"}
             disabled={isReadOnly}
             rows={4}
             style={{ fieldSizing: "content" } as React.CSSProperties}

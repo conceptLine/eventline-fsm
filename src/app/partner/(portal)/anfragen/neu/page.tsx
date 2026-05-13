@@ -116,7 +116,7 @@ export default function NeueAnfragePage() {
       return;
     }
     if (!partnerLocationId) {
-      toast.error("Deinem Profil ist keine Location zugewiesen — wende dich an Eventline.");
+      toast.error("Deinem Profil ist keine Location zugewiesen — wende dich an EVENTLINE.");
       return;
     }
     const effectiveEndDate = endDate || startDate;
