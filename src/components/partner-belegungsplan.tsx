@@ -12,12 +12,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 
-type BookingKind = "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung" | "masked";
+type BookingKind = "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung";
 
 interface Booking {
   id: string;
   kind: BookingKind;
-  title: string;            // "Belegt" wenn masked
+  title: string;
   status: string;
   start: Date;
   end: Date;
@@ -34,6 +34,7 @@ interface ApiBooking {
   location_id: string;
   customer_name: string | null;
   visible: boolean;
+  is_own: boolean;
 }
 
 const DAY_MS = 86400000;
@@ -56,20 +57,18 @@ function isInRange(day: Date, start: Date, end: Date): boolean {
 }
 
 function kindFromBooking(b: ApiBooking): BookingKind {
-  // Eigene Anfragen des Partners (visible=true via RLS created_by-Match):
-  // unterscheide nach Workflow-Status.
-  if (b.visible) {
+  // Eigene Anfrage des Partners → nach Workflow-Status faerben.
+  if (b.is_own) {
     if (b.status === "partner_anfrage") return "partner_anfrage";
     if (b.status === "storniert") return "storniert";
     // status in (offen, abgeschlossen) → EVENTLINE hat angenommen.
     return "bestaetigt";
   }
-  // Fremde Eintraege (EVENTLINE-intern an der Location): Partner sieht
-  // sie maskiert ("Belegt"). Differenziere optisch Vermietungen vs
-  // sonstige Belegungen, damit der Partner einschaetzen kann was sein
-  // Standort durchhaben wird.
-  if (b.was_anfrage === true || b.status === "anfrage" || b.status === "entwurf") return "vermietung";
-  return "masked";
+  // Fremd = EVENTLINE-Eintrag an der Location (Partner sieht via Location-
+  // RLS dass sein Standort gebucht ist). Aus Partner-Sicht ist das immer
+  // eine Vermietung — egal ob Vermietentwurf, akzeptierte Vermietung oder
+  // Direkt-Auftrag, fuer den Partner heisst es: Standort ist vermietet.
+  return "vermietung";
 }
 
 const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; border: string; label: string }> = {
@@ -77,7 +76,6 @@ const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; b
   bestaetigt:      { dot: "bg-green-500",  bg: "bg-green-50 dark:bg-green-500/15",   text: "text-green-800 dark:text-green-300",     border: "border-green-200 dark:border-green-500/30",     label: "Bestätigt" },
   storniert:       { dot: "bg-red-500",    bg: "bg-red-50 dark:bg-red-500/15",       text: "text-red-800 dark:text-red-300",         border: "border-red-200 dark:border-red-500/30",         label: "Abgelehnt" },
   vermietung:      { dot: "bg-blue-500",   bg: "bg-blue-50 dark:bg-blue-500/15",     text: "text-blue-800 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-500/30",       label: "Vermietung (EVENTLINE)" },
-  masked:          { dot: "bg-gray-400 dark:bg-gray-500", bg: "bg-foreground/[0.04] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/10 dark:border-foreground/15", label: "Belegt (EVENTLINE)" },
 };
 
 interface Props {
@@ -123,11 +121,15 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         // Fremde stornierte Jobs raus (Location ist effektiv frei). Eigene
         // stornierte = abgelehnte Anfragen → behalten, damit der Partner
         // sieht "diesen Tag hatte ich angefragt, wurde abgelehnt".
-        if (b.status === "storniert" && !b.visible) continue;
+        if (b.status === "storniert" && !b.is_own) continue;
+        // Fremde Titel maskieren — Partner sieht "Vermietung" statt
+        // EVENTLINE-Kundendetails (Datenschutz, gleiches Versprechen wie
+        // im Page-Header "ohne Details").
+        const titleForPartner = b.is_own ? (b.title ?? "Anfrage") : "Vermietung";
         all.push({
           id: b.id,
           kind: kindFromBooking(b),
-          title: b.visible ? (b.title ?? "Buchung") : "Belegt",
+          title: titleForPartner,
           status: b.status,
           start: startOfDay(new Date(b.start_date)),
           end: startOfDay(new Date(b.end_date ?? b.start_date)),
@@ -188,7 +190,7 @@ export function PartnerBelegungsplan({ locationId }: Props) {
           <h2 className="text-lg font-semibold ml-3">{monthLabel}</h2>
         </div>
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-          {(["partner_anfrage", "bestaetigt", "storniert", "vermietung", "masked"] as const).map((k) => {
+          {(["partner_anfrage", "bestaetigt", "storniert", "vermietung"] as const).map((k) => {
             const s = KIND_STYLE[k];
             return (
               <div key={k} className="flex items-center gap-1.5">

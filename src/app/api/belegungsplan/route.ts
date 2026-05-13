@@ -30,6 +30,7 @@ interface Job {
   start_date: string | null;
   end_date: string | null;
   location_id: string | null;
+  created_by: string | null;
   customer: { name: string } | { name: string }[] | null;
 }
 
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     const [allRes, visibleRes] = await Promise.all([
       admin
         .from("jobs")
-        .select("id, job_number, title, status, was_anfrage, start_date, end_date, location_id, customer:customers(name)")
+        .select("id, job_number, title, status, was_anfrage, start_date, end_date, location_id, created_by, customer:customers(name)")
         .neq("is_deleted", true)
         .not("location_id", "is", null)
         .or(`start_date.gte.${start},end_date.gte.${start}`)
@@ -77,9 +78,13 @@ export async function GET(request: NextRequest) {
 
     const bookings = jobs.map((j) => {
       const visible = visibleIds.has(j.id);
+      const isOwn = j.created_by === auth.user.id;
       const cust = Array.isArray(j.customer) ? j.customer[0] : j.customer;
       // Maskiert: keine Inhalte ausser Datum/Location/Status (= "irgendwas
-      // belegt diese Cell").
+      // belegt diese Cell"). is_own ist immer als boolean dabei — die
+      // Partner-View differenziert damit zwischen "meine Anfrage" und
+      // "EVENTLINE-Eintrag an meiner Location" (beide visible=true via
+      // location-RLS, aber unterschiedliche Farbe).
       return visible ? {
         id: j.id,
         job_number: j.job_number,
@@ -91,6 +96,7 @@ export async function GET(request: NextRequest) {
         location_id: j.location_id,
         customer_name: cust?.name ?? null,
         visible: true,
+        is_own: isOwn,
       } : {
         id: j.id,
         job_number: null,
@@ -102,6 +108,7 @@ export async function GET(request: NextRequest) {
         location_id: j.location_id,
         customer_name: null,
         visible: false,
+        is_own: isOwn,
       };
     });
 
