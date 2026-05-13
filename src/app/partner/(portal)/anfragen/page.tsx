@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -122,14 +122,9 @@ export default function PartnerAnfragenPage() {
       if (filterStatus !== "all") q = q.eq("status", filterStatus);
       const titleQ = searchTitle.trim();
       if (titleQ) q = q.ilike("title", `%${titleQ}%`);
-      const numQ = searchNumber.trim();
-      if (numQ.length === 6 && /^\d+$/.test(numQ)) {
-        // Exakte INT-Nr (6-stellig, Eventline-Konvention)
-        q = q.eq("job_number", parseInt(numQ, 10));
-      } else if (numQ.length >= 1 && /^\d+$/.test(numQ)) {
-        // Prefix-Match auf Job-Number als Text
-        q = q.filter("job_number::text", "like", `${numQ}%`);
-      }
+      // INT-Nr-Filter wird unten client-seitig gemacht (auf job_number::text
+      // ilike funktioniert die PostgREST-Cast-Syntax im Query-Builder nicht
+      // zuverlaessig; Partner hat eh max ~100 Anfragen → instant).
       const [jobsRes, usersRes] = await Promise.all([
         q
           // Aktiv: naechstes Event zuerst. Archiv: juengstes vergangenes zuerst.
@@ -151,7 +146,17 @@ export default function PartnerAnfragenPage() {
     }, 250);
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, searchTitle, searchNumber, showArchive]);
+  }, [filterStatus, searchTitle, showArchive]);
+
+  // INT-Nummer-Suche: client-seitig auf job_number per substring/prefix.
+  // Reaktion instant (kein Reload bei jedem Tastenanschlag).
+  const visibleAnfragen = useMemo(() => {
+    const numQ = searchNumber.trim();
+    if (!numQ) return anfragen;
+    return anfragen.filter((a) =>
+      a.job_number !== null && String(a.job_number).includes(numQ)
+    );
+  }, [anfragen, searchNumber]);
 
   const hasSearch = searchTitle.trim().length > 0 || searchNumber.trim().length > 0 || filterStatus !== "all";
 
@@ -240,7 +245,7 @@ export default function PartnerAnfragenPage() {
             </Card>
           ))}
         </div>
-      ) : anfragen.length === 0 ? (
+      ) : visibleAnfragen.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-16 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-foreground/10 dark:bg-foreground/15 flex items-center justify-center mb-4">
@@ -260,7 +265,7 @@ export default function PartnerAnfragenPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {anfragen.map((a) => {
+          {visibleAnfragen.map((a) => {
             const s = statusStyle(a.status);
             const Icon = s.icon;
             // Termin-Zuweisungs-Anzeige nur fuer angenommene/laufende
