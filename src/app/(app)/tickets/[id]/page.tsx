@@ -17,6 +17,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BackButton } from "@/components/ui/back-button";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { SearchableSelect } from "@/components/searchable-select";
 import {
   Wrench, Receipt, Clock, Package, Calendar, User, FileText, Download, Eye,
   CheckCircle2, XCircle, Trash2,
@@ -67,6 +68,10 @@ export default function TicketDetailPage() {
   // data.job_id, oder via time_entries.job_id bei Korrektur). Null = kein
   // Auftrag (Andere Arbeit) ODER noch nicht geladen.
   const [stempelJob, setStempelJob] = useState<{ id: string; job_number: number; title: string } | null>(null);
+  // Admin-Approval-Flow: Job-Korrektur. Sentinel "ANDERE_ARBEIT" = job_id NULL.
+  // Default = bestehender stempelJob.id (also "keine Aenderung").
+  const [correctedJobId, setCorrectedJobId] = useState<string>("");
+  const [selectableJobs, setSelectableJobs] = useState<{ id: string; job_number: number; title: string; start_date: string | null; end_date: string | null }[]>([]);
 
   async function load() {
     setLoading(true);
@@ -140,8 +145,10 @@ export default function TicketDetailPage() {
             .eq("id", jobId)
             .maybeSingle();
           setStempelJob(job ? { id: job.id, job_number: job.job_number, title: job.title } : null);
+          setCorrectedJobId(job?.id ?? "ANDERE_ARBEIT");
         } else {
           setStempelJob(null);
+          setCorrectedJobId("ANDERE_ARBEIT");
         }
       } else {
         setStempelJob(null);
@@ -159,6 +166,25 @@ export default function TicketDetailPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Job-Liste fuer den Admin-Korrektur-Selector laden — nur wenn das
+  // Ticket vom Typ stempel_aenderung ist und noch offen. Sonst spart's
+  // den Roundtrip.
+  useEffect(() => {
+    if (!ticket || ticket.type !== "stempel_aenderung" || ticket.status !== "offen") return;
+    if (!can("tickets:manage")) return;
+    (async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("id, job_number, title, start_date, end_date")
+        .neq("is_deleted", true)
+        .in("status", ["offen", "abgeschlossen", "entwurf"])
+        .order("job_number", { ascending: false })
+        .limit(500);
+      setSelectableJobs((data as typeof selectableJobs) ?? []);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket]);
 
   async function getSignedUrl(path: string): Promise<string | null> {
     const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 3600);
@@ -227,10 +253,18 @@ export default function TicketDetailPage() {
     });
     if (!ok) return;
     setBusy(true);
+    // Bei stempel_aenderung + erledigt: corrected_job_id nur mitschicken
+    // wenn Admin den Wert auch wirklich gewaehlt hat (correctedJobId
+    // ist immer gesetzt sobald das Ticket geladen war).
+    const correctionPayload =
+      ticket.type === "stempel_aenderung" && newStatus === "erledigt" && correctedJobId
+        ? { p_corrected_job_id: correctedJobId }
+        : {};
     const { error } = await supabase.rpc("apply_ticket", {
       p_ticket_id: id,
       p_new_status: newStatus,
       p_resolution_note: resolutionNote.trim() || null,
+      ...correctionPayload,
     });
     if (error) {
       TOAST.supabaseError(error, "Status konnte nicht geändert werden");
@@ -487,6 +521,43 @@ export default function TicketDetailPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Bearbeiten</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Auftrag-Korrektur fuer Stempel-Tickets — Admin kann den
+                vom Mitarbeiter gewaehlten Auftrag noch vor dem Erledigen
+                aendern (z.B. wenn aus zwei aehnlich benannten Auftraegen
+                der falsche getroffen wurde). */}
+            {ticket.type === "stempel_aenderung" && (() => {
+              // Date-Filter: nur Auftraege die am Stempel-Datum laufen.
+              // start_date <= datum <= end_date. Auftraege ohne start_date
+              // bleiben drin (Default-sicher).
+              const sd = (ticket.data ?? {}) as { neu_start?: string };
+              const stempelDate = sd.neu_start ? sd.neu_start.slice(0, 10) : null;
+              const relevant = stempelDate
+                ? selectableJobs.filter((j) => {
+                    if (!j.start_date) return true;
+                    const start = j.start_date.slice(0, 10);
+                    const end = (j.end_date ?? j.start_date).slice(0, 10);
+                    return start <= stempelDate && stempelDate <= end;
+                  })
+                : selectableJobs;
+              const changed = correctedJobId !== (stempelJob?.id ?? "ANDERE_ARBEIT");
+              return (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground/70 ml-1">
+                    Auftrag {changed && <span className="text-amber-600 dark:text-amber-400">(geändert)</span>}
+                  </p>
+                  <SearchableSelect
+                    value={correctedJobId}
+                    onChange={setCorrectedJobId}
+                    items={[
+                      { id: "ANDERE_ARBEIT", label: "Keinem Auftrag (Andere Arbeit)" },
+                      ...relevant.map((j) => ({ id: j.id, label: `INT-${j.job_number} — ${j.title}` })),
+                    ]}
+                    placeholder="Auftrag auswählen…"
+                    clearable={false}
+                  />
+                </div>
+              );
+            })()}
             <div className="space-y-1">
               <p className="text-[10px] text-muted-foreground/70 ml-1">Notiz an Ersteller (optional)</p>
               <textarea
