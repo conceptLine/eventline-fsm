@@ -34,6 +34,7 @@ import { TimeRangesSection } from "./rapport/time-ranges-section";
 import { PhotosSection } from "./rapport/photos-section";
 import { SignaturesSection } from "./rapport/signatures-section";
 import type { TimeRange, ProfileOption, UploadedPhoto } from "./rapport/types";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 interface JobMeta {
   id: string;
@@ -65,6 +66,7 @@ interface Props {
 
 export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, finishBlockReason, onBeforeFinalSubmit, isMaintenance = false }: Props) {
   const supabase = createClient();
+  const { confirm, ConfirmModalElement } = useConfirm();
   const [saving, setSaving] = useState<"draft" | "final" | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<"entwurf" | "abgeschlossen" | null>(null);
@@ -398,6 +400,19 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
       const ok = await onBeforeFinalSubmit();
       if (!ok) return;
     }
+    // Letzter-Techniker-Bestaetigung — nach dem Abschliessen blockiert
+    // der DB-Trigger weitere Rapport-Writes auf diesen Job. Confirm-Button
+    // ist 8s lang disabled, damit der User die Warnung tatsaechlich liest.
+    const ok = await confirm({
+      title: "Bist du der letzte Techniker?",
+      message:
+        "Nach dem Abschliessen ist der Rapport endgültig — kein anderer Techniker kann mehr einen Rapport für diesen Auftrag erstellen oder bearbeiten.\n\nNur bestätigen, wenn KEINE weiteren Mitarbeiter an diesem Auftrag arbeiten.",
+      confirmLabel: "Ja, abschliessen",
+      cancelLabel: "Abbrechen",
+      variant: "red",
+      confirmDelaySec: 8,
+    });
+    if (!ok) return;
     setSaving("final");
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
@@ -608,6 +623,7 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
           )}
         </form>
       </Modal>
+      {ConfirmModalElement}
     </>
   );
 }
