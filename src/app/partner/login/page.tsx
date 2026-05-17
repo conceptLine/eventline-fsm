@@ -101,7 +101,7 @@ export default function PartnerLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-foreground/[0.04]">
+    <div className="relative min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-foreground/[0.04]">
       <Card className="w-full max-w-md border-foreground/10 shadow-xl">
         <CardHeader className="text-center pb-4 pt-12">
           <div className="flex justify-center items-start gap-3 mb-6">
@@ -203,6 +203,9 @@ export default function PartnerLoginPage() {
           )}
         </CardContent>
       </Card>
+      <div className="absolute bottom-4 left-0 right-0 text-center text-[11px] text-muted-foreground">
+        <a href="/datenschutz" className="hover:text-foreground transition-colors">Datenschutz</a>
+      </div>
     </div>
   );
 }

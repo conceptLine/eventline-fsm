@@ -17,6 +17,7 @@ import { RollenTab } from "@/components/einstellungen/rollen-tab";
 import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
+import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
 
 type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet";
 type Portal = "firma" | "partner";
@@ -167,7 +168,12 @@ export default function EinstellungenPage() {
         </div>
       </div>
 
-      {tab === "integrationen" && <IntegrationenTab />}
+      {tab === "integrationen" && (
+        <div className="space-y-6">
+          <MeinKontoCard />
+          <IntegrationenTab />
+        </div>
+      )}
 
       {tab === "team" && isAdmin && <TeamTab />}
 

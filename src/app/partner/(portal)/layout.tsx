@@ -9,8 +9,10 @@ import { Toaster } from "@/components/ui/sonner";
 import { useTheme } from "next-themes";
 import { useEnterAsTab } from "@/lib/use-enter-as-tab";
 import { useScrollRestoration } from "@/lib/use-scroll-restoration";
-import { Sun, Moon, LogOut, FileText, Calendar } from "lucide-react";
+import { Sun, Moon, LogOut, FileText, Calendar, Shield, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DatenschutzAcceptModal } from "@/components/datenschutz-accept-modal";
+import { DATENSCHUTZ_VERSION } from "@/lib/datenschutz";
 
 // Partner-Portal-Layout: minimal Topbar, KEINE Sidebar, KEINE Eve.
 // Auth-Guard: nur eingeloggte 'partner'-Profile mit partner_location_id
@@ -24,6 +26,8 @@ interface PartnerProfile {
   partner_location_id: string | null;
   is_active: boolean;
   location_name: string | null;
+  datenschutz_akzeptiert_at: string | null;
+  datenschutz_akzeptiert_version: string | null;
 }
 
 export default function PartnerPortalLayout({ children }: { children: React.ReactNode }) {
@@ -46,7 +50,7 @@ export default function PartnerPortalLayout({ children }: { children: React.Reac
       }
       const { data } = await supabase
         .from("profiles")
-        .select("id, full_name, role, partner_location_id, is_active, location:locations!profiles_partner_location_id_fkey(name)")
+        .select("id, full_name, role, partner_location_id, is_active, datenschutz_akzeptiert_at, datenschutz_akzeptiert_version, location:locations!profiles_partner_location_id_fkey(name)")
         .eq("id", user.id)
         .maybeSingle();
       if (!data) {
@@ -78,6 +82,8 @@ export default function PartnerPortalLayout({ children }: { children: React.Reac
         partner_location_id: data.partner_location_id,
         is_active: data.is_active,
         location_name: loc?.name ?? null,
+        datenschutz_akzeptiert_at: data.datenschutz_akzeptiert_at ?? null,
+        datenschutz_akzeptiert_version: data.datenschutz_akzeptiert_version ?? null,
       });
       setLoading(false);
     })();
@@ -108,7 +114,14 @@ export default function PartnerPortalLayout({ children }: { children: React.Reac
   const tabs = [
     { href: "/partner/anfragen", label: "Meine Anfragen", icon: FileText },
     { href: "/partner/belegungsplan", label: "Belegungsplan", icon: Calendar },
+    { href: "/partner/konto", label: "Mein Konto", icon: User },
   ];
+
+  // Akzeptanz noch ausstehend → Modal zwingend. User kann das Portal
+  // erst nutzen wenn er aktuelle Version bestaetigt hat. Re-Akzeptanz
+  // greift bei neuen Versionen der Erklaerung.
+  const needsAccept = !profile.datenschutz_akzeptiert_at
+    || profile.datenschutz_akzeptiert_version !== DATENSCHUTZ_VERSION;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f5f7] dark:bg-[#0a0a0a]">
@@ -170,6 +183,26 @@ export default function PartnerPortalLayout({ children }: { children: React.Reac
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 pb-24">
         {children}
       </main>
+
+      {needsAccept && (
+        <DatenschutzAcceptModal
+          onAccepted={async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const { data: refreshed } = await supabase
+              .from("profiles")
+              .select("datenschutz_akzeptiert_at, datenschutz_akzeptiert_version")
+              .eq("id", user.id)
+              .maybeSingle();
+            setProfile((p) => p ? {
+              ...p,
+              datenschutz_akzeptiert_at: refreshed?.datenschutz_akzeptiert_at ?? p.datenschutz_akzeptiert_at,
+              datenschutz_akzeptiert_version: refreshed?.datenschutz_akzeptiert_version ?? p.datenschutz_akzeptiert_version,
+            } : p);
+          }}
+          onCancel={handleSignOut}
+        />
+      )}
 
       <Toaster />
     </div>
