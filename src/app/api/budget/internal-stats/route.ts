@@ -1,25 +1,19 @@
 // GET /api/budget/internal-stats?year=2026
 //
-// Berechnet Soll und Ist fuer alle Kategorien mit auto_source='internal_labor'.
+// Berechnet Soll-Werte fuer alle Kategorien mit auto_source='internal_labor':
+//   Soll = SUM(job_appointment-Stunden im Jahr fuer eligible User) × Vollkosten/h
 //
-// Pro-User-Raten (seit Migration 114): jeder Mitarbeiter hat eigene
-// hourly_wage + employer_costs in employee_compensation. Wir multiplizieren
-// Termin-/Stempel-Stunden mit der Vollkosten-Rate des jeweiligen Users.
+// Pro-User-Raten: jeder Mitarbeiter hat eigene hourly_wage + employer_costs
+// in employee_compensation. Wir multiplizieren Termin-Stunden mit der
+// Vollkosten-Rate des jeweiligen Users.
 //
-//   Soll = SUM(appointment.duration × user.vollkosten_per_hour)
-//   Ist  = SUM(time_entry.duration  × user.vollkosten_per_hour)
-//
-// Eligibility — User ohne Compensation-Eintrag ODER mit ausgeschlossener
-// Rolle/Email werden komplett weggelassen (kein Phantom-Lohn mit 0 CHF).
+// Eligibility: Wir zaehlen Stunden NUR von echten Mitarbeitern.
 //   • role IN ('admin','partner')                 → raus
 //   • email = 'admin@eventline-basel.com'         → raus
 //   • kein employee_compensation-Eintrag (NULL)   → raus
-//
-// Permission: budget:view (Soll) bzw. budget:view-actuals (Ist).
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { requireTrustedDevice } from "@/lib/api-auth";
 
 const EXCLUDED_EMAILS = new Set(["admin@eventline-basel.com"]);
@@ -28,10 +22,6 @@ const EXCLUDED_ROLES = new Set(["admin", "partner"]);
 export async function GET(request: Request) {
   const auth = await requireTrustedDevice("budget:view");
   if (auth.error) return auth.error;
-
-  const userClient = await createClient();
-  const { data: viewActualsCheck } = await userClient.rpc("has_permission", { perm: "budget:view-actuals" });
-  const canViewActuals = viewActualsCheck === true;
 
   const url = new URL(request.url);
   const yearRaw = url.searchParams.get("year");
@@ -42,7 +32,7 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient();
 
-  // 1. Profile + ausschluss
+  // 1. Eligible-User-Set
   const { data: profiles, error: profErr } = await admin
     .from("profiles")
     .select("id, role, email");
@@ -57,17 +47,13 @@ export async function GET(request: Request) {
     eligibleProfileIds.add(p.id as string);
   }
 
-  // 2. Pro-User-Vollkosten-Rate aus employee_compensation laden.
-  //    Wir laden ALLE Lohn-Zeilen (auch historische) damit wir bei einer
-  //    Lohnerhoehung mitten im Jahr die richtige Rate pro Datum waehlen.
+  // 2. Pro-User-Vollkosten-Rate aus employee_compensation (history-aware).
   const { data: comps, error: compErr } = await admin
     .from("employee_compensation")
     .select("profile_id, hourly_wage_chf, employer_costs_chf_per_hour, effective_from, effective_to")
     .order("effective_from", { ascending: false });
   if (compErr) return NextResponse.json({ success: false, error: compErr.message }, { status: 500 });
 
-  // Indexiert pro User, sortiert nach effective_from desc — beim Lookup
-  // nehmen wir die erste Zeile bei der das Datum im Fenster liegt.
   const compsByUser = new Map<string, Array<{ from: string; to: string | null; rate: number }>>();
   for (const c of comps ?? []) {
     const uid = c.profile_id as string;
@@ -81,9 +67,8 @@ export async function GET(request: Request) {
     });
   }
 
-  /** Findet die Vollkosten-Rate fuer einen User an einem bestimmten Datum.
-   *  Liefert null wenn der User an dem Datum keinen aktiven Lohn hatte
-   *  (z.B. neuer Mitarbeiter dessen erste Lohnzeile spaeter beginnt). */
+  /** Vollkosten-Rate fuer einen User an einem bestimmten Datum. Null wenn
+   *  der User an dem Datum keinen aktiven Lohn hatte. */
   function rateAt(userId: string, dateIso: string): number | null {
     const entries = compsByUser.get(userId);
     if (!entries) return null;
@@ -133,48 +118,18 @@ export async function GET(request: Request) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
     const hours = (end - start) / 3600000;
     const rate = rateAt(userId, a.start_time as string);
-    if (rate === null) continue; // Kein Lohn hinterlegt -> nicht gerechnet
+    if (rate === null) continue;
     sollHours += hours;
     sollChf += hours * rate;
   }
 
-  // 5. Ist = Summe aller time_entries × Vollkosten-Rate. Nur wenn der User
-  //    es sehen darf.
-  let istChf = 0;
-  let istHours = 0;
-  if (canViewActuals) {
-    const { data: entries, error: entryErr } = await admin
-      .from("time_entries")
-      .select("user_id, clock_in, clock_out")
-      .gte("clock_in", yearStart)
-      .lt("clock_in", yearEnd)
-      .not("clock_out", "is", null);
-    if (entryErr) return NextResponse.json({ success: false, error: entryErr.message }, { status: 500 });
-
-    for (const te of entries ?? []) {
-      const userId = te.user_id as string;
-      if (!eligibleProfileIds.has(userId)) continue;
-      const start = new Date(te.clock_in as string).getTime();
-      const end = new Date(te.clock_out as string).getTime();
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
-      const hours = (end - start) / 3600000;
-      const rate = rateAt(userId, te.clock_in as string);
-      if (rate === null) continue;
-      istHours += hours;
-      istChf += hours * rate;
-    }
-  }
-
-  // Round to cents.
   const round = (n: number) => Math.round(n * 100) / 100;
 
-  const byCategoryId: Record<string, { soll_chf: number; ist_chf: number; hours_soll: number; hours_ist: number }> = {};
+  const byCategoryId: Record<string, { soll_chf: number; hours_soll: number }> = {};
   for (const catId of laborCategoryIds) {
     byCategoryId[catId] = {
       soll_chf: round(sollChf),
-      ist_chf: round(istChf),
       hours_soll: round(sollHours),
-      hours_ist: canViewActuals ? round(istHours) : 0,
     };
   }
 

@@ -151,30 +151,6 @@ function nodeTotal(node: TreeNode, entries: Map<string, number>): number {
   return entries.get(node.cat.id) ?? 0;
 }
 
-/** Ist-Summe einer Node — analog nodeTotal: auto_source overridet Children. */
-function nodeIst(node: TreeNode, actuals: Map<string, number>): number {
-  if (node.cat.auto_source) {
-    return actuals.get(node.cat.id) ?? 0;
-  }
-  if (node.children.length > 0) {
-    return node.children.reduce((sum, c) => sum + nodeIst(c, actuals), 0);
-  }
-  return actuals.get(node.cat.id) ?? 0;
-}
-
-/** Status-Ampel basierend auf Prozent durch's Jahr.
- *  • <80%   → green
- *  • 80-100% → amber
- *  • >100%   → red
- *  Liefert null wenn keine Soll-Zahl da ist (Vermeidet "Inf%"-Anzeigen). */
-function statusColor(soll: number, ist: number): "green" | "amber" | "red" | null {
-  if (soll <= 0) return null;
-  const pct = (ist / soll) * 100;
-  if (pct > 100) return "red";
-  if (pct >= 80) return "amber";
-  return "green";
-}
-
 // =====================================================================
 // Page
 // =====================================================================
@@ -187,7 +163,6 @@ export default function BudgetPage() {
   const { confirm, ConfirmModalElement } = useConfirm();
 
   const canEdit = can("budget:edit");
-  const canViewActuals = can("budget:view-actuals");
 
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
@@ -232,17 +207,17 @@ export default function BudgetPage() {
     setEntries(map);
   }, []);
 
-  // Auto-Source-Werte (z.B. Personalaufwand = Termine + Stempel × Vollkosten/h).
-  // Werden auf die Soll-/Ist-Werte der entsprechenden Kategorie ueberlagert.
-  const [autoStats, setAutoStats] = useState<Map<string, { soll: number; ist: number }>>(new Map());
+  // Auto-Source-Werte (z.B. Personalaufwand = Termine × Vollkosten/h).
+  // Werden auf den Soll-Wert der entsprechenden Kategorie ueberlagert.
+  const [autoStats, setAutoStats] = useState<Map<string, number>>(new Map());
   const loadAutoStats = useCallback(async (y: number) => {
     const res = await fetch(`/api/budget/internal-stats?year=${y}`);
     const json = await res.json();
     if (!res.ok || !json.success) return;
-    const map = new Map<string, { soll: number; ist: number }>();
-    const byCat = (json.byCategoryId as Record<string, { soll_chf: number; ist_chf: number }>) ?? {};
+    const map = new Map<string, number>();
+    const byCat = (json.byCategoryId as Record<string, { soll_chf: number }>) ?? {};
     for (const [catId, payload] of Object.entries(byCat)) {
-      map.set(catId, { soll: Number(payload.soll_chf), ist: Number(payload.ist_chf) });
+      map.set(catId, Number(payload.soll_chf));
     }
     setAutoStats(map);
   }, []);
@@ -264,29 +239,17 @@ export default function BudgetPage() {
   // die selbe Kategorie (Auto hat Vorrang, kein doppeltes Buchen).
   const effectiveEntries = useMemo(() => {
     const merged = new Map(entries);
-    for (const [catId, stats] of autoStats.entries()) {
-      merged.set(catId, stats.soll);
+    for (const [catId, soll] of autoStats.entries()) {
+      merged.set(catId, soll);
     }
     return merged;
   }, [entries, autoStats]);
-
-  const effectiveActuals = useMemo(() => {
-    const merged = new Map<string, number>();
-    for (const [catId, stats] of autoStats.entries()) {
-      merged.set(catId, stats.ist);
-    }
-    return merged;
-  }, [autoStats]);
 
   // Tree + Totals
   const tree = useMemo(() => buildTree(categories), [categories]);
   const grandTotal = useMemo(
     () => tree.reduce((sum, n) => sum + nodeTotal(n, effectiveEntries), 0),
     [tree, effectiveEntries],
-  );
-  const grandIst = useMemo(
-    () => tree.reduce((sum, n) => sum + nodeIst(n, effectiveActuals), 0),
-    [tree, effectiveActuals],
   );
 
 
@@ -449,24 +412,13 @@ export default function BudgetPage() {
             </div>
           ) : (
             <div className="divide-y">
-              {/* Spalten-Header — nur bei aktivem Ist sichtbar (sonst self-explanatory) */}
-              {canViewActuals && (
-                <div className="flex items-center gap-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <div className="flex-1" />
-                  <div className="w-32 text-right">Soll</div>
-                  <div className="w-32 text-right">Ist</div>
-                  <div className="w-12 text-right">%</div>
-                </div>
-              )}
               {tree.map((node) => (
                 <BudgetRowGroup
                   key={node.cat.id}
                   node={node}
                   entries={effectiveEntries}
-                  actuals={effectiveActuals}
                   savingCats={savingCats}
                   canEdit={canEdit}
-                  canViewActuals={canViewActuals}
                   onSave={saveEntry}
                   onRename={(c) => {
                     setRenameTarget(c);
@@ -486,16 +438,6 @@ export default function BudgetPage() {
                 <div className="w-32 text-right text-base font-semibold tabular-nums">
                   {formatCHF(grandTotal)}
                 </div>
-                {canViewActuals && (
-                  <>
-                    <div className="w-32 text-right text-base font-semibold tabular-nums text-muted-foreground">
-                      {grandIst > 0 ? formatCHF(grandIst) : "—"}
-                    </div>
-                    <div className="w-12 text-right text-sm tabular-nums text-muted-foreground">
-                      {grandTotal > 0 ? `${Math.round((grandIst / grandTotal) * 100)}%` : "—"}
-                    </div>
-                  </>
-                )}
               </div>
             </div>
           )}
@@ -608,10 +550,8 @@ export default function BudgetPage() {
 function BudgetRowGroup({
   node,
   entries,
-  actuals,
   savingCats,
   canEdit,
-  canViewActuals,
   onSave,
   onRename,
   onArchive,
@@ -619,10 +559,8 @@ function BudgetRowGroup({
 }: {
   node: TreeNode;
   entries: Map<string, number>;
-  actuals: Map<string, number>;
   savingCats: Set<string>;
   canEdit: boolean;
-  canViewActuals: boolean;
   onSave: (categoryId: string, amount: number) => Promise<boolean>;
   onRename: (cat: BudgetCategory) => void;
   onArchive: (cat: BudgetCategory) => void;
@@ -630,7 +568,6 @@ function BudgetRowGroup({
 }) {
   const hasChildren = node.children.length > 0;
   const total = nodeTotal(node, entries);
-  const ist = nodeIst(node, actuals);
 
   return (
     <>
@@ -638,33 +575,27 @@ function BudgetRowGroup({
       <BudgetRow
         cat={node.cat}
         amount={hasChildren ? total : (entries.get(node.cat.id) ?? 0)}
-        ist={ist}
         readOnly={hasChildren || !!node.cat.auto_source}
         autoSource={node.cat.auto_source}
         depth={0}
         saving={savingCats.has(node.cat.id)}
         canEdit={canEdit}
-        canViewActuals={canViewActuals}
         onSave={onSave}
         onRename={onRename}
         onArchive={onArchive}
         onAddChild={canEdit ? onAddChild : undefined}
       />
-      {/* Children — bei auto_source verstecken (Auto-Wert deckt sie ab, sonst
-          haetten wir parallel Auto-Vollkosten + Bexio-Buchungen sichtbar und
-          das ist visuell missverstaendlich). */}
+      {/* Children — bei auto_source verstecken (Auto-Wert deckt sie ab). */}
       {!node.cat.auto_source && node.children.map((child) => (
         <BudgetRow
           key={child.cat.id}
           cat={child.cat}
           amount={entries.get(child.cat.id) ?? 0}
-          ist={actuals.get(child.cat.id) ?? 0}
           readOnly={!!child.cat.auto_source}
           autoSource={child.cat.auto_source}
           depth={1}
           saving={savingCats.has(child.cat.id)}
           canEdit={canEdit}
-          canViewActuals={canViewActuals}
           onSave={onSave}
           onRename={onRename}
           onArchive={onArchive}
@@ -681,13 +612,11 @@ function BudgetRowGroup({
 function BudgetRow({
   cat,
   amount,
-  ist,
   readOnly,
   autoSource,
   depth,
   saving,
   canEdit,
-  canViewActuals,
   onSave,
   onRename,
   onArchive,
@@ -695,13 +624,11 @@ function BudgetRow({
 }: {
   cat: BudgetCategory;
   amount: number;
-  ist: number;
   readOnly: boolean;
   autoSource: string | null;
   depth: 0 | 1;
   saving: boolean;
   canEdit: boolean;
-  canViewActuals: boolean;
   onSave: (categoryId: string, amount: number) => Promise<boolean>;
   onRename: (cat: BudgetCategory) => void;
   onArchive: (cat: BudgetCategory) => void;
@@ -820,39 +747,6 @@ function BudgetRow({
         )}
       </div>
 
-      {/* Ist + Prozent — nur fuer User mit budget:view-actuals */}
-      {canViewActuals && (
-        <>
-          <div
-            className="w-32 shrink-0 h-8 flex items-center justify-end pr-2.5 text-sm tabular-nums text-muted-foreground"
-            data-tooltip={ist > 0 ? "Bexio-Buchungen aggregiert" : "Keine Bexio-Daten"}
-          >
-            {ist > 0 ? CHF_FORMAT.format(Math.round(ist)) : "–"}
-          </div>
-          <PercentCell soll={amount} ist={ist} />
-        </>
-      )}
-    </div>
-  );
-}
-
-// =====================================================================
-// Sub-Komponente: Prozent-Zelle mit Status-Ampel
-// =====================================================================
-function PercentCell({ soll, ist }: { soll: number; ist: number }) {
-  const color = statusColor(soll, ist);
-  if (color === null) {
-    return (
-      <div className="w-12 shrink-0 h-8 flex items-center justify-end text-xs tabular-nums text-muted-foreground">–</div>
-    );
-  }
-  const pct = Math.round((ist / soll) * 100);
-  const dotColor =
-    color === "red" ? "bg-red-500" : color === "amber" ? "bg-amber-500" : "bg-emerald-500";
-  return (
-    <div className="w-12 shrink-0 h-8 flex items-center justify-end gap-1 text-xs tabular-nums">
-      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
-      <span className="text-muted-foreground">{pct}%</span>
     </div>
   );
 }
