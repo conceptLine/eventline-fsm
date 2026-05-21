@@ -1,11 +1,12 @@
 // GET /api/budget/internal-stats?year=2026
 //
 // Berechnet Soll-Werte fuer alle Kategorien mit auto_source='internal_labor':
-//   Soll = SUM(job_appointment-Stunden im Jahr fuer eligible User) × Vollkosten/h
+//   Soll = SUM(job_appointment-Stunden im Jahr fuer eligible User) × Brutto-Lohn/h
 //
-// Pro-User-Raten: jeder Mitarbeiter hat eigene hourly_wage + employer_costs
-// in employee_compensation. Wir multiplizieren Termin-Stunden mit der
-// Vollkosten-Rate des jeweiligen Users.
+// WICHTIG: NUR Brutto-Lohn (hourly_wage_chf), nicht Vollkosten. Der
+// auto_source liegt auf Konto 5000 'Loehne' — das ist Brutto-Lohn.
+// Arbeitgeber-Anteile (5700 AHV / 5720 Vorsorge / etc.) sind separat
+// auf den jeweiligen Konten zu budgetieren, sonst doppelt gezaehlt.
 //
 // Eligibility: Wir zaehlen Stunden NUR von echten Mitarbeitern.
 //   • role IN ('admin','partner')                 → raus
@@ -47,10 +48,12 @@ export async function GET(request: Request) {
     eligibleProfileIds.add(p.id as string);
   }
 
-  // 2. Pro-User-Vollkosten-Rate aus employee_compensation (history-aware).
+  // 2. Pro-User-Brutto-Lohn aus employee_compensation (history-aware).
+  //    employer_costs_chf_per_hour wird hier bewusst NICHT addiert — siehe
+  //    Header-Kommentar.
   const { data: comps, error: compErr } = await admin
     .from("employee_compensation")
-    .select("profile_id, hourly_wage_chf, employer_costs_chf_per_hour, effective_from, effective_to")
+    .select("profile_id, hourly_wage_chf, effective_from, effective_to")
     .order("effective_from", { ascending: false });
   if (compErr) return NextResponse.json({ success: false, error: compErr.message }, { status: 500 });
 
@@ -58,7 +61,7 @@ export async function GET(request: Request) {
   for (const c of comps ?? []) {
     const uid = c.profile_id as string;
     if (!eligibleProfileIds.has(uid)) continue;
-    const rate = Number(c.hourly_wage_chf) + Number(c.employer_costs_chf_per_hour);
+    const rate = Number(c.hourly_wage_chf);
     if (!compsByUser.has(uid)) compsByUser.set(uid, []);
     compsByUser.get(uid)!.push({
       from: c.effective_from as string,
@@ -67,7 +70,7 @@ export async function GET(request: Request) {
     });
   }
 
-  /** Vollkosten-Rate fuer einen User an einem bestimmten Datum. Null wenn
+  /** Brutto-Lohn-Rate fuer einen User an einem bestimmten Datum. Null wenn
    *  der User an dem Datum keinen aktiven Lohn hatte. */
   function rateAt(userId: string, dateIso: string): number | null {
     const entries = compsByUser.get(userId);

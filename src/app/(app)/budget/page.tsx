@@ -759,7 +759,7 @@ function BudgetRow({
       {autoSource === "internal_labor" && (
         <span
           className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground border rounded-full px-1.5 py-0.5"
-          data-tooltip="Soll = geplante Termine × Vollkosten/h · Ist = gestempelte Stunden × Vollkosten/h. Raten unter HR → Löhne, ueberschreibt Bexio-Buchungen dieser Konto-Gruppe."
+          data-tooltip="Soll = geplante Termine × Brutto-Lohn/h. Raten pro Mitarbeiter unter HR → Löhne. Arbeitgeber-Anteile (5700/5720 etc.) separat budgetieren."
         >
           Auto
         </span>
