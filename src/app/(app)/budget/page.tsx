@@ -138,18 +138,25 @@ function buildTree(categories: BudgetCategory[]): TreeNode[] {
   return build(null);
 }
 
-/** Summe einer Node — wenn Kinder vorhanden, Summe der Kinder; sonst eigener Eintrag. */
+/** Summe einer Node — wenn Kinder vorhanden, Summe der Kinder; sonst eigener Eintrag.
+ *  Sonderfall auto_source: der Auto-berechnete Wert auf dem Parent ueberschreibt
+ *  die Children-Summe. Sonst wuerden Stempel-Vollkosten (Auto) + Bexio-Lohn-
+ *  Buchungen (Children) doppelt zaehlen. */
 function nodeTotal(node: TreeNode, entries: Map<string, number>): number {
+  if (node.cat.auto_source) {
+    return entries.get(node.cat.id) ?? 0;
+  }
   if (node.children.length > 0) {
     return node.children.reduce((sum, c) => sum + nodeTotal(c, entries), 0);
   }
   return entries.get(node.cat.id) ?? 0;
 }
 
-/** Ist-Summe einer Node — wenn Kinder vorhanden, Summe der Kinder; sonst eigener Wert.
- *  Achtung: Ist kommt nur fuer Leaf-Kategorien aus der API (Mapping ist auf
- *  Leaf-Ebene sinnvoll). Eltern bekommen die Summe rekursiv von Kindern. */
+/** Ist-Summe einer Node — analog nodeTotal: auto_source overridet Children. */
 function nodeIst(node: TreeNode, actuals: Map<string, number>): number {
+  if (node.cat.auto_source) {
+    return actuals.get(node.cat.id) ?? 0;
+  }
   if (node.children.length > 0) {
     return node.children.reduce((sum, c) => sum + nodeIst(c, actuals), 0);
   }
@@ -421,7 +428,7 @@ export default function BudgetPage() {
         return;
       }
       toast.success(
-        `Sync: ${json.accounts_imported} Konten, ${json.groups_ensured} Gruppen`,
+        `Sync: ${json.accounts_imported} Konten, ${json.groups_ensured} Gruppen, ${json.snapshot_rows ?? 0} Monats-Buchungen`,
       );
       await loadCategories();
       if (canViewActuals) await loadActuals(year);
@@ -715,8 +722,10 @@ function BudgetRowGroup({
         onArchive={onArchive}
         onAddChild={canEdit ? onAddChild : undefined}
       />
-      {/* Children */}
-      {node.children.map((child) => (
+      {/* Children — bei auto_source verstecken (Auto-Wert deckt sie ab, sonst
+          haetten wir parallel Auto-Vollkosten + Bexio-Buchungen sichtbar und
+          das ist visuell missverstaendlich). */}
+      {!node.cat.auto_source && node.children.map((child) => (
         <BudgetRow
           key={child.cat.id}
           cat={child.cat}
