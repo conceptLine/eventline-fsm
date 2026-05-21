@@ -624,8 +624,11 @@ function BudgetRowGroup({
         onRestore={onRestore}
         onAddChild={canEdit ? onAddChild : undefined}
       />
-      {/* Children — bei auto_source verstecken (Auto-Wert deckt sie ab). */}
-      {!node.cat.auto_source && node.children.map((child) => (
+      {/* Children — auch bei auto_source-Parent sichtbar, fuer Detail-Eintraege.
+          Hinweis: bei auto_source-Parent zaehlen die Children NICHT zum Parent-
+          Total (Auto-Wert ist die Wahrheit). Children-Soll sind reine Detail-
+          Eintraege fuer eigene Planung. */}
+      {node.children.map((child) => (
         <BudgetRow
           key={child.cat.id}
           cat={child.cat}
@@ -635,6 +638,7 @@ function BudgetRowGroup({
           depth={1}
           saving={savingCats.has(child.cat.id)}
           canEdit={canEdit}
+          parentHasAutoSource={!!node.cat.auto_source}
           onSave={onSave}
           onRename={onRename}
           onArchive={onArchive}
@@ -657,6 +661,7 @@ function BudgetRow({
   depth,
   saving,
   canEdit,
+  parentHasAutoSource,
   onSave,
   onRename,
   onArchive,
@@ -670,6 +675,10 @@ function BudgetRow({
   depth: 0 | 1;
   saving: boolean;
   canEdit: boolean;
+  /** True wenn der Parent dieser Zeile auto_source hat. Dann zaehlt das
+   *  Children-Soll NICHT zum Parent-Total (Auto-Wert ueberschreibt). UI
+   *  zeigt das mit einem dezenten Hinweis-Badge. */
+  parentHasAutoSource?: boolean;
   onSave: (categoryId: string, amount: number) => Promise<boolean>;
   onRename: (cat: BudgetCategory) => void;
   onArchive: (cat: BudgetCategory) => void;
@@ -737,6 +746,14 @@ function BudgetRow({
       {isArchived && (
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground border rounded-full px-1.5 py-0.5">
           Archiviert
+        </span>
+      )}
+      {parentHasAutoSource && !isArchived && (
+        <span
+          className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground border rounded-full px-1.5 py-0.5"
+          data-tooltip="Detail-Eintrag. Wird nicht zum Gruppen-Total addiert — das Personalaufwand-Total kommt aus der Auto-Berechnung (Stempel × Vollkosten)."
+        >
+          Detail
         </span>
       )}
       {autoSource === "internal_labor" && (
