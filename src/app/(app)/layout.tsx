@@ -17,7 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { useTheme } from "next-themes";
@@ -263,28 +263,29 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
           implizit auto (CSS-Quirk), dieser Div ist daher der echte
           Scroll-Container der App und nicht window. useScrollRestoration
           targetiert das Element ueber diese id. */}
-      <div id="app-scroll" className="flex-1 flex flex-col pb-[calc(env(safe-area-inset-bottom)+150px)] md:pb-0 min-w-0 overflow-x-hidden md:ml-[260px]">
+      <div id="app-scroll" className="flex-1 flex flex-col pb-[calc(env(safe-area-inset-bottom)+200px)] md:pb-0 min-w-0 overflow-x-hidden md:ml-[260px]">
         <main className="flex-1 p-3 sm:p-4 pt-[calc(env(safe-area-inset-top)+12px)] sm:pt-[calc(env(safe-area-inset-top)+16px)] md:p-8 md:pt-8 max-w-[1400px] w-full mx-auto min-w-0">{children}</main>
       </div>
 
       <MobileNav onMenuOpen={() => setMobileMenuOpen(true)} permissions={permissions} role={profile.role} />
-      <StempelWidget />
+      {/* Stempel-Widget verschwindet wenn Sheet offen ist — sonst klebt
+          die volle-Breite-Bar mit Backdrop-Blur halb sichtbar neben dem
+          Sheet und verwirrt. */}
+      {!mobileMenuOpen && <StempelWidget />}
 
-      {/* Mobile Menu Sheet */}
+      {/* Mobile Menu Sheet — flex-col layout:
+          Header (shrink-0) -> Nav (flex-1, scrollable) -> Footer (shrink-0).
+          Vorher waren Dark-Mode-Button und User-Card absolute positioniert
+          und konnten die letzten Nav-Items (z.B. Einstellungen) verdecken
+          wenn die Liste lang wurde + safe-area-bottom dazu kam. */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="bg-sidebar text-sidebar-foreground border-sidebar-border w-[280px] p-0 font-heading">
-          <SheetHeader className="px-6 py-6 border-b border-sidebar-border">
+        <SheetContent side="left" className="bg-sidebar text-sidebar-foreground border-sidebar-border w-[280px] p-0 font-heading flex flex-col h-full">
+          <SheetHeader className="px-5 py-3 border-b border-sidebar-border shrink-0">
             <SheetTitle className="text-left">
-              <Logo size="md" />
+              <Logo size="sm" />
             </SheetTitle>
           </SheetHeader>
-          <nav
-            className="px-3 py-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]"
-            style={{
-              maskImage: "linear-gradient(to bottom, transparent 0, black 64px, black calc(100% - 64px), transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, transparent 0, black 64px, black calc(100% - 64px), transparent 100%)",
-            }}
-          >
+          <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
             {groups.map((group) => {
               const items = group.items;
               if (items.length === 0) return null;
@@ -292,7 +293,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
               return (
                 <div key={group.label || group.items[0]?.href}>
                   {group.label && (
-                    <p className="px-3 mb-1.5 text-[10px] font-semibold tracking-wider text-sidebar-foreground/40 uppercase">
+                    <p className="px-3 mt-1 mb-0.5 text-[10px] font-semibold tracking-wider text-sidebar-foreground/40 uppercase">
                       {group.label}
                     </p>
                   )}
@@ -310,7 +311,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
                         href={item.href}
                         onClick={() => setMobileMenuOpen(false)}
                         className={cn(
-                          "group flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all",
+                          "group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all",
                           isActive
                             ? "bg-sidebar-accent text-sidebar-accent-foreground"
                             : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
@@ -318,12 +319,12 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
                       >
                         {Icon && (
                           <div className={cn(
-                            "flex items-center justify-center w-7 h-7 rounded-md",
+                            "flex items-center justify-center w-6 h-6 rounded-md shrink-0",
                             isActive
                               ? "bg-red-500/20 text-red-500 dark:text-red-400"
                               : "bg-sidebar-foreground/[0.06] text-sidebar-foreground/60"
                           )}>
-                            <Icon className="h-4 w-4" />
+                            <Icon className="h-3.5 w-3.5" />
                           </div>
                         )}
                         {item.label}
@@ -335,35 +336,36 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* Toggles — bottom-Offset rechnet die User-Card-Hoehe (~95px) +
-              safe-area mit ein, sonst landet der Light/Dark-Button auf
-              kleinen Phones hinter der Card oder unter dem Notch-Bereich. */}
-          <div className="absolute left-3 right-3 space-y-0.5" style={{ bottom: "calc(env(safe-area-inset-bottom) + 110px)" }}>
-            <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all"
-            >
-              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-              {theme === "dark" ? "Light Mode" : "Dark Mode"}
-            </button>
-          </div>
-
-          <div className="absolute left-3 right-3" style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
-            <div className="p-4 rounded-xl bg-sidebar-foreground/[0.04] border border-sidebar-border">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold">
-                  {profile.full_name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-sidebar-foreground">{profile.full_name}</p>
-                  <p className="text-[11px] text-sidebar-foreground/50 capitalize">{profile.role}</p>
-                </div>
+          {/* Footer-Section: kompakt mit Theme-Toggle + User-Identitaet +
+              Abmelden in einer Reihe. Vorher: Theme-Toggle als eigene
+              Reihe + 4-Zeilen-Card mit Logout-Link unten — zu viel
+              vertikaler Platz fuer wenig Info. */}
+          <div className="shrink-0 border-t border-sidebar-border px-3 py-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)" }}>
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {profile.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{profile.full_name}</p>
+                <p className="text-[10px] text-sidebar-foreground/50 capitalize leading-tight">{profile.role}</p>
               </div>
               <button
-                onClick={handleSignOut}
-                className="mt-3 w-full text-left text-[13px] text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+                type="button"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="p-1.5 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all shrink-0"
+                aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
+                data-tooltip={theme === "dark" ? "Light Mode" : "Dark Mode"}
               >
-                Abmelden
+                {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="p-1.5 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all shrink-0"
+                aria-label="Abmelden"
+                data-tooltip="Abmelden"
+              >
+                <LogOut className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -373,8 +375,9 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       <Toaster />
       {/* Eve — der app-interne Chatbot, fuer alle eingeloggten Mitarbeiter
           sichtbar. RLS auf den DB-Tools sorgt dafuer dass jeder nur eigene
-          Daten sieht. */}
-      {profile && <EveChat />}
+          Daten sieht. Wird ausgeblendet wenn das Mobile-Menue offen ist —
+          sonst klebt die Bubble neben dem Sheet und irritiert. */}
+      {profile && !mobileMenuOpen && <EveChat />}
     </div>
   );
 }

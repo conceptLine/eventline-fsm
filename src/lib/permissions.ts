@@ -33,6 +33,9 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   // Abrechnung — abgeschlossene Auftraege als "Rechnung gestellt" markieren.
   // view = /abrechnung-Seite sehen; edit = "Rechnung gestellt"-Button druecken.
   { slug: "abrechnung",    label: "Abrechnung",    paths: ["/abrechnung"],                                       actions: ["view", "edit"] },
+  // Budget — Firmenbudget pro Jahr & Kategorie setzen.
+  // view = /budget-Seite sehen; edit = Kategorien/Betraege anlegen/aendern.
+  { slug: "budget",        label: "Budget",        paths: ["/budget"],                                           actions: ["view", "edit"] },
   // Vertrieb — Lead-Pipeline. CRUD pro Lead.
   { slug: "vertrieb",      label: "Vertrieb",      paths: ["/vertrieb"],                                         actions: ["view", "create", "edit", "delete"] },
   { slug: "locations",     label: "Locations",     paths: ["/locations", "/standorte", "/raeume"], actions: ["view", "create", "edit", "delete"] },
@@ -45,6 +48,12 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { slug: "todos",         label: "Todos",         paths: ["/todos"],                                            actions: ["view", "create"] },
   // HR-Hub-Sammelseite (zeigt nur Karten — Sub-Pfade haben eigene Module).
   { slug: "hr",            label: "HR-Hub",        paths: ["/hr"],                                               actions: ["view"] },
+  // Loehne — Pro-Mitarbeiter-Saetze (Brutto + Arbeitgeber-Anteil) pflegen.
+  // Sensitives Modul: nur HR/Geschaeftsfuehrung. Mitarbeiter sehen ihre
+  // eigene Brutto-Zahl via /einstellungen → Mein Konto (RPC, kein Modul-View).
+  // KEINE eigene Route — die Lohntabelle ist Content im Loehne-Tab unter /hr,
+  // daher leere paths-Liste. Page-Gate uebernimmt 'hr:view'.
+  { slug: "lohn",          label: "Löhne",         paths: [],                                                    actions: ["manage"] },
   // Stempelzeiten als eigenes Modul — User mit hr:view aber nicht
   // stempelzeiten:view kann den HR-Hub sehen, aber nicht die Stempel-Liste.
   { slug: "stempelzeiten", label: "Stempelzeiten", paths: ["/stempelzeiten"],                                    actions: ["view"] },

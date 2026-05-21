@@ -18,6 +18,8 @@ import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
+import { MeinLohnCard } from "@/components/einstellungen/mein-lohn-card";
+import { VertrauteGeraeteCard } from "@/components/einstellungen/vertraute-geraete-card";
 
 type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet";
 type Portal = "firma" | "partner";
@@ -170,6 +172,8 @@ export default function EinstellungenPage() {
 
       {tab === "integrationen" && (
         <div className="space-y-6">
+          <MeinLohnCard />
+          <VertrauteGeraeteCard />
           <MeinKontoCard />
           <IntegrationenTab />
         </div>

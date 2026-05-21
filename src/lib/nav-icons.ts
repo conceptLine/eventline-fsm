@@ -26,6 +26,7 @@ import {
   Ticket,
   TrendingUp,
   Users,
+  Wallet,
 } from "lucide-react";
 
 export type IconComponent = React.ComponentType<{ className?: string }>;
@@ -52,6 +53,7 @@ export const NAV_ICON_MAP: Record<string, IconComponent> = {
   Ticket,
   TrendingUp,
   Users,
+  Wallet,
 };
 
 export function getNavIcon(name: string): IconComponent | null {

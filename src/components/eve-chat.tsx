@@ -169,16 +169,19 @@ export function EveChat() {
       // Inline-style fuer position statt Tailwind-Klassen — ein parent mit
       // CSS transform/filter wuerde sonst position:fixed brechen, plus
       // sind wir hier gegen JIT-Compile-Issues immun.
-      // Auf Mobile: bottom-Offset > MobileNav (~80px) + voller Stempel-
-      // Bar (~52px) + Safe-Area, sodass die Bubble nicht das Stempel-
-      // Widget verdeckt.
+      // Auf Mobile: kleiner (36px statt 48px) damit das chat-Icon nicht
+      // direkt neben dem Stempel-Bar zu viel Platz frisst, und in der
+      // Ecke (right-2) damit es das Stempel-Bar nur am aeussersten Rand
+      // streift statt mittig zu verdecken. bottom = stempel-bar-top +
+      // ein paar px Offset, sodass die beiden visuell als eine Reihe
+      // wahrgenommen werden.
       style={{
         position: "fixed",
-        bottom: isMobile ? 156 : 24,
-        right: isMobile ? 16 : 24,
+        bottom: isMobile ? 142 : 24,
+        right: isMobile ? 8 : 24,
         zIndex: 1300,
-        height: 48,
-        width: 48,
+        height: isMobile ? 36 : 48,
+        width: isMobile ? 36 : 48,
       }}
       // Kasten-tinted Stil + 'group' damit das Icon-Element via group-hover
       // mit-animiert. Hover-Sequenz: Bubble skaliert leicht hoch, kriegt
@@ -187,7 +190,7 @@ export function EveChat() {
       aria-label="Eve öffnen"
       data-eve-label="Eve fragen"
     >
-      <MessageCircle className="h-5 w-5" />
+      <MessageCircle className={isMobile ? "h-4 w-4" : "h-5 w-5"} />
     </button>
   ) : null;
 

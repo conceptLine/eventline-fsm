@@ -181,6 +181,13 @@ export default function AuftragDetailPage() {
       setShowRapportModal(true);
       return;
     }
+    // Freigeben (entwurf -> offen) blocken wenn Datum fehlt — sonst
+    // landen offene Auftraege ohne Datum in der Liste / im Kalender und
+    // tauchen in den Counts/Stats nirgends auf.
+    if (newStatus === "offen" && job && (!job.start_date || !job.end_date)) {
+      toast.error("Bitte erst Start- und Enddatum im Bearbeiten-Modus setzen, dann freigeben");
+      return;
+    }
 
     await supabase.from("jobs").update({ status: newStatus }).eq("id", id);
     toast.success(`Status auf "${JOB_STATUS[newStatus].label}" geändert`);
@@ -431,11 +438,17 @@ export default function AuftragDetailPage() {
             const isFinish = a.to === "abgeschlossen";
             const isPrimary = a.variant === "primary";
             const tone = isFinish ? "kasten-green" : isPrimary ? "kasten-red" : "kasten-muted";
+            // Freigeben braucht Datum — sonst landet ein offener Auftrag
+            // ohne Termin in Liste/Kalender und ist unsichtbar in Counts.
+            const isRelease = a.to === "offen";
+            const releaseBlocked = isRelease && (!job.start_date || !job.end_date);
             return (
               <button
                 key={a.to}
                 type="button"
                 onClick={() => updateStatus(a.to)}
+                disabled={releaseBlocked}
+                data-tooltip={releaseBlocked ? "Bitte erst Datum im Bearbeiten-Modus setzen" : undefined}
                 className={`kasten ${tone}`}
               >
                 {a.icon}

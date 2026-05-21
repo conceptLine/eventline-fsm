@@ -341,13 +341,15 @@ export default function VertriebPage() {
         </div>
       )}
 
-      {/* Suche + Filter */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
+      {/* Suche + Filter — Search volle Breite oben, Dropdowns als 2x2-Grid
+          auf Mobile (sonst 5 Reihen stack), sm+ wieder inline. */}
+      <div className="space-y-2">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Firma, Person oder Branche..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 bg-card" />
         </div>
-        <div className="w-full sm:w-44">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+        <div className="sm:w-44">
           <SearchableSelect
             value={filterKategorie} onChange={(v) => setFilterKategorie(v as VertriebKategorie | "all")}
             items={[{ id: "all", label: "Alle Kategorien" }, ...KATEGORIE_OPTIONS.map((k) => ({ id: k.value, label: k.label }))]}
@@ -355,7 +357,7 @@ export default function VertriebPage() {
           />
         </div>
         {!showArchive && (
-          <div className="w-full sm:w-44">
+          <div className="sm:w-44">
             <SearchableSelect
               value={filterStatus} onChange={(v) => setFilterStatus(v as VertriebStatus | "all")}
               items={[
@@ -367,14 +369,14 @@ export default function VertriebPage() {
             />
           </div>
         )}
-        <div className="w-full sm:w-44">
+        <div className="sm:w-44">
           <SearchableSelect
             value={filterPriority} onChange={(v) => setFilterPriority(v as VertriebPriority | "all")}
             items={[{ id: "all", label: "Alle Prioritäten" }, ...PRIORITY_OPTIONS.map((p) => ({ id: p.value, label: p.label }))]}
             searchable={false} clearable={false} active={filterPriority !== "all"}
           />
         </div>
-        <div className="w-full sm:w-52">
+        <div className="sm:w-52">
           <SearchableSelect
             value={sortBy} onChange={(v) => setSortBy(v as SortBy)}
             items={[
@@ -385,6 +387,7 @@ export default function VertriebPage() {
             ]}
             searchable={false} clearable={false} active={sortBy !== "nr"}
           />
+        </div>
         </div>
       </div>
 

@@ -126,14 +126,16 @@ export function StempelWidget() {
               onMouseLeave={() => { setHovered(false); setPressed(false); }}
               onMouseDown={() => setPressed(true)}
               onMouseUp={() => setPressed(false)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300"
+              // Bg = solides Card-Token + teal-Tint mit hoeherer Alpha damit
+              // Content darunter sauber verdeckt wird. Vorher rgba(...,0.14)
+              // war zu transparent — Karten unter der Bar schienen durch.
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300 bg-card"
               style={{
                 transform: pressed ? "scale(0.99)" : hovered ? "scale(1.01)" : "scale(1)",
                 transition: "transform 180ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms, background-color 200ms",
-                backgroundColor: hovered ? "rgba(20,184,166,0.22)" : "rgba(20,184,166,0.14)",
+                backgroundImage: `linear-gradient(rgba(20,184,166,${hovered ? 0.28 : 0.18}), rgba(20,184,166,${hovered ? 0.28 : 0.18}))`,
                 border: "2px solid var(--stempel-color, #14b8a6)",
                 boxShadow: hovered ? "0 8px 20px -6px rgba(20,184,166,0.30)" : "0 3px 10px -3px rgba(20,184,166,0.18)",
-                backdropFilter: "blur(8px)",
               }}
               aria-label={expanded ? "Stempel-Details schliessen" : "Stempel-Details oeffnen"}
             >
@@ -158,14 +160,13 @@ export function StempelWidget() {
             onMouseLeave={() => { setHovered(false); setPressed(false); }}
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
-            className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300"
+            className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl text-teal-700 dark:text-teal-300 bg-card"
             style={{
               transform: pressed ? "scale(0.99)" : hovered ? "scale(1.01)" : "scale(1)",
               transition: "transform 180ms cubic-bezier(0.4,0,0.2,1), background-color 200ms",
-              backgroundColor: hovered ? "rgba(20,184,166,0.22)" : "rgba(20,184,166,0.14)",
+              backgroundImage: `linear-gradient(rgba(20,184,166,${hovered ? 0.28 : 0.18}), rgba(20,184,166,${hovered ? 0.28 : 0.18}))`,
               border: "2px solid var(--stempel-color, #14b8a6)",
               boxShadow: "0 3px 10px -3px rgba(20,184,166,0.18)",
-              backdropFilter: "blur(8px)",
             }}
             aria-label="Einstempeln"
           >

@@ -19,7 +19,19 @@
 // Token-/Secret-Pruefung.
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
+import { cookies } from "next/headers";
+
+export const TRUSTED_DEVICE_COOKIE = "eventline_trusted_device";
+
+/** SHA-256-Hash eines Tokens — Server vergleicht damit gegen die DB. Wir
+ *  speichern niemals raw Tokens (nur Hashes), damit ein DB-Leak nicht
+ *  alle Geraete kompromittiert. */
+export function hashToken(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
 
 export async function requireUser() {
   const supabase = await createClient();
@@ -99,4 +111,70 @@ export async function requirePermission(perm: string) {
     };
   }
   return { user, error: null };
+}
+
+// =====================================================================
+// requireTrustedDevice — fuer sensible Finanz-/HR-Endpoints.
+// =====================================================================
+//
+// Pattern:
+//   const auth = await requireTrustedDevice("budget:view");
+//   if (auth.error) return auth.error;
+//
+// Pruefkette:
+//   1. requirePermission(perm) — User ist authenticated + hat Permission
+//   2. trusted_device-Cookie lesen + Hash gegen DB matchen
+//   3. is_trusted_device(hash, user_id)-RPC liefert true?
+// Wenn 2 oder 3 fehlt: 403 mit error="device_not_trusted" — UI kann
+// darauf den Trust-Prompt rendern.
+//
+// Admin-Pass-Through: Admins muessen TROTZDEM ein trusted Device haben!
+// Sonst wuerde die ganze Schicht fuer den waertvollsten Account-Typ
+// nichts schuetzen — Admin-Account-Diebstahl ist die schlimmste Variante
+// des Threat-Models. has_permission lasst Admin durch fuer die NORMALE
+// Permission, der trusted-device-Check kommt zusaetzlich.
+
+export async function requireTrustedDevice(perm: string) {
+  const auth = await requirePermission(perm);
+  if (auth.error) return auth;
+
+  const cookieStore = await cookies();
+  const cookie = cookieStore.get(TRUSTED_DEVICE_COOKIE);
+
+  if (!cookie?.value) {
+    return {
+      user: null,
+      error: NextResponse.json(
+        { success: false, error: "device_not_trusted", message: "Dieses Geraet ist nicht als vertraut markiert." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const admin = createAdminClient();
+  const tokenHash = hashToken(cookie.value);
+
+  const { data: trusted, error: rpcErr } = await admin.rpc("is_trusted_device", {
+    p_token_hash: tokenHash,
+    p_user_id: auth.user.id,
+  });
+
+  if (rpcErr || trusted !== true) {
+    return {
+      user: null,
+      error: NextResponse.json(
+        { success: false, error: "device_not_trusted", message: "Dieses Geraet ist nicht (mehr) als vertraut markiert." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  // last_seen_at bump — fire-and-forget, blockt die Antwort nicht.
+  void admin
+    .from("trusted_devices")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("cookie_token_hash", tokenHash)
+    .eq("user_id", auth.user.id);
+
+  return { user: auth.user, error: null };
 }

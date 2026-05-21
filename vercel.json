@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/refresh-counts",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/bexio-budget-sync",
+      "schedule": "0 3 * * *"
     }
   ]
 }

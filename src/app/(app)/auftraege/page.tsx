@@ -378,19 +378,27 @@ export default function AuftraegePage() {
               auf gleicher Linie sitzen wie auf den anderen Seiten. */}
           <p className="text-sm text-muted-foreground mt-1" aria-hidden="true">&nbsp;</p>
         </div>
+        {/* Action-Buttons: auf Mobile Icon-only fuer die "+ Neu"-Aktionen
+            damit alle drei Buttons in eine Zeile passen. Desktop bleibt
+            beschriftet. Archiv hat seinen Count im Label, auch auf Mobile
+            sichtbar. */}
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setShowArchive(!showArchive)} className={showArchive ? "kasten-active" : "kasten-toggle-off"}>
-            <Archive className="h-3.5 w-3.5" />{showArchive ? "Aktive anzeigen" : `Archiv (${counts.abgeschlossen + counts.storniert})`}
+            <Archive className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{showArchive ? "Aktive anzeigen" : `Archiv (${counts.abgeschlossen + counts.storniert})`}</span>
+            <span className="sm:hidden">{showArchive ? "Aktiv" : `Archiv (${counts.abgeschlossen + counts.storniert})`}</span>
           </button>
           {!showArchive && can("auftraege:create") && (
             <>
-              <Link href="/auftraege/vermietentwurf/neu" className="kasten kasten-purple">
+              <Link href="/auftraege/vermietentwurf/neu" className="kasten kasten-purple" data-tooltip="Neuer Vermietentwurf">
                 <Plus className="h-3.5 w-3.5" />
-                Neuer Vermietentwurf
+                <span className="hidden sm:inline">Neuer Vermietentwurf</span>
+                <span className="sm:hidden">Vermietung</span>
               </Link>
-              <Link href="/auftraege/neu" className="kasten kasten-red">
+              <Link href="/auftraege/neu" className="kasten kasten-red" data-tooltip="Neuer Auftrag">
                 <Plus className="h-3.5 w-3.5" />
-                Neuer Auftrag
+                <span className="hidden sm:inline">Neuer Auftrag</span>
+                <span className="sm:hidden">Auftrag</span>
               </Link>
             </>
           )}
