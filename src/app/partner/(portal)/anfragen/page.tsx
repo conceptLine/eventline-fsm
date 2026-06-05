@@ -21,7 +21,13 @@ interface PartnerAnfrage {
   appointments: { id: string; assigned_to: string | null }[] | null;
 }
 
-function statusStyle(status: string) {
+// Status-Stil mit zusaetzlichem Signal: 'assigned' steuert ob ein
+// bestaetigter Auftrag bereits einem Techniker zugewiesen ist. Wenn ja
+// → gruen "Bestätigt". Wenn nein → gelb "Bestätigt, nicht zugewiesen"
+// (= EVENTLINE hat angenommen aber noch keinen Mitarbeiter eingeteilt).
+// Vorher war jede angenommene Anfrage immer gruen — der Partner wusste
+// nicht ob auch jemand kommt.
+function statusStyle(status: string, assigned: boolean = true) {
   switch (status) {
     case "partner_entwurf":
       // Grau / neutral — soll klar "noch nicht abgeschickt" kommunizieren.
@@ -30,6 +36,15 @@ function statusStyle(status: string) {
       return { label: "Anfrage offen", icon: Clock, bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-500/30" };
     case "offen":
     case "abgeschlossen":
+      if (!assigned) {
+        return {
+          label: status === "offen" ? "Bestätigt — nicht zugewiesen" : "Abgeschlossen — nicht zugewiesen",
+          icon: Clock,
+          bg: "bg-amber-50 dark:bg-amber-500/15",
+          text: "text-amber-800 dark:text-amber-300",
+          border: "border-amber-200 dark:border-amber-500/30",
+        };
+      }
       return { label: status === "offen" ? "Bestätigt" : "Abgeschlossen", icon: Check, bg: "bg-green-50 dark:bg-green-500/15", text: "text-green-800 dark:text-green-300", border: "border-green-200 dark:border-green-500/30" };
     case "storniert":
       return { label: "Abgelehnt", icon: XCircle, bg: "bg-red-50 dark:bg-red-500/15", text: "text-red-800 dark:text-red-300", border: "border-red-200 dark:border-red-500/30" };
@@ -281,8 +296,6 @@ export default function PartnerAnfragenPage() {
       ) : (
         <div className="space-y-2">
           {visibleAnfragen.map((a) => {
-            const s = statusStyle(a.status);
-            const Icon = s.icon;
             // Termin-Zuweisungs-Anzeige nur fuer angenommene/laufende
             // Anfragen sinnvoll. partner_anfrage = noch nicht angenommen;
             // storniert = abgelehnt. abgeschlossen darf weiter Namen zeigen.
@@ -291,8 +304,12 @@ export default function PartnerAnfragenPage() {
             const hasAppt = appts.length > 0;
             const assignedIds = Array.from(new Set(appts.map((x) => x.assigned_to).filter((x): x is string => !!x)));
             const assigneeNames = assignedIds.map((id) => assigneeNameById.get(id)).filter((n): n is string => !!n);
-            const isUnassigned = showAssignmentInfo && hasAppt && assigneeNames.length === 0;
             const isAssigned = showAssignmentInfo && assigneeNames.length > 0;
+            const isUnassigned = showAssignmentInfo && !isAssigned;
+            // Status-Style braucht den Zugewiesen-Flag — gruen nur wenn
+            // bestaetigt UND zugewiesen, sonst gelb.
+            const s = statusStyle(a.status, isAssigned);
+            const Icon = s.icon;
             const dateText = a.start_date
               ? new Date(a.start_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })
                 + (a.end_date && a.end_date !== a.start_date ? " – " + new Date(a.end_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }) : "")

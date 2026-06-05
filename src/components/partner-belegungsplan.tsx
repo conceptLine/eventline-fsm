@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
-type BookingKind = "entwurf" | "partner_anfrage" | "bestaetigt" | "storniert" | "vermietung" | "belegt";
+type BookingKind = "entwurf" | "partner_anfrage" | "bestaetigt" | "bestaetigt_unzugewiesen" | "storniert" | "vermietung" | "belegt";
 
 interface Booking {
   id: string;
@@ -61,6 +61,17 @@ function isInRange(day: Date, start: Date, end: Date): boolean {
   return d >= startOfDay(start).getTime() && d <= startOfDay(end).getTime();
 }
 
+// 'bestaetigt' = angenommene Anfrage + Mitarbeiter zugewiesen → gruen.
+// Wenn noch nicht zugewiesen → gelb (bestaetigt_unzugewiesen). Wird beim
+// Render aufgeloest weil die Assignee-Info nachgeladen wird (separate
+// Query nach dem initialen bookings-Fetch).
+function effectiveKind(rawKind: BookingKind, assigneeCount: number): BookingKind {
+  if (rawKind === "bestaetigt" && assigneeCount === 0) {
+    return "bestaetigt_unzugewiesen";
+  }
+  return rawKind;
+}
+
 function kindFromBooking(b: ApiBooking): BookingKind | null {
   // Belegungsplan ist location-scoped: zeige ALLES was an der Location
   // los ist. Coloring nach Workflow (Partner-eigene Anfrage → bestaetigt;
@@ -93,7 +104,12 @@ function kindFromBooking(b: ApiBooking): BookingKind | null {
 const KIND_STYLE: Record<BookingKind, { dot: string; bg: string; text: string; border: string; label: string }> = {
   entwurf:         { dot: "bg-gray-400 dark:bg-gray-500", bg: "bg-foreground/[0.05] dark:bg-foreground/10", text: "text-muted-foreground", border: "border-foreground/15 dark:border-foreground/20", label: "Entwurf" },
   partner_anfrage: { dot: "bg-amber-500",  bg: "bg-amber-50 dark:bg-amber-500/15",   text: "text-amber-800 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-500/30",     label: "Offene Anfrage" },
+  // Gruen = von EVENTLINE angenommen UND mindestens ein Mitarbeiter
+  // zugewiesen (Termin mit assigned_to vorhanden).
   bestaetigt:      { dot: "bg-green-500",  bg: "bg-green-50 dark:bg-green-500/15",   text: "text-green-800 dark:text-green-300",     border: "border-green-200 dark:border-green-500/30",     label: "Bestätigt" },
+  // Gelb = angenommen aber noch keiner zugewiesen — der Partner sieht
+  // dass die Anfrage durch ist, aber noch nicht eingeteilt wurde.
+  bestaetigt_unzugewiesen: { dot: "bg-amber-500", bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-500/30", label: "Bestätigt, nicht zugewiesen" },
   storniert:       { dot: "bg-red-500",    bg: "bg-red-50 dark:bg-red-500/15",       text: "text-red-800 dark:text-red-300",         border: "border-red-200 dark:border-red-500/30",         label: "Abgelehnt" },
   vermietung:      { dot: "bg-blue-500",   bg: "bg-blue-50 dark:bg-blue-500/15",     text: "text-blue-800 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-500/30",       label: "Vermietung" },
   // 'Belegt' = Eventline-interner Job (Wartung/Setup/Übergabe ohne
@@ -253,7 +269,7 @@ export function PartnerBelegungsplan({ locationId }: Props) {
           <h2 className="text-lg font-semibold ml-3">{monthLabel}</h2>
         </div>
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-          {(["entwurf", "partner_anfrage", "bestaetigt", "storniert", "vermietung", "belegt"] as const).map((k) => {
+          {(["entwurf", "partner_anfrage", "bestaetigt", "bestaetigt_unzugewiesen", "storniert", "vermietung", "belegt"] as const).map((k) => {
             const s = KIND_STYLE[k];
             return (
               <div key={k} className="flex items-center gap-1.5">
@@ -295,16 +311,17 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                 </div>
                 <div className="space-y-0.5">
                   {dayBookings.slice(0, 3).map((b) => {
-                    const s = KIND_STYLE[b.kind];
+                    const kind = effectiveKind(b.kind, (assigneesByJobId.get(b.id) ?? []).length);
+                    const s = KIND_STYLE[kind];
                     // "Continuation"-Erkennung: ist der Vortag schon Teil
                     // dieser Buchung? Dann nur Block, ohne Titel wiederholen.
                     const prevDay = new Date(day.getTime() - DAY_MS);
                     const isContinuation = isInRange(prevDay, b.start, b.end);
-                    const clickable = b.kind !== "belegt";
+                    const clickable = kind !== "belegt";
                     const cls = `block w-full text-left text-[10px] font-medium px-1.5 py-0.5 rounded truncate ${s.bg} ${s.text} ${s.border} border ${clickable ? "hover:opacity-80 transition-opacity cursor-pointer" : "cursor-default"}`;
-                    const label = isContinuation ? "↪" : (b.kind === "belegt" ? "Belegt" : b.title);
-                    const titleAttr = `${b.kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title} (${b.start.toLocaleDateString("de-CH")}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH")}` : ""})`;
-                    if (b.kind === "belegt") {
+                    const label = isContinuation ? "↪" : (kind === "belegt" ? "Belegt" : b.title);
+                    const titleAttr = `${kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title} (${b.start.toLocaleDateString("de-CH")}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH")}` : ""})`;
+                    if (kind === "belegt") {
                       return (
                         <div key={b.id} className={cls} title={titleAttr}>
                           {label}
@@ -392,14 +409,15 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         ) : (
           <div className="space-y-1.5">
             {visibleBookings.map((b) => {
-              const s = KIND_STYLE[b.kind];
+              const assignees = assigneesByJobId.get(b.id) ?? [];
+              const kind = effectiveKind(b.kind, assignees.length);
+              const s = KIND_STYLE[kind];
               const dateLabel = b.start.getTime() === b.end.getTime()
                 ? b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
                 : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
-              const clickable = b.kind !== "belegt";
+              const clickable = kind !== "belegt";
               const cls = `flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border ${s.bg} ${s.text} ${s.border} ${clickable ? "hover:opacity-90 transition-opacity cursor-pointer" : "cursor-default"} text-left w-full`;
-              const assignees = assigneesByJobId.get(b.id) ?? [];
-              const displayTitle = b.kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title;
+              const displayTitle = kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title;
               const inner = (
                 <>
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -422,7 +440,7 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                   </span>
                 </>
               );
-              if (b.kind === "belegt") {
+              if (kind === "belegt") {
                 return (
                   <div key={b.id} className={cls}>
                     {inner}
