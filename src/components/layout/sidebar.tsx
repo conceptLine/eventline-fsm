@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,34 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
   const isAdmin = profile.role === "admin";
   const fullUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
 
+  // Fade-Mask nur dort wo's noch was zu scrollen gibt — Top-Fade nur wenn
+  // hochgescrollt, Bottom-Fade nur wenn noch was unten ist. Sonst war auch
+  // an Raendern transparent obwohl kein Overflow existierte.
+  const navRef = useRef<HTMLElement | null>(null);
+  const [fadeTop, setFadeTop] = useState(false);
+  const [fadeBottom, setFadeBottom] = useState(false);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const update = () => {
+      setFadeTop(el.scrollTop > 1);
+      setFadeBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // ResizeObserver fuer Sidebar-Resize (window) und Content-Aenderungen
+    // (Nav-Items kommen/gehen je nach Rolle/Permission).
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    for (const child of Array.from(el.children)) ro.observe(child as Element);
+    return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
+  }, []);
+  const maskGradient = (() => {
+    const top = fadeTop ? "transparent 0, black 64px" : "black 0";
+    const bottom = fadeBottom ? "black calc(100% - 64px), transparent 100%" : "black 100%";
+    return `linear-gradient(to bottom, ${top}, ${bottom})`;
+  })();
+
 
   // Wir filtern alle Nav-Items nach den Permissions der Rolle des Users.
   // Admin-Group + Standard-Group werden zusammengelegt und dann gefiltert;
@@ -66,14 +95,15 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
         </Link>
       </div>
 
-      {/* Navigation — mask-image fade an den Raendern damit Items nicht
-          hart abgeschnitten werden sondern weich in transparent uebergehen
-          beim Hoch-/Runter-Scrollen. */}
+      {/* Navigation — mask-image fade nur an Raendern wo tatsaechlich noch
+          Content zu scrollen ist (siehe useEffect oben). Top-Items
+          erscheinen voll opak wenn nicht hochgescrollt; gleiche Logik unten. */}
       <nav
+        ref={navRef}
         className="flex-1 px-3 py-4 overflow-y-auto space-y-4"
         style={{
-          maskImage: "linear-gradient(to bottom, transparent 0, black 64px, black calc(100% - 64px), transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0, black 64px, black calc(100% - 64px), transparent 100%)",
+          maskImage: maskGradient,
+          WebkitMaskImage: maskGradient,
         }}
       >
         {/* Empty-State: User mit leerer Permissions-Liste sieht sonst gar
