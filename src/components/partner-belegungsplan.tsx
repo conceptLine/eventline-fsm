@@ -254,31 +254,19 @@ export function PartnerBelegungsplan({ locationId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Header — Monat-Nav, Heute-Button, Legende */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={prev} className="kasten kasten-muted" aria-label="Vorheriger Monat">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={jumpToToday} className="kasten kasten-muted">
-            Heute
-          </button>
-          <button type="button" onClick={next} className="kasten kasten-muted" aria-label="Nächster Monat">
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <h2 className="text-lg font-semibold ml-3">{monthLabel}</h2>
-        </div>
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-          {(["entwurf", "partner_anfrage", "bestaetigt", "bestaetigt_unzugewiesen", "storniert", "vermietung", "belegt"] as const).map((k) => {
-            const s = KIND_STYLE[k];
-            return (
-              <div key={k} className="flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`} />
-                <span>{s.label}</span>
-              </div>
-            );
-          })}
-        </div>
+      {/* Header — Monat-Nav, Heute-Button. Legende wurde nach unten ans
+          Ende verschoben damit der Header fokussiert bleibt. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={prev} className="kasten kasten-muted" aria-label="Vorheriger Monat">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={jumpToToday} className="kasten kasten-muted">
+          Heute
+        </button>
+        <button type="button" onClick={next} className="kasten kasten-muted" aria-label="Nächster Monat">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <h2 className="text-lg font-semibold ml-3">{monthLabel}</h2>
       </div>
 
       {/* Kalender-Grid */}
@@ -355,6 +343,18 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         {loading && (
           <div className="p-3 text-center text-xs text-muted-foreground border-t">Lade…</div>
         )}
+
+        {/* Legende — gruppiert nach Owner (Deine Anfragen / EVENTLINE)
+            damit die doppelten Farb-Anwendungen (z.B. amber fuer
+            Offene-Anfrage UND Bestaetigt-nicht-zugewiesen) durch den
+            Kontext der Gruppe klar zugeordnet sind. */}
+        <div className="border-t bg-foreground/[0.02] dark:bg-foreground/[0.04] px-3 py-2 text-[11px]">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-1.5">
+            <LegendGroup label="Deine Anfragen" kinds={["entwurf", "partner_anfrage", "bestaetigt_unzugewiesen", "bestaetigt", "storniert"]} />
+            <span className="hidden sm:inline w-px h-3 bg-border" />
+            <LegendGroup label="EVENTLINE" kinds={["vermietung", "belegt"]} />
+          </div>
+        </div>
       </div>
 
       {/* Modal: Read-Only-Details fuer fremde Vermietungen (EVENTLINE-
