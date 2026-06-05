@@ -26,6 +26,7 @@ import { useEnterAsTab } from "@/lib/use-enter-as-tab";
 import { useScrollRestoration } from "@/lib/use-scroll-restoration";
 import { PermissionsProvider, usePermissions } from "@/lib/use-permissions";
 import { StempelProvider } from "@/lib/use-stempel";
+import { NavCountsProvider, useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
 import { EveChat } from "@/components/eve-chat";
 
 // Outer-Wrapper — nur Provider. Der Inner-Layout kann den Provider
@@ -248,6 +249,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     .filter((g) => g.items.length > 0);
 
   return (
+    <NavCountsProvider isAdmin={profile.role === "admin"}>
     <div className="flex min-h-screen bg-[#f5f5f7] dark:bg-[#0a0a0a]">
       <Sidebar
         profile={profile}
@@ -297,40 +299,16 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
                       {group.label}
                     </p>
                   )}
-                  {items.map((item) => {
-                    const Icon = NAV_ICON_MAP[item.icon];
-                    const fullUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
-                    const isActive = item.href.includes("?")
-                      ? fullUrl === item.href
-                      : item.href === "/dashboard" || item.href === "/kalender"
-                        ? pathname === item.href
-                        : pathname.startsWith(item.href);
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={cn(
-                          "group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all",
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
-                        )}
-                      >
-                        {Icon && (
-                          <div className={cn(
-                            "flex items-center justify-center w-6 h-6 rounded-md shrink-0",
-                            isActive
-                              ? "bg-red-500/20 text-red-500 dark:text-red-400"
-                              : "bg-sidebar-foreground/[0.06] text-sidebar-foreground/60"
-                          )}>
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                        )}
-                        {item.label}
-                      </Link>
-                    );
-                  })}
+                  {items.map((item) => (
+                    <SheetNavLink
+                      key={item.href}
+                      item={item}
+                      pathname={pathname}
+                      searchString={searchParams.toString()}
+                      role={profile.role}
+                      onClick={() => setMobileMenuOpen(false)}
+                    />
+                  ))}
                 </div>
               );
             })}
@@ -379,5 +357,57 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
           sonst klebt die Bubble neben dem Sheet und irritiert. */}
       {profile && !mobileMenuOpen && <EveChat />}
     </div>
+    </NavCountsProvider>
+  );
+}
+
+// SheetNavLink — gekapselt damit useNavCounts() innerhalb des Providers
+// konsumiert werden kann (AppLayoutInner stellt den Provider, kann ihn
+// aber nicht selbst lesen weil der Hook das Component-Boundary braucht).
+interface SheetNavLinkProps {
+  item: { href: string; label: string; icon: string };
+  pathname: string;
+  searchString: string;
+  role: string;
+  onClick: () => void;
+}
+function SheetNavLink({ item, pathname, searchString, role, onClick }: SheetNavLinkProps) {
+  const counts = useNavCounts();
+  const Icon = NAV_ICON_MAP[item.icon];
+  const fullUrl = pathname + (searchString ? `?${searchString}` : "");
+  const isActive = item.href.includes("?")
+    ? fullUrl === item.href
+    : item.href === "/dashboard" || item.href === "/kalender"
+      ? pathname === item.href
+      : pathname.startsWith(item.href);
+  const badge = getBadgeForHref(item.href, counts, role === "admin");
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      className={cn(
+        "group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all",
+        isActive
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+      )}
+    >
+      {Icon && (
+        <div className={cn(
+          "flex items-center justify-center w-6 h-6 rounded-md shrink-0",
+          isActive
+            ? "bg-red-500/20 text-red-500 dark:text-red-400"
+            : "bg-sidebar-foreground/[0.06] text-sidebar-foreground/60"
+        )}>
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+      )}
+      <span className="flex-1">{item.label}</span>
+      {badge > 0 && (
+        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium rounded-full bg-foreground/10 text-foreground/60 tabular-nums">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+    </Link>
   );
 }

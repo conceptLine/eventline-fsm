@@ -21,8 +21,9 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
-import { Calendar, CheckSquare, Ticket, ArrowRight, AlertCircle, Clock, Briefcase, CheckCircle2, Users, Receipt, FolderArchive, Inbox, Send, Building2 } from "lucide-react";
+import { Calendar, CheckSquare, Ticket, ArrowRight, AlertCircle, Clock, Briefcase, CheckCircle2 } from "lucide-react";
 import { usePermissions } from "@/lib/use-permissions";
+import { OfficeAttendanceCard } from "@/components/dashboard/office-attendance-card";
 
 function greetingForHour(h: number): string {
   if (h < 12) return "Guten Morgen";
@@ -68,33 +69,6 @@ interface UpcomingDay {
   appointments: ApptToday[];
 }
 
-interface ActiveStempel {
-  user_id: string;
-  user_name: string;
-  job_label: string | null; // "INT-26205 · test dringend" or null wenn andere arbeit
-  description: string | null;
-  clock_in: string;
-}
-
-interface TeamToday {
-  active: ActiveStempel[];      // gerade eingestempelt
-  uniqueUsersToday: number;     // wieviele User haben heute irgendwann gestempelt
-}
-
-interface AdminPending {
-  unbilledJobs: number;      // status=abgeschlossen + invoiced_at NULL
-  unfiledBelege: number;     // type=beleg + filed_at NULL + status != abgelehnt
-                             // (deckt sowohl Ablegen als auch Ablehnen ab —
-                             // Buttons sind direkt auf der Beleg-Karte)
-  confirmedAnfragen: number; // status=anfrage + request_step=4
-  openTickets: number;       // status=offen, type != beleg (Beleg-Tickets
-                             // werden ueber unfiledBelege gezaehlt; IT-,
-                             // Stempel-Aenderungs- und Material-Tickets
-                             // landen hier).
-  partnerAnfragen: number;   // status=partner_anfrage — wartet auf
-                             // Annahme/Ablehnung durch Admin.
-}
-
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const WEEKDAY_FULL = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]; // JS-getDay() index
 
@@ -110,15 +84,13 @@ function formatHoursShort(h: number): string {
 
 export default function HeutePage() {
   const supabase = createClient();
-  const { profile } = usePermissions();
-  const isAdmin = profile?.role === "admin";
+  const { profile, can } = usePermissions();
+  void profile; // profile fuer kuenftige Erweiterungen — Name wird via own-fetch geholt
   const [userName, setUserName] = useState("");
   const [todos, setTodos] = useState<OpenTodo[]>([]);
   const [tickets, setTickets] = useState<OpenTicket[]>([]);
   const [stats, setStats] = useState<PersonalStats | null>(null);
   const [upcoming, setUpcoming] = useState<UpcomingDay[]>([]);
-  const [teamToday, setTeamToday] = useState<TeamToday | null>(null);
-  const [pending, setPending] = useState<AdminPending | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -284,97 +256,9 @@ export default function HeutePage() {
         });
       }
       setUpcoming(upcomingArr);
-
-      // Admin-Daten — nur fetchen wenn isAdmin (sonst RLS-Errors / Verschwendung)
-      if (isAdmin) {
-        const [activeStempelRes, todayStempelRes, unbilledRes, unfiledRes, anfrage4Res, openTicketsRes, partnerAnfrageRes] = await Promise.all([
-          // Aktuell eingestempelt (clock_out IS NULL)
-          supabase
-            .from("time_entries")
-            .select("user_id, clock_in, description, job:jobs(job_number, title), user:profiles!time_entries_profile_id_fkey(full_name)")
-            .is("clock_out", null)
-            .order("clock_in", { ascending: true }),
-          // Heutige Distinct-User-Stempel-Aktivitaet (count distinct user_id)
-          supabase
-            .from("time_entries")
-            .select("user_id")
-            .gte("clock_in", startOfDay.toISOString()),
-          // Aufträge zur Abrechnung
-          supabase
-            .from("jobs")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "abgeschlossen")
-            .is("invoiced_at", null)
-            .neq("is_deleted", true),
-          // Belege zur Ablage — deckt beide Admin-Aktionen ab
-          // (Ablegen UND Ablehnen werden direkt auf der Beleg-Karte
-          // erledigt, separater "Beleg-Tickets offen"-Counter waere
-          // redundant).
-          supabase
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("type", "beleg")
-            .is("filed_at", null)
-            .neq("status", "abgelehnt"),
-          // Vermietentwürfe in Step 4 (Kunde hat Angebot bestaetigt — Admin
-          // muss manuell zu Auftrag konvertieren)
-          supabase
-            .from("jobs")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "anfrage")
-            .eq("request_step", 4)
-            .neq("is_deleted", true),
-          // Offene Tickets fuer Admin-Aktion — IT/Stempel-Aenderung/Material.
-          // Beleg-Tickets sind ueber unfiledBelege gezaehlt, deshalb hier
-          // ausgeschlossen damit nichts doppelt steht.
-          supabase
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "offen")
-            .neq("type", "beleg"),
-          // Partner-Anfragen wartend auf Annahme/Ablehnung
-          supabase
-            .from("jobs")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "partner_anfrage")
-            .neq("is_deleted", true),
-        ]);
-
-        type StempelRow = {
-          user_id: string;
-          clock_in: string;
-          description: string | null;
-          job: { job_number: number | null; title: string } | { job_number: number | null; title: string }[] | null;
-          user: { full_name: string } | { full_name: string }[] | null;
-        };
-        const active: ActiveStempel[] = ((activeStempelRes.data ?? []) as StempelRow[]).map((r) => {
-          const job = Array.isArray(r.job) ? r.job[0] : r.job;
-          const u = Array.isArray(r.user) ? r.user[0] : r.user;
-          const jobLabel = job ? `${job.job_number ? `INT-${job.job_number}` : ""}${job.job_number && job.title ? " · " : ""}${job.title ?? ""}`.trim() || null : null;
-          return {
-            user_id: r.user_id,
-            user_name: u?.full_name ?? "Unbekannt",
-            job_label: jobLabel,
-            description: r.description,
-            clock_in: r.clock_in,
-          };
-        });
-        const uniqueToday = new Set<string>();
-        for (const r of (todayStempelRes.data ?? []) as { user_id: string }[]) uniqueToday.add(r.user_id);
-
-        setTeamToday({ active, uniqueUsersToday: uniqueToday.size });
-        setPending({
-          unbilledJobs: unbilledRes.count ?? 0,
-          unfiledBelege: unfiledRes.count ?? 0,
-          confirmedAnfragen: anfrage4Res.count ?? 0,
-          openTickets: openTicketsRes.count ?? 0,
-          partnerAnfragen: partnerAnfrageRes.count ?? 0,
-        });
-      }
-
       setLoading(false);
     })();
-  }, [supabase, isAdmin]);
+  }, [supabase]);
 
   const greeting = greetingForHour(new Date().getHours());
 
@@ -399,16 +283,10 @@ export default function HeutePage() {
         </p>
       </div>
 
-      {/* Admin-Row ZUERST — Pending-Aktionen (Buchhaltung, Vermietentwurf-
-          Step-4) sind das Wichtigste, was Admin nach Login sehen soll.
-          Plus Heute-im-Team-Live-Sicht. Bei Mitarbeitern ohne Admin-Permission
-          wird die Reihe einfach nicht gerendert -> direkt KPI-Strip oben. */}
-      {isAdmin && !loading && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ActionQueueCard data={pending} />
-          <TeamHeuteCard data={teamToday} />
-        </div>
-      )}
+      {/* Office-Anwesenheit — Wochen-Grid wer wann im Büro ist. Nur
+          gerendert wenn User die Permission hat (sonst RLS liefert
+          eh nichts). */}
+      {can("anwesenheit:view") && <OfficeAttendanceCard />}
 
       {/* Personal-Stats-Strip — Reihenfolge nach Zeit-Logik:
           aktuelle Woche -> Pipeline -> Wochen-Produktivitaet -> Karriere-Total.
@@ -663,181 +541,3 @@ function UpcomingCard({ days }: { days: UpcomingDay[] }) {
   );
 }
 
-// =====================================================================
-// TeamHeuteCard — admin-only: aktuell eingestempelt + heutige Aktivitaet
-// =====================================================================
-
-function formatLiveDuration(clockIn: string): string {
-  const elapsed = Date.now() - new Date(clockIn).getTime();
-  const totalMin = Math.floor(elapsed / 60_000);
-  const hh = Math.floor(totalMin / 60);
-  const mm = totalMin % 60;
-  if (hh === 0) return `${mm}min`;
-  return `${hh}h ${mm.toString().padStart(2, "0")}min`;
-}
-
-function TeamHeuteCard({ data }: { data: TeamToday | null }) {
-  // 30s tick fuer Live-Counter — wird nur fuer den Render gebraucht.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!data) return null;
-  const activeCount = data.active.length;
-
-  return (
-    <Card className="bg-card">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-            <h2 className="font-semibold text-sm">Heute im Team</h2>
-            <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-full bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-300">
-              {activeCount} aktiv
-            </span>
-          </div>
-          <Link href="/stempelzeiten" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-            Stempel <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-
-        {activeCount === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">
-            Niemand gerade eingestempelt.
-            {data.uniqueUsersToday > 0 && ` ${data.uniqueUsersToday} ${data.uniqueUsersToday === 1 ? "Person hat" : "Personen haben"} heute schon gearbeitet.`}
-          </p>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {data.active.map((s) => (
-                <div
-                  key={s.user_id + s.clock_in}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-foreground/[0.02] dark:bg-foreground/[0.04]"
-                >
-                  <span className="relative flex shrink-0">
-                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full opacity-50 bg-teal-500" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-500" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{s.user_name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {s.job_label ?? s.description ?? "Andere Arbeit"}
-                    </p>
-                  </div>
-                  <span className="text-[11px] font-mono tabular-nums text-teal-700 dark:text-teal-400 shrink-0">
-                    {formatLiveDuration(s.clock_in)}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {data.uniqueUsersToday > activeCount && (
-              <p className="text-[11px] text-muted-foreground mt-3 text-center">
-                {data.uniqueUsersToday} verschiedene Personen heute aktiv (inkl. ausgestempelte).
-              </p>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// =====================================================================
-// ActionQueueCard — admin-only: offene Admin-Tasks als klickbare Counter
-// =====================================================================
-
-interface QueueItemProps {
-  count: number;
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: "teal" | "red" | "green" | "blue";
-}
-
-function QueueItem({ count, label, href, icon: Icon, accent }: QueueItemProps) {
-  const colors = ACCENT_CLASSES[accent];
-  const muted = count === 0;
-  return (
-    <Link
-      href={href}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-        muted
-          ? "bg-foreground/[0.02] dark:bg-foreground/[0.04]"
-          : "bg-foreground/[0.03] dark:bg-foreground/[0.06] hover:bg-foreground/[0.06] dark:hover:bg-foreground/[0.1]"
-      }`}
-    >
-      <Icon className={`h-4 w-4 ${muted ? "text-muted-foreground/40" : colors.icon}`} />
-      <span className="text-sm font-medium flex-1 truncate">{label}</span>
-      <span className={`font-mono text-base font-bold tabular-nums ${muted ? "text-muted-foreground/40" : ""}`}>
-        {count}
-      </span>
-    </Link>
-  );
-}
-
-function ActionQueueCard({ data }: { data: AdminPending | null }) {
-  if (!data) return null;
-  const total = data.unbilledJobs + data.unfiledBelege + data.confirmedAnfragen + data.openTickets + data.partnerAnfragen;
-
-  return (
-    <Card className="bg-card">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Inbox className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <h2 className="font-semibold text-sm">Auf dich wartet</h2>
-            {total > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                {total}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {total === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">Alles erledigt — nichts offen.</p>
-        ) : (
-          <div className="space-y-1.5">
-            <QueueItem
-              count={data.unbilledJobs}
-              label="Aufträge zur Abrechnung"
-              href="/abrechnung"
-              icon={Receipt}
-              accent="green"
-            />
-            <QueueItem
-              count={data.unfiledBelege}
-              label="Belege zur Ablage"
-              href="/abrechnung"
-              icon={FolderArchive}
-              accent="blue"
-            />
-            <QueueItem
-              count={data.confirmedAnfragen}
-              label="Vermietentwürfe Step 4"
-              href="/auftraege?status=anfrage"
-              icon={Send}
-              accent="teal"
-            />
-            <QueueItem
-              count={data.partnerAnfragen}
-              label="Partner-Anfragen"
-              href="/auftraege?status=partner_anfrage"
-              icon={Building2}
-              accent="teal"
-            />
-            <QueueItem
-              count={data.openTickets}
-              label="Tickets zum Erledigen"
-              href="/tickets"
-              icon={Ticket}
-              accent="red"
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}

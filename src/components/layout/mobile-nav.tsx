@@ -7,6 +7,7 @@ import { Menu } from "lucide-react";
 import { NAV_GROUPS, ADMIN_NAV_GROUP, type NavItem } from "@/lib/constants";
 import { NAV_ICON_MAP } from "@/lib/nav-icons";
 import { isPathAllowed } from "@/lib/permissions";
+import { useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
 
 interface MobileNavProps {
   onMenuOpen: () => void;
@@ -24,6 +25,8 @@ function getMobileItems(permissions: string[], role: string): NavItem[] {
 export function MobileNav({ onMenuOpen, permissions, role }: MobileNavProps) {
   const pathname = usePathname();
   const items = getMobileItems(permissions, role);
+  const navCounts = useNavCounts();
+  const isAdmin = role === "admin";
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -44,15 +47,23 @@ export function MobileNav({ onMenuOpen, permissions, role }: MobileNavProps) {
           {items.map((item) => {
             const Icon = NAV_ICON_MAP[item.icon];
             const active = isActive(item.href);
+            const badge = getBadgeForHref(item.href, navCounts, isAdmin);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all min-w-[60px]",
+                  "relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all min-w-[60px]",
                   active ? "text-red-500" : "text-sidebar-foreground/60 active:text-sidebar-foreground"
                 )}
               >
+                {/* Badge oben rechts vom Icon — dezent (kleiner Dot mit
+                    Zahl statt knallrotem Alarm-Style). */}
+                {badge > 0 && (
+                  <span className="absolute top-0.5 right-2 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 text-[9px] font-medium rounded-full bg-foreground/15 text-foreground/70 tabular-nums leading-none">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                )}
                 {Icon && <Icon className={cn("h-5 w-5", active && "scale-110")} />}
                 <span className="truncate max-w-[64px]">{item.label}</span>
               </Link>

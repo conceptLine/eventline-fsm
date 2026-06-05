@@ -15,7 +15,7 @@
  *   - SignaturesSection — Techniker + Kunde/Mieter
  *
  * Fotos werden LIVE hochgeladen sobald der User welche auswaehlt — der
- * Draft wird ggf. on-the-fly erstellt (siehe ensureDraft). Signaturen
+ * Draft wird ggf. on-the-fly erstellt (siehe getOrCreateDraft). Signaturen
  * erst beim finalen Submit (sind typisch letzter Schritt vor Abschluss).
  */
 
@@ -74,6 +74,14 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutoSave = useRef(false);
+  // Ref-Spiegel von draftId: useState-Updates sind async, mehrere parallele
+  // async-Funktionen wuerden alle den alten state-Wert sehen. Mit dem Ref
+  // greift jeder Caller sofort auf den aktuellsten draftId zu und vermeidet
+  // doppelte Inserts. Wird zusammen mit setDraftId gesetzt (siehe Helper).
+  const draftIdRef = useRef<string | null>(null);
+  // In-flight-Guard: solange ein Insert laeuft, warten andere Caller bis
+  // der Insert fertig ist und benutzen dann denselben Draft.
+  const draftPromise = useRef<Promise<string | null> | null>(null);
 
   // Eigen-Verwaltete-Standorte: bei denen ist "Mieter vor Ort" Default,
   // sonst "Kunde / Auftraggeber".
@@ -131,7 +139,13 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
   // Beim Oeffnen: existierenden Draft (oder finalisierten Rapport) laden,
   // sodass der User dort weitermacht wo er aufgehoert hat.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Reset zwischen Open-Cycles damit beim naechsten Aufruf der Lade-
+      // Block frisch aus der DB liest statt stale draftId-Ref zu nutzen.
+      draftIdRef.current = null;
+      draftPromise.current = null;
+      return;
+    }
     let cancelled = false;
     (async () => {
       const { data } = await supabase
@@ -145,6 +159,7 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
       // skipAutoSave verhindert dass das Setzen der Form-Werte gleich
       // einen Auto-Save-Loop triggert.
       skipAutoSave.current = true;
+      draftIdRef.current = data.id;
       setDraftId(data.id);
       setDraftStatus(data.status as "entwurf" | "abgeschlossen");
       setForm((f) => ({
@@ -173,10 +188,11 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       if (!form.work_description.trim()) return;
-      const { data: { user } } = await supabase.auth.getUser();
+      // Sicherstellen dass ein Draft existiert (race-safe via Ref+Promise),
+      // dann nur noch UPDATE — nie wieder INSERT-mit-Fallback hier.
+      const id = await getOrCreateDraft();
+      if (!id) return;
       const payload = {
-        job_id: job.id,
-        created_by: user?.id,
         report_date: timeRanges[0]?.date || todayLocalDateString(),
         work_description: form.work_description,
         equipment_used: form.equipment_used || null,
@@ -184,16 +200,9 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
         client_name: form.client_name || null,
         technician_name: form.technician_name || null,
         time_ranges: timeRanges,
-        status: "entwurf" as const,
       };
-      if (draftId) {
-        const { error } = await supabase.from("service_reports").update(payload).eq("id", draftId);
-        if (handleDupError(error)) return;
-      } else {
-        const { data, error } = await supabase.from("service_reports").insert(payload).select("id").single();
-        if (handleDupError(error)) return;
-        if (data) setDraftId(data.id);
-      }
+      const { error } = await supabase.from("service_reports").update(payload).eq("id", id);
+      if (handleDupError(error)) return;
       // Eigenes 2-Sekunden-Flash-Popup zentral im Modal — sichtbarer als
       // ein Sonner-Toast in der Ecke. Re-Trigger setzt den Timer zurueck
       // damit's bei schneller Eingabe nicht flackert.
@@ -224,28 +233,60 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
     return true;
   }
 
-  // Stellt sicher dass ein Draft existiert (fuer Photo-Upload-Pfad). Falls
-  // noch kein draftId, wird die Row jetzt erstellt — auch wenn der Form-
-  // Inhalt noch leer ist (User wird's noch ausfuellen).
-  async function ensureDraft(): Promise<string | null> {
-    if (draftId) return draftId;
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase.from("service_reports").insert({
-      job_id: job.id,
-      created_by: user?.id,
-      report_date: timeRanges[0]?.date || todayLocalDateString(),
-      work_description: form.work_description || "",
-      time_ranges: timeRanges,
-      status: "entwurf" as const,
-    }).select("id").single();
-    if (handleDupError(error)) return null;
-    if (error || !data) {
-      TOAST.supabaseError(error, "Draft konnte nicht erstellt werden");
-      return null;
+  // Garantiert dass genau EIN Draft fuer diesen Job existiert. Alle
+  // Save-Pfade (Auto-Save, Photo-Upload, manueller Save, Final-Submit)
+  // gehen hierdurch.
+  //
+  // Race-Sicher via:
+  //  1. draftIdRef — sync-Read auf den aktuellsten Wert (kein async-state-Lag)
+  //  2. draftPromise.current — wenn schon ein Insert laeuft, warten alle
+  //     weiteren Caller auf den gleichen Promise statt selber zu inserten
+  //  3. DB-Unique-Index service_reports_one_entwurf_per_job (Migration 122)
+  //     — falls Promises trotzdem rennen, lehnt die DB den 2. Insert ab und
+  //     wir fetchen stattdessen den existierenden Entwurf
+  async function getOrCreateDraft(): Promise<string | null> {
+    if (draftIdRef.current) return draftIdRef.current;
+    if (draftPromise.current) return draftPromise.current;
+    draftPromise.current = (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data, error } = await supabase.from("service_reports").insert({
+        job_id: job.id,
+        created_by: user?.id,
+        report_date: timeRanges[0]?.date || todayLocalDateString(),
+        work_description: form.work_description || "",
+        time_ranges: timeRanges,
+        status: "entwurf" as const,
+      }).select("id").single();
+      if (error?.code === "23505") {
+        // Unique-Index hat zugeschlagen — Entwurf existiert schon, hol ihn.
+        const { data: existing } = await supabase
+          .from("service_reports")
+          .select("id")
+          .eq("job_id", job.id)
+          .eq("status", "entwurf")
+          .maybeSingle();
+        if (existing?.id) {
+          draftIdRef.current = existing.id;
+          setDraftId(existing.id);
+          setDraftStatus("entwurf");
+          return existing.id;
+        }
+      }
+      if (handleDupError(error)) return null;
+      if (error || !data) {
+        TOAST.supabaseError(error, "Draft konnte nicht erstellt werden");
+        return null;
+      }
+      draftIdRef.current = data.id;
+      setDraftId(data.id);
+      setDraftStatus("entwurf");
+      return data.id;
+    })();
+    try {
+      return await draftPromise.current;
+    } finally {
+      draftPromise.current = null;
     }
-    setDraftId(data.id);
-    setDraftStatus("entwurf");
-    return data.id;
   }
 
   async function signPhotoUrl(storagePath: string): Promise<string> {
@@ -275,7 +316,7 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
   async function handlePhotoSelect(files: FileList) {
     if (!validateFileList(files)) return;
 
-    const reportId = await ensureDraft();
+    const reportId = await getOrCreateDraft();
     if (!reportId) return;
 
     setPhotoUploadCount((c) => c + files.length);
@@ -346,10 +387,9 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (form.work_description.trim()) {
       setSaving("draft");
-      const { data: { user } } = await supabase.auth.getUser();
+      const id = await getOrCreateDraft();
+      if (!id) { setSaving(null); return; }
       const payload = {
-        job_id: job.id,
-        created_by: user?.id,
         report_date: timeRanges[0]?.date || todayLocalDateString(),
         work_description: form.work_description,
         equipment_used: form.equipment_used || null,
@@ -357,15 +397,9 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
         client_name: form.client_name || null,
         technician_name: form.technician_name || null,
         time_ranges: timeRanges,
-        status: "entwurf" as const,
       };
-      if (draftId) {
-        const { error } = await supabase.from("service_reports").update(payload).eq("id", draftId);
-        if (handleDupError(error)) return;
-      } else {
-        const { error } = await supabase.from("service_reports").insert(payload);
-        if (handleDupError(error)) return;
-      }
+      const { error } = await supabase.from("service_reports").update(payload).eq("id", id);
+      if (handleDupError(error)) return;
       setSaving(null);
       toast.success("Rapport zwischengespeichert");
     }
@@ -440,25 +474,23 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
       status: "abgeschlossen" as const,
     };
 
-    let reportId = draftId;
-    if (reportId) {
-      const { error } = await supabase.from("service_reports").update(finalPayload).eq("id", reportId);
-      if (handleDupError(error)) { setSaving(null); return; }
-      if (error) {
-        TOAST.supabaseError(error, "Rapport konnte nicht gespeichert werden");
-        setSaving(null);
-        return;
-      }
-    } else {
-      const { data, error } = await supabase.from("service_reports").insert(finalPayload).select("id").single();
-      if (handleDupError(error)) { setSaving(null); return; }
-      if (error || !data) {
-        TOAST.supabaseError(error, "Rapport konnte nicht erstellt werden");
-        setSaving(null);
-        return;
-      }
-      reportId = data.id;
+    // Finalisieren via UPDATE auf den existierenden Entwurf — wenn der
+    // User noch keinen hat (z.B. direkt-finalisieren ohne Zwischenspeicher),
+    // wird er hier on-the-fly erstellt. Dadurch entsteht NIE ein neuer
+    // 'abgeschlossen'-INSERT der einen lingering Entwurf zuruecklassen
+    // wuerde.
+    const reportId = await getOrCreateDraft();
+    if (!reportId) { setSaving(null); return; }
+    const { error } = await supabase.from("service_reports").update(finalPayload).eq("id", reportId);
+    if (handleDupError(error)) { setSaving(null); return; }
+    if (error) {
+      TOAST.supabaseError(error, "Rapport konnte nicht gespeichert werden");
+      setSaving(null);
+      return;
     }
+    // Lokalen State auf abgeschlossen ziehen damit der Auto-Save-Effect
+    // nicht nochmal feuert nachdem der Status DB-seitig gewechselt hat.
+    setDraftStatus("abgeschlossen");
 
     // Auftrag schliessen — atomar nach erfolgreichem Rapport-Update.
     await supabase.from("jobs").update({ status: "abgeschlossen" }).eq("id", job.id);

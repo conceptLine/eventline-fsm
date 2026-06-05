@@ -17,6 +17,7 @@ import {
   Moon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
 import type { Profile } from "@/types";
 
 interface SidebarProps {
@@ -30,6 +31,8 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
+  const navCounts = useNavCounts();
+  const isAdmin = profile.role === "admin";
   const fullUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
 
 
@@ -98,6 +101,7 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
                 {items.map((item) => {
                   const Icon = NAV_ICON_MAP[item.icon];
                   const active = isActive(item.href, item.matchPrefixes);
+                  const badge = getBadgeForHref(item.href, navCounts, isAdmin);
                   return (
                     <Link
                       key={item.href}
@@ -120,7 +124,14 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
                         </div>
                       )}
                       <span className="flex-1">{item.label}</span>
-                      {active && (
+                      {badge > 0 && (
+                        // Dezent: tinted bg statt solides Rot, muted Text.
+                        // Nur als Counter, kein Alarm-Style.
+                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium rounded-full bg-foreground/10 text-foreground/60 tabular-nums">
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      )}
+                      {active && badge === 0 && (
                         <ChevronRight className="h-3 w-3 text-sidebar-foreground/30" />
                       )}
                     </Link>

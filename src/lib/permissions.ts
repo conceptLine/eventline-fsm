@@ -63,6 +63,11 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   // (kein view-Slug noetig). approve = Admin/Genehmiger genehmigt
   // oder lehnt ab. /ferien Pfad fuer alle authenticated User offen.
   { slug: "ferien",        label: "Ferien",        paths: ["/ferien"],                                           actions: ["view", "approve"] },
+  // Buero-Anwesenheit — Dashboard-Widget Wochen-Grid: wer ist welchen Tag
+  // im Buero. Nur view (= sieht das Grid UND kann sich selbst eintragen);
+  // keine separate edit-Action, da die Aktion (Toggle der eigenen Zeile)
+  // sowieso nur via DB-RLS auf user_id=auth.uid() greift.
+  { slug: "anwesenheit",   label: "Büro-Anwesenheit", paths: [],                                                 actions: ["view"] },
   // Admin-only: User-Aktivitaets-Log einsehen (wann welcher Mitarbeiter
   // in der App war). Hat keinen eigenen Pfad — Tab im /einstellungen.
   // Wird via has_permission('admin:activity') gegated, Admin durch.
