@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * Buero-Anwesenheit Wochen-Grid (Mo-So) auf dem Dashboard.
+ * Buero-Anwesenheit 14-Tage-Grid auf dem Dashboard.
  *
  * Datenmodell:
- *   public.office_attendance (user_id, date) — Existence = anwesend.
- *   RLS: alle mit 'anwesenheit:view' sehen alle Eintraege; eigene Row
- *        toggeln via INSERT/DELETE.
+ *   public.office_attendance (user_id, date, start_hour, end_hour) —
+ *   Existence = anwesend. start_hour/end_hour sind 0..23 / 1..24 (immer
+ *   auf volle Stunden gerundet).
+ *   RLS: alle mit 'anwesenheit:view' sehen alle Eintraege; eigene Rows
+ *        INSERT/UPDATE/DELETE.
  *
  * UI:
- *   - Header: Wochen-Label (Mo X. — So Y.) + Navigation prev/next/heute
- *   - Grid: Mitarbeiter-Spalte links + 7 Tag-Spalten (heute hervorgehoben).
- *     Zellen sind klickbare Toggles fuer die eigene Zeile, read-only fuer
- *     andere Zeilen.
+ *   - Header: Datums-Range + Navigation prev/next/heute (7-Tage-Schritte)
+ *   - Grid: Mitarbeiter-Spalte links + 14 Tag-Spalten (heute hervorgehoben).
+ *     Klick auf eine eigene Zelle oeffnet das TimeRangeModal mit Von/Bis-
+ *     Dropdowns. Andere Zellen sind read-only.
  *   - Wenn ein Mitarbeiter komplett leer ist (0 Tage markiert) wird er
  *     trotzdem als Zeile angezeigt — sonst sieht man nicht wer ueberhaupt
  *     zum Buero-Team gehoert.
@@ -20,13 +22,14 @@
  * Datenquelle:
  *   - profiles: alle aktiven mit anwesenheit:view (via RPC weil
  *     profiles-RLS direktes select(*) verbietet)
- *   - office_attendance: alle Rows der aktuellen Woche (RLS gefiltert)
+ *   - office_attendance: alle Rows der aktuellen Range (RLS gefiltert)
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, Building2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Building2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 
@@ -38,6 +41,13 @@ interface AttendanceUser {
 interface AttendanceRow {
   user_id: string;
   date: string; // YYYY-MM-DD
+  start_hour: number | null;
+  end_hour: number | null;
+}
+
+interface MarkValue {
+  start: number | null;
+  end: number | null;
 }
 
 // Wochentag-Labels, indexiert nach JS-getDay() (So=0, Mo=1, …, Sa=6).
@@ -67,11 +77,15 @@ export function OfficeAttendanceCard() {
   const supabase = createClient();
   const [me, setMe] = useState<string | null>(null);
   const [users, setUsers] = useState<AttendanceUser[]>([]);
-  const [marks, setMarks] = useState<Set<string>>(new Set()); // "user_id|YYYY-MM-DD"
+  // Map "user_id|YYYY-MM-DD" -> {start, end}. Existence = anwesend.
+  // start/end koennen null sein (Legacy-Rows ohne Zeit nach Migration 125).
+  const [marks, setMarks] = useState<Map<string, MarkValue>>(new Map());
   // Default: 14-Tage-Fenster ab heute. User navigiert in 7-Tage-Schritten
   // (prev/next), "Heute" springt zurueck.
   const [windowStart, setWindowStart] = useState<Date>(() => startOfToday());
   const [loading, setLoading] = useState(true);
+  // Aktuell offene Zelle (eigene Zeile + Tag) fuer das Zeit-Edit-Modal.
+  const [editingDate, setEditingDate] = useState<string | null>(null);
 
   // 14-Tage-Array ab windowStart.
   const days = useMemo(() => {
@@ -99,7 +113,7 @@ export function OfficeAttendanceCard() {
       supabase.rpc("get_anwesenheit_users"),
       supabase
         .from("office_attendance")
-        .select("user_id, date")
+        .select("user_id, date, start_hour, end_hour")
         .gte("date", rangeStartIso)
         .lte("date", rangeEndIso),
     ]);
@@ -108,46 +122,58 @@ export function OfficeAttendanceCard() {
       setUsers(usersRes.data as AttendanceUser[]);
     }
     if (marksRes.data) {
-      const set = new Set<string>();
+      const map = new Map<string, MarkValue>();
       for (const r of marksRes.data as AttendanceRow[]) {
-        set.add(`${r.user_id}|${r.date.slice(0, 10)}`);
+        map.set(`${r.user_id}|${r.date.slice(0, 10)}`, {
+          start: r.start_hour,
+          end: r.end_hour,
+        });
       }
-      setMarks(set);
+      setMarks(map);
     }
     setLoading(false);
   }, [supabase, rangeStartIso, rangeEndIso]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function toggleMark(userId: string, dateIso: string) {
-    if (userId !== me) return; // nur eigene Zeile toggelbar
-    const key = `${userId}|${dateIso}`;
-    const isMarked = marks.has(key);
-    // Optimistic update
-    setMarks((prev) => {
-      const next = new Set(prev);
-      if (isMarked) next.delete(key); else next.add(key);
-      return next;
-    });
-    if (isMarked) {
-      const { error } = await supabase
-        .from("office_attendance")
-        .delete()
-        .eq("user_id", userId)
-        .eq("date", dateIso);
-      if (error) {
-        // Revert
-        setMarks((prev) => { const n = new Set(prev); n.add(key); return n; });
-        TOAST.supabaseError(error, "Konnte nicht abgewählt werden");
-      }
-    } else {
-      const { error } = await supabase
-        .from("office_attendance")
-        .insert({ user_id: userId, date: dateIso });
-      if (error) {
-        setMarks((prev) => { const n = new Set(prev); n.delete(key); return n; });
-        TOAST.supabaseError(error, "Konnte nicht gespeichert werden");
-      }
+  // Aufruf vom Modal: speichert oder loescht die Anwesenheit fuer
+  // (me, dateIso). start/end als full hours (0..23 / 1..24). Optimistic
+  // update mit Revert bei DB-Fehler.
+  async function saveAttendance(dateIso: string, start: number, end: number) {
+    if (!me) return;
+    const key = `${me}|${dateIso}`;
+    const prev = marks.get(key) ?? null;
+    setMarks((m) => { const next = new Map(m); next.set(key, { start, end }); return next; });
+    // Upsert via DELETE+INSERT um RLS-Pfade nicht zu komplizieren — der
+    // composite-PK (user_id, date) garantiert dass es 1 Row gibt.
+    const { error } = await supabase
+      .from("office_attendance")
+      .upsert({ user_id: me, date: dateIso, start_hour: start, end_hour: end },
+              { onConflict: "user_id,date" });
+    if (error) {
+      // Revert
+      setMarks((m) => {
+        const next = new Map(m);
+        if (prev) next.set(key, prev); else next.delete(key);
+        return next;
+      });
+      TOAST.supabaseError(error, "Konnte nicht gespeichert werden");
+    }
+  }
+
+  async function deleteAttendance(dateIso: string) {
+    if (!me) return;
+    const key = `${me}|${dateIso}`;
+    const prev = marks.get(key);
+    setMarks((m) => { const next = new Map(m); next.delete(key); return next; });
+    const { error } = await supabase
+      .from("office_attendance")
+      .delete()
+      .eq("user_id", me)
+      .eq("date", dateIso);
+    if (error) {
+      setMarks((m) => { const next = new Map(m); if (prev) next.set(key, prev); return next; });
+      TOAST.supabaseError(error, "Konnte nicht entfernt werden");
     }
   }
 
@@ -257,25 +283,34 @@ export function OfficeAttendanceCard() {
                       {days.map((d) => {
                         const iso = ymdLocal(d);
                         const key = `${u.id}|${iso}`;
-                        const marked = marks.has(key);
+                        const mark = marks.get(key);
+                        const marked = !!mark;
                         const isToday = iso === todayIso;
+                        const hasTimes = mark && mark.start != null && mark.end != null;
+                        // Display: "9-17" wenn Zeiten gesetzt, sonst ✓ (Legacy
+                        // ohne Zeiten), sonst leer.
+                        const display = hasTimes
+                          ? `${mark!.start}-${mark!.end}`
+                          : marked
+                            ? "✓"
+                            : "";
                         return (
                           <button
                             key={iso}
                             type="button"
-                            onClick={() => toggleMark(u.id, iso)}
+                            onClick={() => { if (isMe) setEditingDate(iso); }}
                             disabled={!isMe}
-                            className={`h-8 rounded-md transition-all flex items-center justify-center text-xs font-semibold ${
+                            className={`h-8 rounded-md transition-all flex items-center justify-center text-[10px] font-semibold tabular-nums ${
                               marked
                                 ? "bg-blue-500 text-white"
                                 : isToday
                                   ? "bg-red-50/40 dark:bg-red-500/[0.06] border border-dashed border-red-200 dark:border-red-500/30"
                                   : "bg-foreground/[0.03] dark:bg-foreground/[0.06] border border-transparent"
                             } ${isMe ? "cursor-pointer hover:scale-[0.96] active:scale-[0.92]" : "cursor-default"}`}
-                            aria-label={marked ? `${u.full_name} am ${iso} austragen` : `${u.full_name} am ${iso} eintragen`}
+                            aria-label={marked ? `${u.full_name} am ${iso} bearbeiten` : `${u.full_name} am ${iso} eintragen`}
                             aria-pressed={marked}
                           >
-                            {marked ? "✓" : ""}
+                            {display}
                           </button>
                         );
                       })}
@@ -288,9 +323,144 @@ export function OfficeAttendanceCard() {
         )}
 
         <p className="text-[10px] text-muted-foreground/70 mt-3">
-          Klick auf eine Zelle deiner eigenen Zeile = ein/austragen. Andere Zeilen sind read-only.
+          Klick auf eine Zelle deiner eigenen Zeile = Zeit eintragen. Andere Zeilen sind read-only.
         </p>
       </CardContent>
+
+      {editingDate && me && (
+        <TimeRangeModal
+          dateIso={editingDate}
+          current={marks.get(`${me}|${editingDate}`) ?? null}
+          onClose={() => setEditingDate(null)}
+          onSave={async (start, end) => {
+            await saveAttendance(editingDate, start, end);
+            setEditingDate(null);
+          }}
+          onDelete={async () => {
+            await deleteAttendance(editingDate);
+            setEditingDate(null);
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+// =====================================================================
+// TimeRangeModal — Von/Bis-Eingabe auf volle Stunden (0..23 / 1..24)
+// =====================================================================
+
+const HOUR_OPTIONS_START = Array.from({ length: 24 }, (_, h) => h);     // 0..23
+const HOUR_OPTIONS_END = Array.from({ length: 24 }, (_, h) => h + 1);   // 1..24
+
+interface TimeRangeModalProps {
+  dateIso: string;
+  current: MarkValue | null;
+  onClose: () => void;
+  onSave: (start: number, end: number) => Promise<void> | void;
+  onDelete: () => Promise<void> | void;
+}
+
+function TimeRangeModal({ dateIso, current, onClose, onSave, onDelete }: TimeRangeModalProps) {
+  // Default-Werte: bestehende Werte falls vorhanden, sonst Bueroalltag 9-17.
+  const [start, setStart] = useState<number>(current?.start ?? 9);
+  const [end, setEnd] = useState<number>(current?.end ?? 17);
+  const [saving, setSaving] = useState(false);
+
+  const dateLabel = (() => {
+    const [y, m, d] = dateIso.split("-").map(Number);
+    const date = new Date(y, m - 1, d, 12);
+    return date.toLocaleDateString("de-CH", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+  })();
+
+  const valid = end > start;
+
+  async function handleSave() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try { await onSave(start, end); } finally { setSaving(false); }
+  }
+
+  async function handleDelete() {
+    if (saving) return;
+    setSaving(true);
+    try { await onDelete(); } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Anwesenheit"
+      icon={<Building2 className="h-5 w-5 text-blue-500" />}
+      size="sm"
+      closable={!saving}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-muted-foreground">{dateLabel}</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground/70 ml-1">Von</p>
+            <select
+              value={start}
+              onChange={(e) => setStart(parseInt(e.target.value))}
+              className="w-full h-9 px-3 text-sm rounded-xl border border-border bg-card"
+            >
+              {HOUR_OPTIONS_START.map((h) => (
+                <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground/70 ml-1">Bis</p>
+            <select
+              value={end}
+              onChange={(e) => setEnd(parseInt(e.target.value))}
+              className="w-full h-9 px-3 text-sm rounded-xl border border-border bg-card"
+            >
+              {HOUR_OPTIONS_END.map((h) => (
+                <option key={h} value={h} disabled={h <= start}>
+                  {String(h % 24).padStart(2, "0")}:00{h === 24 ? " (Mitternacht)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {!valid && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-400">
+            Bis-Zeit muss nach Von-Zeit liegen.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          {current && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={saving}
+              className="kasten kasten-red"
+              aria-label="Anwesenheit löschen"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Entfernen
+            </button>
+          )}
+          <div className="flex-1" />
+          <button type="button" onClick={onClose} disabled={saving} className="kasten kasten-muted">
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!valid || saving}
+            className="kasten kasten-red"
+          >
+            {saving ? "Speichert…" : "Speichern"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
