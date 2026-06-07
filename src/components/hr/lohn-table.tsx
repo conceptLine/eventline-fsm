@@ -11,7 +11,7 @@
  *
  * Edit-Flow: Click "Bearbeiten" → Modal → Save schliesst die alte
  * Lohnzeile (effective_to) und legt eine neue an. So bleibt die Historie
- * sauber fuer rueckwirkende Budget-Aggregation.
+ * sauber fuer rueckwirkende Aggregationen.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -121,7 +121,7 @@ export function LohnTable() {
       <div>
         <h2 className="text-sm font-semibold">Lohntabelle</h2>
         <p className="text-xs text-muted-foreground">
-          Pro Mitarbeiter Brutto-Stundenlohn + Arbeitgeber-Anteil. Vollkosten/h fließen ins Budget-Auto.
+          Pro Mitarbeiter Brutto-Stundenlohn + Arbeitgeber-Anteil.
         </p>
       </div>
 

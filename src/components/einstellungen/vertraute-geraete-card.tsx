@@ -11,7 +11,7 @@
  *     Geraet beim naechsten API-Call zurueckgewiesen)
  *
  * Anfrage eines neuen Geraets passiert nicht von hier — sondern direkt
- * von der sensiblen Seite (Budget / HR-Loehne), die das TrustedDeviceGate
+ * von der sensiblen Seite (HR-Loehne), die das TrustedDeviceGate
  * rendert. Diese Karte ist nur Listing + Cleanup.
  */
 

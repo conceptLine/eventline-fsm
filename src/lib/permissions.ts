@@ -33,9 +33,6 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   // Abrechnung — abgeschlossene Auftraege als "Rechnung gestellt" markieren.
   // view = /abrechnung-Seite sehen; edit = "Rechnung gestellt"-Button druecken.
   { slug: "abrechnung",    label: "Abrechnung",    paths: ["/abrechnung"],                                       actions: ["view", "edit"] },
-  // Budget — Firmenbudget pro Jahr & Kategorie setzen (nur Soll, manuell).
-  // view = /budget-Seite sehen; edit = Kategorien/Betraege anlegen/aendern.
-  { slug: "budget",        label: "Budget",        paths: ["/budget"],                                           actions: ["view", "edit"] },
   // Vertrieb — Lead-Pipeline. CRUD pro Lead.
   { slug: "vertrieb",      label: "Vertrieb",      paths: ["/vertrieb"],                                         actions: ["view", "create", "edit", "delete"] },
   { slug: "locations",     label: "Locations",     paths: ["/locations", "/standorte", "/raeume"], actions: ["view", "create", "edit", "delete"] },

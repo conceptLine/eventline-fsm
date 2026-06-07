@@ -4,7 +4,7 @@
  * TrustedDeviceGate — Wrapper-Komponente fuer sensible Page-Inhalte.
  *
  *   <TrustedDeviceGate>
- *     <BudgetContent />
+ *     <SensibleContent />
  *   </TrustedDeviceGate>
  *
  * Verhalten:

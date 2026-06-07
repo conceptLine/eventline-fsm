@@ -142,7 +142,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/auftraege", label: "Operations", icon: "ClipboardList", mobile: true },
       { href: "/abrechnung", label: "Abrechnung", icon: "Receipt" },
       { href: "/vertrieb", label: "Vertrieb", icon: "TrendingUp" },
-      { href: "/budget", label: "Budget", icon: "Wallet" },
     ],
   },
   {
