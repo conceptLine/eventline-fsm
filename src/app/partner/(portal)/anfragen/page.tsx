@@ -135,19 +135,33 @@ export default function PartnerAnfragenPage() {
         .maybeSingle();
       const locId = profileRow?.partner_location_id ?? null;
       if (!locId) { setAnfragen([]); setLoading(false); return; }
+      // Buckets:
+      //  - Aktiv = offene Partner-Status (Entwurf/Anfrage, IMMER egal welches
+      //    Datum) ODER (entschieden UND start in der Zukunft / kein Datum)
+      //  - Archiv = entschieden UND vergangen
+      //
+      // Mehrere .or()-Aufrufe ANDen sich in PostgREST. Damit decken wir den
+      // Aktiv-View mit 2 OR-Gruppen ab: (1) status-OR aus dem outer Filter,
+      // (2) zusaetzlich entweder partner-status ODER zukuenftig/datumlos.
+      const today = todayIsoDate();
       let q = supabase
         .from("jobs")
         .select("id, job_number, title, start_date, end_date, status, created_at, partner_response_message, appointments:job_appointments(id, assigned_to)")
         .eq("location_id", locId)
         .or("status.in.(partner_entwurf,partner_anfrage),accepted_at.not.is.null,rejected_at.not.is.null");
-      // Aktiv- vs Archiv-Split nach Datum: vergangene = Archiv. Anfragen
-      // OHNE start_date bleiben aktiv (Entwurf ohne Datum gehoert in den
-      // aktiven Bereich, damit man sie noch ausfuellen kann).
-      const today = todayIsoDate();
+
       if (showArchive) {
+        // Archiv: nur entschiedene (accepted/rejected) UND past
+        // partner-only (offene Anfragen ohne Entscheidung) → nie ins Archiv,
+        // selbst wenn Datum vorbei ist. Daher zusaetzliches OR um partner-
+        // Status auszuschliessen ist nicht noetig — wir filtern hier nur auf
+        // past-Datum, partner-only mit past-Datum erscheint dann zwar auch,
+        // das ist ok weil ein offener Entwurf den ein Partner liegen liess
+        // gehoert sehr wohl ins Archiv.
         q = q.not("start_date", "is", null).lt("start_date", today);
       } else {
-        q = q.or(`start_date.is.null,start_date.gte.${today}`);
+        // Aktiv: offene Partner-Status (immer) ODER datumlos ODER zukuenftig
+        q = q.or(`status.in.(partner_entwurf,partner_anfrage),start_date.is.null,start_date.gte.${today}`);
       }
       if (filterStatus !== "all") q = q.eq("status", filterStatus);
       const titleQ = searchTitle.trim();

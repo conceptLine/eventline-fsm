@@ -99,8 +99,10 @@ function BlockSwitch({ block, value, onValue, readOnly }: BlockProps) {
       return <SimpleInputRow block={block as DateBlock} value={(value as string) ?? ""} onValue={onValue as (v: string) => void} type="date" readOnly={readOnly} extraProps={(() => {
         const b = block as DateBlock;
         const today = todayISO();
+        // Default-Min = 2020 verhindert Jahr-0001-Falle wenn Browser-
+        // Date-Input via Pfeiltasten/Tippen ein invalides Jahr akzeptiert.
         return {
-          min: b.min === "today" ? today : b.min,
+          min: b.min === "today" ? today : (b.min ?? "2020-01-01"),
           max: b.max === "today" ? today : b.max,
         };
       })()} />;
@@ -220,16 +222,18 @@ function SimpleInputRow<TBlock extends { label: string; required?: boolean; hint
 }
 
 function DateRangeRow({ block, value, onValue, readOnly }: CommonRowProps<DateRangeBlock, { start?: string; end?: string }>) {
+  // Default-Min 2020 verhindert Jahr-0001-Falle (Browser-Date-Input
+  // akzeptiert via Pfeiltasten/Tippen invalide Jahre, die als BC ankommen).
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <FieldLabel label={block.start_label} required={block.required_start} />
-          <Input type="date" value={value.start ?? ""} onChange={(e) => onValue({ ...value, start: e.target.value })} disabled={readOnly} className="mt-1" />
+          <Input type="date" value={value.start ?? ""} onChange={(e) => onValue({ ...value, start: e.target.value })} disabled={readOnly} min="2020-01-01" className="mt-1" />
         </div>
         <div>
           <FieldLabel label={block.end_label} required={block.required_end} hint={block.hint_end} />
-          <Input type="date" value={value.end ?? ""} onChange={(e) => onValue({ ...value, end: e.target.value })} disabled={readOnly} min={value.start || undefined} className="mt-1" />
+          <Input type="date" value={value.end ?? ""} onChange={(e) => onValue({ ...value, end: e.target.value })} disabled={readOnly} min={value.start || "2020-01-01"} className="mt-1" />
         </div>
       </div>
     </div>

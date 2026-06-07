@@ -112,6 +112,12 @@ export default function NeueAnfragePage() {
       toast.error("Veranstaltungs-Startdatum ist Pflicht");
       return;
     }
+    // Sanity-Check: kein Jahr vor 2020 (verhindert Browser-Date-Input
+    // Jahr-0001-Falle die als BC-timestamp in der DB landet).
+    if (core.start_date < "2020-01-01" || (core.end_date && core.end_date < "2020-01-01")) {
+      toast.error("Datum scheint ungültig — bitte korrigieren");
+      return;
+    }
     if (!core.contact_person || !core.contact_phone) {
       toast.error("Ansprechperson und Telefon sind Pflicht");
       return;
