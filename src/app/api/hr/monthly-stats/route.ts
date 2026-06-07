@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { requireTrustedDevice } from "@/lib/api-auth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 interface RpcRow {
   profile_id: string;
@@ -20,8 +21,20 @@ interface RpcRow {
 }
 
 export async function GET(req: Request) {
+  // Lohnabrechnung ist strikt admin-only — Trust-Device + role='admin'.
+  // Trust-Gate kommt zuerst (kann auch fuer kuenftige delegierte Rechte
+  // genutzt werden), Admin-Check als zweite explizite Schranke.
   const auth = await requireTrustedDevice("lohn:manage");
   if (auth.error) return auth.error;
+  const adminClient = createAdminClient();
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", auth.user.id)
+    .single();
+  if (profile?.role !== "admin") {
+    return NextResponse.json({ success: false, error: "Nur für Administratoren" }, { status: 403 });
+  }
 
   const url = new URL(req.url);
   const month = url.searchParams.get("month");

@@ -46,8 +46,10 @@ export default function HRPage() {
   const searchParams = useSearchParams();
   const urlTab = searchParams.get("tab") as Tab | null;
   const [tab, setTab] = useState<Tab>(urlTab === "loehne" ? "loehne" : "operativ");
-  const { can } = usePermissions();
-  const canManageLohn = can("lohn:manage");
+  const { role } = usePermissions();
+  // Lohnabrechnung ist strikt admin-only — auch User mit lohn:manage
+  // Permission sollen die Querschnitts-Tabelle nicht sehen.
+  const isAdmin = role === "admin";
 
   function selectTab(t: Tab) {
     setTab(t);
@@ -117,8 +119,10 @@ export default function HRPage() {
         <div className="space-y-6">
           {/* Jeder Mitarbeiter sieht seine eigenen Lohnausweise — kein Trust-Gate. */}
           <LohnausweiseList />
-          {/* Admin: Monats-Stundenuebersicht fuer Lohnabrechnung. Trust-gated. */}
-          {canManageLohn && (
+          {/* Admin-only: Monats-Stundenuebersicht fuer Lohnabrechnung.
+              Trust-gated. Strikt role='admin', auch User mit
+              lohn:manage-Permission sehen sie nicht. */}
+          {isAdmin && (
             <TrustedDeviceGate>
               <MonatsstundenTable />
             </TrustedDeviceGate>
