@@ -19,7 +19,6 @@ import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { PartnerFormTab } from "@/components/einstellungen/partner-form-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
-import { MeinLohnCard } from "@/components/einstellungen/mein-lohn-card";
 import { VertrauteGeraeteCard } from "@/components/einstellungen/vertraute-geraete-card";
 
 type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet" | "partner-form";
@@ -175,7 +174,6 @@ export default function EinstellungenPage() {
 
       {tab === "integrationen" && (
         <div className="space-y-6">
-          <MeinLohnCard />
           <VertrauteGeraeteCard />
           <MeinKontoCard />
           <IntegrationenTab />
