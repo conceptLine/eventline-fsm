@@ -137,6 +137,9 @@ export interface Job {
   invoiced_at: string | null;
   invoice_number: string | null;
   invoiced_by: string | null;
+  // Partner-Anfrage Custom-Felder (Block-Antworten ohne mapTo, jsonb keyed by block.id).
+  // Wird via PartnerFormAnswersCard auf der Detail-Page gerendert.
+  form_answers: Record<string, unknown> | null;
   // Joined data
   customer?: Customer;
   location?: Location;

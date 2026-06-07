@@ -33,6 +33,7 @@ import { AppointmentsSection } from "@/components/auftrag/appointments-section";
 import { RapportFormModal } from "@/components/auftrag/rapport-form-modal";
 import { HoursAuditCard } from "@/components/auftrag/hours-audit-card";
 import { JobStempelButton } from "@/components/stempel/job-stempel-button";
+import { PartnerFormAnswersCard } from "@/components/auftrag/partner-form-answers-card";
 import { usePermissions } from "@/lib/use-permissions";
 
 export default function AuftragDetailPage() {
@@ -665,6 +666,14 @@ export default function AuftragDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Partner-Custom-Felder — Antworten auf vom Admin im Builder hinzu-
+          gefuegte Zusatz-Felder (Toggles, Textareas, etc.). Nur sichtbar
+          wenn der Partner welche ausgefuellt hat. */}
+      <PartnerFormAnswersCard
+        formAnswers={job.form_answers}
+        locationId={job.location_id}
+      />
 
       {/* Notizen — eine Freitext-Notiz, autosave nach 800ms ohne Aenderung */}
       <Card className="bg-card">
