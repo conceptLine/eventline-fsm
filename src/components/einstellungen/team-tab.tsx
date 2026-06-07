@@ -21,11 +21,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
-import { Plus, KeyRound, Pencil, UserX, UserCheck, Trash2, Mail } from "lucide-react";
+import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
+import { Plus, KeyRound, Pencil, UserX, UserCheck, Trash2, Mail, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 
 type EditState = { id: string; full_name: string; role: string } | null;
+interface CompOriginal {
+  hourly_wage_chf: number;
+  employer_costs_chf_per_hour: number;
+  effective_from: string;
+  notes: string | null;
+}
+const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 interface RoleOption { slug: string; label: string }
 
 export function TeamTab() {
@@ -38,6 +46,13 @@ export function TeamTab() {
   const [createForm, setCreateForm] = useState({ email: "", full_name: "", role: "techniker" });
   const [edit, setEdit] = useState<EditState>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Lohn-Felder im Edit-Modal — werden lazy beim Open via /api/hr/compensation
+  // geladen. Trusted-Gate im Modal verhindert ungeschuetzten Zugriff.
+  const [editWage, setEditWage] = useState("");
+  const [editEmployer, setEditEmployer] = useState("");
+  const [editFrom, setEditFrom] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editCompOriginal, setEditCompOriginal] = useState<CompOriginal | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const { confirm, ConfirmModalElement } = useConfirm();
 
@@ -91,21 +106,84 @@ export function TeamTab() {
     load();
   }
 
+  function openEdit(p: Profile) {
+    setEdit({ id: p.id, full_name: p.full_name, role: p.role });
+    // Reset wage state, lazy-fetch (kann fehlschlagen wenn Geraet nicht
+    // vertraut ist — dann bleiben Felder leer und der Trust-Gate im
+    // Modal zeigt die Vertrauen-Anfrage). Wenn schon Daten existieren,
+    // werden sie vorgefuellt.
+    setEditWage(""); setEditEmployer(""); setEditNotes("");
+    setEditFrom(new Date().toISOString().slice(0, 10));
+    setEditCompOriginal(null);
+    fetch("/api/hr/compensation")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (!json?.success) return;
+        type Empl = { profile_id: string; compensation: CompOriginal | null };
+        const empl = (json.employees as Empl[]).find((e) => e.profile_id === p.id);
+        const c = empl?.compensation;
+        if (c) {
+          setEditWage(String(c.hourly_wage_chf));
+          setEditEmployer(String(c.employer_costs_chf_per_hour));
+          setEditFrom(c.effective_from);
+          setEditNotes(c.notes ?? "");
+          setEditCompOriginal(c);
+        }
+      })
+      .catch(() => { /* untrusted → leer lassen, Gate uebernimmt */ });
+  }
+
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!edit) return;
     setSavingEdit(true);
-    const res = await fetch(`/api/admin/users/${edit.id}`, {
+
+    // 1) Profile patchen (Name/Rolle)
+    const profileRes = await fetch(`/api/admin/users/${edit.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_name: edit.full_name, role: edit.role }),
     });
-    const json = await res.json();
-    setSavingEdit(false);
-    if (!json.success) {
-      TOAST.errorOr(json.error);
+    const profileJson = await profileRes.json();
+    if (!profileJson.success) {
+      setSavingEdit(false);
+      TOAST.errorOr(profileJson.error);
       return;
     }
+
+    // 2) Lohn-Zeile patchen wenn Werte gesetzt UND geaendert
+    const wage = parseFloat(editWage.replace(",", "."));
+    const employer = parseFloat(editEmployer.replace(",", ".")) || 0;
+    if (Number.isFinite(wage) && wage >= 0 && editFrom) {
+      const changed = !editCompOriginal
+        || editCompOriginal.hourly_wage_chf !== wage
+        || editCompOriginal.employer_costs_chf_per_hour !== employer
+        || editCompOriginal.effective_from !== editFrom
+        || (editCompOriginal.notes ?? "") !== editNotes.trim();
+      if (changed) {
+        const wageRes = await fetch("/api/hr/compensation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profile_id: edit.id,
+            hourly_wage_chf: wage,
+            employer_costs_chf_per_hour: employer,
+            effective_from: editFrom,
+            notes: editNotes.trim() || null,
+          }),
+        });
+        const wageJson = await wageRes.json();
+        if (!wageRes.ok || !wageJson.success) {
+          setSavingEdit(false);
+          toast.warning(`Profil gespeichert, Lohn nicht: ${wageJson.error ?? "Fehler"}`);
+          load();
+          setEdit(null);
+          return;
+        }
+      }
+    }
+
+    setSavingEdit(false);
     toast.success("Gespeichert");
     setEdit(null);
     load();
@@ -228,7 +306,7 @@ export function TeamTab() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEdit({ id: p.id, full_name: p.full_name, role: p.role })}
+                    onClick={() => openEdit(p)}
                     className="kasten kasten-purple"
                     data-tooltip="Bearbeiten"
                   >
@@ -306,7 +384,7 @@ export function TeamTab() {
         </form>
       </Modal>
 
-      {/* Edit-Modal */}
+      {/* Edit-Modal — Name + Rolle + Lohn-Sektion (hinter Trust-Gate). */}
       <Modal open={!!edit} onClose={() => !savingEdit && setEdit(null)} title="Benutzer bearbeiten" size="md">
         {edit && (
           <form onSubmit={saveEdit} className="space-y-4">
@@ -329,6 +407,54 @@ export function TeamTab() {
                 {roles.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
               </select>
             </div>
+
+            {/* Lohn-Sektion — nur sichtbar auf vertrautem Geraet (sensible Daten). */}
+            <div className="pt-3 border-t">
+              <p className="text-xs font-semibold flex items-center gap-1.5 mb-2">
+                <Wallet className="h-3.5 w-3.5" /> Lohn
+              </p>
+              <TrustedDeviceGate>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto / h (CHF)</p>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={editWage}
+                        onChange={(e) => setEditWage(e.target.value)}
+                        placeholder="z.B. 22.50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground/70 ml-1">Arbeitgeber / h (CHF)</p>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={editEmployer}
+                        onChange={(e) => setEditEmployer(e.target.value)}
+                        placeholder="z.B. 5.54"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground/70 ml-1">Gültig ab</p>
+                    <Input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground/70 ml-1">Notiz (optional)</p>
+                    <Input
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="z.B. 'Anpassung BVG ab 2026'"
+                      maxLength={200}
+                    />
+                  </div>
+                  <VollkostenPreview wage={editWage} employer={editEmployer} />
+                </div>
+              </TrustedDeviceGate>
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={() => setEdit(null)} disabled={savingEdit} className="kasten kasten-muted flex-1">Abbrechen</button>
               <button type="submit" disabled={savingEdit || !edit.full_name} className="kasten kasten-red flex-1">
@@ -340,6 +466,19 @@ export function TeamTab() {
       </Modal>
 
       {ConfirmModalElement}
+    </div>
+  );
+}
+
+function VollkostenPreview({ wage, employer }: { wage: string; employer: string }) {
+  const w = parseFloat(wage.replace(",", "."));
+  const e = parseFloat(employer.replace(",", ".")) || 0;
+  if (!Number.isFinite(w) || w < 0) return null;
+  const total = w + e;
+  return (
+    <div className="flex items-baseline justify-between px-3 py-1.5 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06] text-xs">
+      <span className="text-muted-foreground">Vollkosten / h</span>
+      <span className="font-semibold tabular-nums">CHF {CHF.format(total)}</span>
     </div>
   );
 }
