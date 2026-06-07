@@ -63,15 +63,16 @@ export function PartnerFormAnswersCard({ formAnswers, locationId }: Props) {
   const blockById = new Map<string, FormBlock>();
   schema?.blocks.forEach((b) => blockById.set(b.id, b));
 
-  // Antworten in Schema-Reihenfolge sortieren falls Schema da ist, sonst
-  // in Insertion-Reihenfolge (= Object.keys-Order).
-  const orderedKeys = schema
-    ? schema.blocks.map((b) => b.id).filter((id) => id in formAnswers)
-    : Object.keys(formAnswers);
-  // Keys die im Schema NICHT mehr existieren (z.B. Block geloescht nach
-  // Submit) trotzdem zeigen, damit nichts verloren geht.
-  const orphanKeys = Object.keys(formAnswers).filter((k) => !blockById.has(k));
-  const allKeys = [...orderedKeys, ...orphanKeys];
+  // Schema-Reihenfolge als Sort-Key (Position-Index pro ID). Keys die nicht
+  // im Schema sind kriegen Infinity = ans Ende. Jeder formAnswer-Key
+  // erscheint dabei GENAU EINMAL — vorher haben wir orderedKeys und
+  // orphanKeys getrennt gebaut und konkateniert, was bei nicht geladenem
+  // Schema dazu fuehrte dass alle Keys doppelt im Array landeten.
+  const schemaOrder = new Map<string, number>();
+  schema?.blocks.forEach((b, i) => schemaOrder.set(b.id, i));
+  const entries = Object.entries(formAnswers).sort(
+    ([a], [b]) => (schemaOrder.get(a) ?? Infinity) - (schemaOrder.get(b) ?? Infinity)
+  );
 
   return (
     <Card className="bg-card">
@@ -82,12 +83,14 @@ export function PartnerFormAnswersCard({ formAnswers, locationId }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {allKeys.map((key) => {
+        {entries.map(([key, value]) => {
           const block = blockById.get(key);
           const label = block ? getBlockLabel(block) : key;
-          const value = formAnswers[key];
           const formatted = formatAnswer(value, block);
-          const isOrphan = !block;
+          // Orphan-Tag nur zeigen wenn Schema GELADEN ist UND Key dort
+          // fehlt — sonst zeigen wir bei noch-ladend faelschlich alle
+          // Keys als "Feld gelöscht".
+          const isOrphan = schema !== null && !block;
           return (
             <div key={key} className="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-3 py-1 border-b border-border last:border-0">
               <div className="text-xs font-medium text-muted-foreground">
