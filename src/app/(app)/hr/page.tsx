@@ -1,18 +1,31 @@
 "use client";
 
 /**
- * HR-Hub — Karten fuer Stempelzeiten, Tickets, Ferien.
+ * HR-Hub — zwei Tabs:
+ *   • Operativ — Karten fuer Stempelzeiten, Tickets, Ferien
+ *   • Löhne    — Lohnausweise (eigene) + Monats-Stundenuebersicht
+ *                fuer die Lohnabrechnung (admin-only, Trust-gated).
  *
- * Loehne sind nicht mehr hier: Lohn-Verwaltung passiert direkt im
- * User-Edit-Modal unter Einstellungen → Team (Lohn-Sektion mit
- * Trusted-Device-Gate). So gibt's keine separate Querschnittstabelle
- * mehr; die Lohn-Werte gehoeren konzeptionell zum jeweiligen User.
+ * Lohn-WERTE pro Mitarbeiter (Brutto-Stundenlohn, Arbeitgeber-Anteil)
+ * werden NICHT mehr hier verwaltet — das laeuft seit dem Lohntabelle-
+ * Removal direkt im User-Edit-Modal unter Einstellungen → Team. Dieser
+ * Tab zeigt nur die aggregierte Auswertung pro Monat.
  */
 
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TypePickerCard, type TypePickerTone } from "@/components/ui/type-picker-card";
-import { Clock, Ticket, Plane } from "lucide-react";
+import { Clock, Ticket, Plane, Briefcase, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { usePermissions } from "@/lib/use-permissions";
+import { cn } from "@/lib/utils";
+import { LohnausweiseList } from "@/components/hr/lohnausweise-list";
+import { MonatsstundenTable } from "@/components/hr/monatsstunden-table";
+import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
+
+const TAB_BTN_CLASS = "flex items-center gap-2 px-3 py-2.5 -mb-px text-sm font-medium border-b-2 transition-colors";
+
+type Tab = "operativ" | "loehne";
 
 interface HRSection {
   href: string;
@@ -30,6 +43,31 @@ const sections: HRSection[] = [
 
 export default function HRPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab") as Tab | null;
+  const [tab, setTab] = useState<Tab>(urlTab === "loehne" ? "loehne" : "operativ");
+  const { can } = usePermissions();
+  const canManageLohn = can("lohn:manage");
+
+  function selectTab(t: Tab) {
+    setTab(t);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (t === "operativ") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", t);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }
+
+  useEffect(() => {
+    const next = urlTab === "loehne" ? "loehne" : "operativ";
+    setTab(next);
+  }, [urlTab]);
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "operativ", label: "Operativ", icon: <Briefcase className="h-4 w-4" /> },
+    { key: "loehne",   label: "Löhne",    icon: <Wallet className="h-4 w-4" /> },
+  ];
 
   return (
     <div className="space-y-6">
@@ -38,18 +76,55 @@ export default function HRPage() {
         <p className="text-sm text-muted-foreground mt-1" aria-hidden="true">&nbsp;</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {sections.map((s) => (
-          <TypePickerCard
-            key={s.href}
-            icon={s.icon}
-            tone={s.tone}
-            label={s.label}
-            description={s.description}
-            onClick={() => router.push(s.href)}
-          />
-        ))}
-      </div>
+      <nav className="border-b flex gap-1">
+        {tabs.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => selectTab(t.key)}
+              className={cn(
+                TAB_BTN_CLASS,
+                active
+                  ? "border-red-500 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-foreground/20",
+              )}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {tab === "operativ" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sections.map((s) => (
+            <TypePickerCard
+              key={s.href}
+              icon={s.icon}
+              tone={s.tone}
+              label={s.label}
+              description={s.description}
+              onClick={() => router.push(s.href)}
+            />
+          ))}
+        </div>
+      )}
+
+      {tab === "loehne" && (
+        <div className="space-y-6">
+          {/* Jeder Mitarbeiter sieht seine eigenen Lohnausweise — kein Trust-Gate. */}
+          <LohnausweiseList />
+          {/* Admin: Monats-Stundenuebersicht fuer Lohnabrechnung. Trust-gated. */}
+          {canManageLohn && (
+            <TrustedDeviceGate>
+              <MonatsstundenTable />
+            </TrustedDeviceGate>
+          )}
+        </div>
+      )}
     </div>
   );
 }
