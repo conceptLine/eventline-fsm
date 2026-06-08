@@ -32,10 +32,18 @@ interface EmployeeStats {
   hourly_wage_chf: number | null;
   employer_costs_chf_per_hour: number | null;
   effective_basis: "rapport" | "stempel";
+  base_lohnkosten_chf: number | null;
   lohnkosten_chf: number | null;
   nettolohn_chf: number | null;
   vollkosten_chf: number | null;
   total_deduction_pct: number;
+  night_surcharge_chf: number;
+  sunhol_surcharge_chf: number;
+  total_surcharge_chf: number;
+  night_eligible_minutes: number;
+  sunhol_eligible_minutes: number;
+  night_over_limit: boolean;
+  sunhol_over_limit: boolean;
 }
 
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -102,12 +110,13 @@ export function MonatsstundenTable() {
       acc.stempel += r.stempel_minutes;
       acc.geplant += r.geplant_minutes;
       acc.rapport += r.rapport_minutes;
+      acc.surcharge += r.total_surcharge_chf;
       acc.lohnkosten += r.lohnkosten_chf ?? 0;
       acc.netto += r.nettolohn_chf ?? 0;
       acc.vollkosten += r.vollkosten_chf ?? 0;
       return acc;
     },
-    { stempel: 0, geplant: 0, rapport: 0, lohnkosten: 0, netto: 0, vollkosten: 0 },
+    { stempel: 0, geplant: 0, rapport: 0, surcharge: 0, lohnkosten: 0, netto: 0, vollkosten: 0 },
   );
 
   return (
@@ -155,13 +164,14 @@ export function MonatsstundenTable() {
             <div className="divide-y">
               {/* Header-Row (desktop) */}
               <div className="hidden md:grid items-center gap-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground"
-                style={{ gridTemplateColumns: "minmax(0, 1.4fr) 70px 70px 70px 70px 95px 95px 95px" }}
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
               >
                 <div>Mitarbeiter</div>
                 <div className="text-right">Stempel</div>
                 <div className="text-right">Geplant</div>
                 <div className="text-right">Rapport</div>
                 <div className="text-right">Lohn/h</div>
+                <div className="text-right">Zuschlag</div>
                 <div className="text-right">Brutto</div>
                 <div className="text-right">Netto</div>
                 <div className="text-right">Vollkosten</div>
@@ -171,13 +181,14 @@ export function MonatsstundenTable() {
               ))}
               {/* Summen-Zeile */}
               <div className="hidden md:grid items-center gap-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
-                style={{ gridTemplateColumns: "minmax(0, 1.4fr) 70px 70px 70px 70px 95px 95px 95px" }}
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
               >
                 <div>Summe ({data.length})</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.stempel)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.geplant)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.rapport)}</div>
                 <div className="text-right tabular-nums">—</div>
+                <div className="text-right tabular-nums">{totals.surcharge > 0 ? `+ ${CHF.format(totals.surcharge)}` : "—"}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.lohnkosten)}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.netto)}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.vollkosten)}</div>
@@ -198,10 +209,23 @@ export function MonatsstundenTable() {
 }
 
 function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void }) {
+  // Tooltip-Aufschluesselung der Zuschlaege fuer Brutto-Tooltip
+  const hasSurcharge = row.total_surcharge_chf > 0;
+  const bruttoTooltip = hasSurcharge
+    ? `Basis ${CHF.format(row.base_lohnkosten_chf ?? 0)}`
+      + (row.night_surcharge_chf > 0 ? ` + Nacht (25%, ${(row.night_eligible_minutes / 60).toFixed(1)}h) ${CHF.format(row.night_surcharge_chf)}` : "")
+      + (row.sunhol_surcharge_chf > 0 ? ` + So/FT (50%, ${(row.sunhol_eligible_minutes / 60).toFixed(1)}h) ${CHF.format(row.sunhol_surcharge_chf)}` : "")
+    : (row.effective_basis === "rapport" ? "Basis: Rapport-Stunden" : "Basis: Stempel-Stunden (kein Rapport)");
+  const surchargeTooltip = hasSurcharge
+    ? `Nacht: ${CHF.format(row.night_surcharge_chf)} · So/FT: ${CHF.format(row.sunhol_surcharge_chf)}`
+    : (row.night_over_limit || row.sunhol_over_limit
+        ? "Limit überschritten — Zeitkompensation / Ersatzruhetage statt Geld"
+        : "Keine zuschlags-pflichtigen Stunden");
+
   return (
     <div
       className="grid items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer"
-      style={{ gridTemplateColumns: "minmax(0, 1.4fr) 70px 70px 70px 70px 95px 95px 95px" }}
+      style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
       onClick={onClick}
     >
       <div className="min-w-0">
@@ -214,8 +238,13 @@ function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void })
       <div className="text-right tabular-nums text-muted-foreground">
         {row.hourly_wage_chf != null ? `CHF ${CHF.format(row.hourly_wage_chf)}` : "—"}
       </div>
+      <div className={`text-right tabular-nums ${hasSurcharge ? "text-amber-700 dark:text-amber-300 font-medium" : "text-muted-foreground"}`}
+        data-tooltip={surchargeTooltip}
+      >
+        {hasSurcharge ? `+ ${CHF.format(row.total_surcharge_chf)}` : "—"}
+      </div>
       <div className="text-right tabular-nums text-muted-foreground"
-        data-tooltip={row.effective_basis === "rapport" ? "Basis: Rapport-Stunden" : "Basis: Stempel-Stunden (kein Rapport)"}
+        data-tooltip={bruttoTooltip}
       >
         {row.lohnkosten_chf != null ? `CHF ${CHF.format(row.lohnkosten_chf)}` : "—"}
       </div>
