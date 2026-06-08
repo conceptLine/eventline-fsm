@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Wallet } from "lucide-react";
 import { toast } from "sonner";
+import { EmployeeWageDetailModal } from "@/components/hr/employee-wage-detail-modal";
 
 interface EmployeeStats {
   profile_id: string;
@@ -74,6 +75,7 @@ export function MonatsstundenTable() {
   const [period, setPeriod] = useState<{ year: number; month: number }>(todayMonth());
   const [data, setData] = useState<EmployeeStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailFor, setDetailFor] = useState<string | null>(null);
 
   const load = useCallback(async (p: { year: number; month: number }) => {
     setLoading(true);
@@ -164,7 +166,7 @@ export function MonatsstundenTable() {
                 <div className="text-right">Vollkosten</div>
               </div>
               {data.map((r) => (
-                <StatsRow key={r.profile_id} row={r} />
+                <StatsRow key={r.profile_id} row={r} onClick={() => setDetailFor(r.profile_id)} />
               ))}
               {/* Summen-Zeile */}
               <div className="hidden md:grid items-center gap-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
@@ -183,18 +185,26 @@ export function MonatsstundenTable() {
           )}
         </CardContent>
       </Card>
+
+      <EmployeeWageDetailModal
+        open={!!detailFor}
+        profileId={detailFor}
+        initialYear={period.year}
+        onClose={() => setDetailFor(null)}
+      />
     </div>
   );
 }
 
-function StatsRow({ row }: { row: EmployeeStats }) {
+function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void }) {
   return (
     <div
-      className="grid items-center gap-2 px-4 py-2.5 text-sm"
+      className="grid items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer"
       style={{ gridTemplateColumns: "minmax(0, 1.4fr) 70px 70px 70px 70px 95px 95px 95px" }}
+      onClick={onClick}
     >
       <div className="min-w-0">
-        <div className="font-medium truncate">{row.full_name}</div>
+        <div className="font-medium truncate hover:underline">{row.full_name}</div>
         <div className="text-[11px] text-muted-foreground truncate">{row.role}</div>
       </div>
       <div className="text-right tabular-nums">{fmtHours(row.stempel_minutes)}</div>
