@@ -86,6 +86,9 @@ export function MonatsstundenTable() {
   const [data, setData] = useState<EmployeeStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailFor, setDetailFor] = useState<string | null>(null);
+  // Toggle "Nur mit Stunden" — verbergt Mitarbeiter ohne Stempel/Geplant/
+  // Rapport-Minuten (zeigen sonst nur Dashes, wirken wie Bug). Default an.
+  const [onlyWithHours, setOnlyWithHours] = useState(true);
 
   // Cancel-Token: bei rapidem Monatswechsel verwerfen wir Stale-Fetches
   // damit das Result vom letzten Klick gewinnt (nicht der schnellere
@@ -108,8 +111,14 @@ export function MonatsstundenTable() {
     return () => { cancelled = true; };
   }, [period]);
 
+  // Optional gefiltert (nur Zeilen mit Aktivitaet im Monat)
+  const visibleData = onlyWithHours
+    ? data.filter((r) => r.stempel_minutes > 0 || r.geplant_minutes > 0 || r.rapport_minutes > 0)
+    : data;
+  const hiddenCount = data.length - visibleData.length;
+
   // Summen-Zeile berechnen
-  const totals = data.reduce(
+  const totals = visibleData.reduce(
     (acc, r) => {
       acc.stempel += r.stempel_minutes;
       acc.geplant += r.geplant_minutes;
@@ -135,7 +144,16 @@ export function MonatsstundenTable() {
             Auszahlung pro Mitarbeiter — inkl. Nacht-/Sonntags-Zuschläge nach Schweizer ArG. Klick auf einen Namen für Details.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onlyWithHours}
+              onChange={(e) => setOnlyWithHours(e.target.checked)}
+              className="accent-red-500"
+            />
+            Nur mit Stunden{hiddenCount > 0 ? ` (${hiddenCount} ausgeblendet)` : ""}
+          </label>
           <button
             type="button"
             onClick={() => setPeriod((p) => shiftMonth(p, -1))}
@@ -162,7 +180,7 @@ export function MonatsstundenTable() {
         <CardContent className="p-0">
           {loading ? (
             <Loading />
-          ) : data.length === 0 ? (
+          ) : visibleData.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Keine Mitarbeiter.</div>
           ) : (
             <div className="divide-y">
@@ -181,14 +199,14 @@ export function MonatsstundenTable() {
                 <div className="text-right text-emerald-700 dark:text-emerald-300 font-semibold" data-tooltip="= Brutto − Mitarbeiter-Abzüge. Das was auf dem Konto landet.">Auszahlung</div>
                 <div className="text-right" data-tooltip="Brutto + Arbeitgeber-Anteil (Vollkosten für die Firma)">Vollkosten</div>
               </div>
-              {data.map((r) => (
+              {visibleData.map((r) => (
                 <StatsRow key={r.profile_id} row={r} onClick={() => setDetailFor(r.profile_id)} />
               ))}
               {/* Summen-Zeile */}
               <div className="hidden md:grid items-center gap-x-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
                 style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
               >
-                <div>Summe ({data.length})</div>
+                <div>Summe ({visibleData.length})</div>
                 <div className="text-right tabular-nums border-l border-border pl-2">{fmtHours(totals.stempel)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.geplant)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.rapport)}</div>

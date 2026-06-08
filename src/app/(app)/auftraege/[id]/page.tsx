@@ -89,6 +89,16 @@ export default function AuftragDetailPage() {
 
   useEffect(() => { loadAll(); }, [id]);
 
+  // Realtime: bei Rapport-Aenderungen (zb signed in einem anderen Tab)
+  // Detail-Page refreshen. Listener im globalen Channel (layout.tsx)
+  // feuert das realtime:service_reports-Event.
+  useEffect(() => {
+    const handler = () => { loadAll(); };
+    window.addEventListener("realtime:service_reports", handler);
+    return () => window.removeEventListener("realtime:service_reports", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   // Auto-open-Termin-Form: ?termin=neu in der URL ist der Trigger.
   // AppointmentsSection liest defaultOpen beim Mount; wir entfernen den
   // Param nach Mount damit Refresh das Formular nicht wieder oeffnet.

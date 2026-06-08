@@ -143,6 +143,36 @@ export async function DELETE(
     );
   }
 
+  // Wage-Dokumente (PDFs) im Storage entfernen BEVOR der Profile-Row
+  // weg ist — sonst hat man Orphan-Files in lohndokumente/<profile_id>/...
+  // die niemand mehr aufraeumt. Best-effort: Fehler werden geloggt aber
+  // blockieren den Delete-Flow nicht (Hard-Delete ist Admin-explicit).
+  try {
+    const { data: stFiles } = await admin.storage
+      .from("lohndokumente")
+      .list(id, { limit: 1000 });
+    if (stFiles && stFiles.length > 0) {
+      // Nested-Listing: List gibt Folder/File-Eintraege auf der einen Ebene
+      // zurueck. Wir muessen rekursiv die Jahres-Unterordner durchgehen.
+      const allPaths: string[] = [];
+      for (const entry of stFiles) {
+        // Year-Ordner enthalten die PDFs
+        const { data: yearFiles } = await admin.storage
+          .from("lohndokumente")
+          .list(`${id}/${entry.name}`, { limit: 1000 });
+        for (const f of yearFiles ?? []) {
+          allPaths.push(`${id}/${entry.name}/${f.name}`);
+        }
+      }
+      if (allPaths.length > 0) {
+        const { error: rmErr } = await admin.storage.from("lohndokumente").remove(allPaths);
+        if (rmErr) logError("admin.users.delete.storage", { error: rmErr.message, count: allPaths.length }, { userId: id });
+      }
+    }
+  } catch (e) {
+    logError("admin.users.delete.storage.exception", e, { userId: id });
+  }
+
   // Auth-User loeschen. profiles cascadiert via FK ON DELETE CASCADE.
   // Falls auth.users nicht (mehr) existiert: 404 von Supabase ignorieren
   // und nur das verwaiste profile wegputzen.

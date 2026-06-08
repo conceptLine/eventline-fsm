@@ -40,15 +40,12 @@ export function LohnausweiseList() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("lohndokumente_digital_accepted_at, lohndokumente_digital_accepted_version")
-        .eq("id", user.id)
-        .maybeSingle();
-      const accepted = prof?.lohndokumente_digital_accepted_at
-        && prof.lohndokumente_digital_accepted_version === CONSENT_VERSION;
+      // Consent-State via SECURITY-DEFINER-RPC statt direkt profiles-Read —
+      // konsistent mit der "Profile-Reads ueber RPC"-Konvention.
+      const { data } = await supabase.rpc("get_my_wage_consent");
+      const prof = Array.isArray(data) ? data[0] : null;
+      const accepted = prof?.accepted_at
+        && prof.accepted_version === CONSENT_VERSION;
       if (!accepted) { setConsentNeeded(true); setLoading(false); return; }
       const res = await fetch("/api/hr/wage-documents");
       const j = await res.json();

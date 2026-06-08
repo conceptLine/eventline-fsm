@@ -111,6 +111,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         }, dispatch("time_entries"))
         .on("postgres_changes", { event: "*", schema: "public", table: "vertrieb_contacts" }, dispatch("vertrieb_contacts"))
         .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, dispatch("tickets"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "service_reports" }, dispatch("service_reports"))
         .subscribe();
     })();
 
