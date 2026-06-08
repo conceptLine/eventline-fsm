@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: active } = await supabase
       .from("user_sessions")
-      .select("id")
+      .select("id, last_seen_at, started_at")
       .eq("user_id", user.id)
       .is("ended_at", null)
       .order("started_at", { ascending: false })
@@ -39,10 +39,17 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (active) {
+      // ended_at korrekt setzen:
+      //   - reason='logout' → User ist gerade aktiv (Click) → NOW
+      //   - reason='inactive' → User war seit last_seen weg → last_seen_at
+      //     (sonst zaehlen 5-Tage-im-Tab-offene Sessions als 5 Tage Aktivitaet)
+      const endedAt = reason === "inactive"
+        ? (active.last_seen_at ?? active.started_at ?? new Date().toISOString())
+        : new Date().toISOString();
       await supabase
         .from("user_sessions")
         .update({
-          ended_at: new Date().toISOString(),
+          ended_at: endedAt,
           end_reason: reason,
         })
         .eq("id", active.id);
