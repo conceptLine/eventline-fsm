@@ -128,14 +128,23 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
   // Stempel-Eintraege laden wenn Typ Stempel-Aenderung gewaehlt wird.
   // Separate Queries fuer time_entries und jobs — der nested join
   // (job:jobs(...)) hatte still failende Probleme bei manchen Usern.
+  //
+  // WICHTIG: explizit .eq('user_id', currentUserId) — sonst leakt fuer
+  // Admins die RLS-Policy 'Admins sehen alle Zeiteintraege' saemtliche
+  // Eintraege rein und das limit(...) schneidet die eigenen aelteren
+  // Eintraege weg. Limit hoch auf 100 — bei eigenen Eintraegen reicht
+  // das fuer ~3 Monate auch bei sehr aktiven Usern.
   useEffect(() => {
     if (type !== "stempel_aenderung") return;
     (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
       const { data: entries, error: entriesErr } = await supabase
         .from("time_entries")
         .select("id, clock_in, clock_out, description, job_id")
+        .eq("user_id", user.id)
         .order("clock_in", { ascending: false })
-        .limit(30);
+        .limit(100);
       if (entriesErr) {
         toast.error("Stempel-Eintraege konnten nicht geladen werden: " + entriesErr.message);
         return;
