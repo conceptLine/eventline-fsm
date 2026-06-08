@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
-import { Plus, KeyRound, Pencil, UserX, UserCheck, Trash2, Mail, Wallet } from "lucide-react";
+import { Plus, KeyRound, Pencil, UserX, UserCheck, Trash2, Mail, Wallet, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 
@@ -32,6 +32,12 @@ interface CompOriginal {
   employer_costs_chf_per_hour: number;
   effective_from: string;
   notes: string | null;
+  ahv_iv_eo_pct: number;
+  alv_pct: number;
+  nbu_pct: number;
+  bvg_pct: number;
+  ktg_pct: number;
+  quellensteuer_pct: number;
 }
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 interface RoleOption { slug: string; label: string }
@@ -48,10 +54,18 @@ export function TeamTab() {
   const [savingEdit, setSavingEdit] = useState(false);
   // Lohn-Felder im Edit-Modal — werden lazy beim Open via /api/hr/compensation
   // geladen. Trusted-Gate im Modal verhindert ungeschuetzten Zugriff.
+  // Sektion ist standardmaessig zugeklappt damit das Modal nicht ueberfordert.
+  const [lohnOpen, setLohnOpen] = useState(false);
   const [editWage, setEditWage] = useState("");
   const [editEmployer, setEditEmployer] = useState("");
   const [editFrom, setEditFrom] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editAhv, setEditAhv] = useState("5.3");
+  const [editAlv, setEditAlv] = useState("1.1");
+  const [editNbu, setEditNbu] = useState("1.4");
+  const [editBvg, setEditBvg] = useState("0");
+  const [editKtg, setEditKtg] = useState("0");
+  const [editQst, setEditQst] = useState("0");
   const [editCompOriginal, setEditCompOriginal] = useState<CompOriginal | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const { confirm, ConfirmModalElement } = useConfirm();
@@ -108,12 +122,15 @@ export function TeamTab() {
 
   function openEdit(p: Profile) {
     setEdit({ id: p.id, full_name: p.full_name, role: p.role });
+    setLohnOpen(false);
     // Reset wage state, lazy-fetch (kann fehlschlagen wenn Geraet nicht
     // vertraut ist — dann bleiben Felder leer und der Trust-Gate im
     // Modal zeigt die Vertrauen-Anfrage). Wenn schon Daten existieren,
     // werden sie vorgefuellt.
     setEditWage(""); setEditEmployer(""); setEditNotes("");
     setEditFrom(new Date().toISOString().slice(0, 10));
+    setEditAhv("5.3"); setEditAlv("1.1"); setEditNbu("1.4");
+    setEditBvg("0"); setEditKtg("0"); setEditQst("0");
     setEditCompOriginal(null);
     fetch("/api/hr/compensation")
       .then((r) => r.ok ? r.json() : null)
@@ -127,6 +144,12 @@ export function TeamTab() {
           setEditEmployer(String(c.employer_costs_chf_per_hour));
           setEditFrom(c.effective_from);
           setEditNotes(c.notes ?? "");
+          setEditAhv(String(c.ahv_iv_eo_pct));
+          setEditAlv(String(c.alv_pct));
+          setEditNbu(String(c.nbu_pct));
+          setEditBvg(String(c.bvg_pct));
+          setEditKtg(String(c.ktg_pct));
+          setEditQst(String(c.quellensteuer_pct));
           setEditCompOriginal(c);
         }
       })
@@ -154,12 +177,28 @@ export function TeamTab() {
     // 2) Lohn-Zeile patchen wenn Werte gesetzt UND geaendert
     const wage = parseFloat(editWage.replace(",", "."));
     const employer = parseFloat(editEmployer.replace(",", ".")) || 0;
+    const parsePct = (s: string, fallback: number) => {
+      const n = parseFloat(s.replace(",", "."));
+      return Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
+    };
+    const ahv = parsePct(editAhv, 5.3);
+    const alv = parsePct(editAlv, 1.1);
+    const nbu = parsePct(editNbu, 1.4);
+    const bvg = parsePct(editBvg, 0);
+    const ktg = parsePct(editKtg, 0);
+    const qst = parsePct(editQst, 0);
     if (Number.isFinite(wage) && wage >= 0 && editFrom) {
       const changed = !editCompOriginal
         || editCompOriginal.hourly_wage_chf !== wage
         || editCompOriginal.employer_costs_chf_per_hour !== employer
         || editCompOriginal.effective_from !== editFrom
-        || (editCompOriginal.notes ?? "") !== editNotes.trim();
+        || (editCompOriginal.notes ?? "") !== editNotes.trim()
+        || editCompOriginal.ahv_iv_eo_pct !== ahv
+        || editCompOriginal.alv_pct !== alv
+        || editCompOriginal.nbu_pct !== nbu
+        || editCompOriginal.bvg_pct !== bvg
+        || editCompOriginal.ktg_pct !== ktg
+        || editCompOriginal.quellensteuer_pct !== qst;
       if (changed) {
         const wageRes = await fetch("/api/hr/compensation", {
           method: "POST",
@@ -170,6 +209,8 @@ export function TeamTab() {
             employer_costs_chf_per_hour: employer,
             effective_from: editFrom,
             notes: editNotes.trim() || null,
+            ahv_iv_eo_pct: ahv, alv_pct: alv, nbu_pct: nbu,
+            bvg_pct: bvg, ktg_pct: ktg, quellensteuer_pct: qst,
           }),
         });
         const wageJson = await wageRes.json();
@@ -408,51 +449,89 @@ export function TeamTab() {
               </select>
             </div>
 
-            {/* Lohn-Sektion — nur sichtbar auf vertrautem Geraet (sensible Daten). */}
+            {/* Lohn-Sektion — klappbarer Header. Nur sichtbar auf vertrautem
+                Geraet (sensible Daten). */}
             <div className="pt-3 border-t">
-              <p className="text-xs font-semibold flex items-center gap-1.5 mb-2">
-                <Wallet className="h-3.5 w-3.5" /> Lohn
-              </p>
-              <TrustedDeviceGate>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto / h (CHF)</p>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={editWage}
-                        onChange={(e) => setEditWage(e.target.value)}
-                        placeholder="z.B. 22.50"
+              <button
+                type="button"
+                onClick={() => setLohnOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-2 text-xs font-semibold py-1 hover:text-foreground/70 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Wallet className="h-3.5 w-3.5" /> Lohn &amp; Abzüge
+                </span>
+                {lohnOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {lohnOpen && (
+                <div className="mt-2">
+                  <TrustedDeviceGate>
+                    <div className="space-y-3">
+                      {/* Brutto + AG */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto / h (CHF)</p>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={editWage}
+                            onChange={(e) => setEditWage(e.target.value)}
+                            placeholder="z.B. 22.50"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground/70 ml-1">Arbeitgeber / h (CHF)</p>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={editEmployer}
+                            onChange={(e) => setEditEmployer(e.target.value)}
+                            placeholder="z.B. 5.54"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Abzüge */}
+                      <div className="pt-2 border-t border-foreground/10">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Abzüge Mitarbeiter (% vom Brutto)</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <PctField label="AHV/IV/EO" value={editAhv} onChange={setEditAhv} hint="Standard 5.3%" />
+                          <PctField label="ALV" value={editAlv} onChange={setEditAlv} hint="Standard 1.1%" />
+                          <PctField label="NBU" value={editNbu} onChange={setEditNbu} hint="~1.4%" />
+                          <PctField label="BVG" value={editBvg} onChange={setEditBvg} hint="altersabhängig" />
+                          <PctField label="KTG" value={editKtg} onChange={setEditKtg} hint="optional" />
+                          <PctField label="Quellensteuer" value={editQst} onChange={setEditQst} hint="meist 0%" />
+                        </div>
+                      </div>
+
+                      {/* Netto / Vollkosten Preview */}
+                      <LohnPreview
+                        wage={editWage}
+                        employer={editEmployer}
+                        ahv={editAhv}
+                        alv={editAlv}
+                        nbu={editNbu}
+                        bvg={editBvg}
+                        ktg={editKtg}
+                        qst={editQst}
                       />
+
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground/70 ml-1">Gültig ab</p>
+                        <Input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground/70 ml-1">Notiz (optional)</p>
+                        <Input
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          placeholder="z.B. 'Anpassung BVG ab 2026'"
+                          maxLength={200}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-muted-foreground/70 ml-1">Arbeitgeber / h (CHF)</p>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={editEmployer}
-                        onChange={(e) => setEditEmployer(e.target.value)}
-                        placeholder="z.B. 5.54"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground/70 ml-1">Gültig ab</p>
-                    <Input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground/70 ml-1">Notiz (optional)</p>
-                    <Input
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="z.B. 'Anpassung BVG ab 2026'"
-                      maxLength={200}
-                    />
-                  </div>
-                  <VollkostenPreview wage={editWage} employer={editEmployer} />
+                  </TrustedDeviceGate>
                 </div>
-              </TrustedDeviceGate>
+              )}
             </div>
 
             <div className="flex gap-2 pt-1">
@@ -470,15 +549,58 @@ export function TeamTab() {
   );
 }
 
-function VollkostenPreview({ wage, employer }: { wage: string; employer: string }) {
+function PctField({ label, value, onChange, hint }: { label: string; value: string; onChange: (v: string) => void; hint?: string }) {
+  return (
+    <div className="space-y-0.5">
+      <label className="text-[10px] text-muted-foreground/70">{label}</label>
+      <div className="relative">
+        <Input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="pr-7"
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground/60 pointer-events-none">%</span>
+      </div>
+      {hint && <p className="text-[9px] text-muted-foreground/50">{hint}</p>}
+    </div>
+  );
+}
+
+function LohnPreview({ wage, employer, ahv, alv, nbu, bvg, ktg, qst }: {
+  wage: string; employer: string;
+  ahv: string; alv: string; nbu: string; bvg: string; ktg: string; qst: string;
+}) {
   const w = parseFloat(wage.replace(",", "."));
   const e = parseFloat(employer.replace(",", ".")) || 0;
   if (!Number.isFinite(w) || w < 0) return null;
-  const total = w + e;
+  const num = (s: string) => {
+    const n = parseFloat(s.replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const totalDeductionPct = num(ahv) + num(alv) + num(nbu) + num(bvg) + num(ktg) + num(qst);
+  const deductionAmount = w * (totalDeductionPct / 100);
+  const netto = w - deductionAmount;
+  const vollkosten = w + e;
   return (
-    <div className="flex items-baseline justify-between px-3 py-1.5 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06] text-xs">
-      <span className="text-muted-foreground">Vollkosten / h</span>
-      <span className="font-semibold tabular-nums">CHF {CHF.format(total)}</span>
+    <div className="space-y-1 px-3 py-2 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06] text-xs">
+      <div className="flex items-baseline justify-between">
+        <span className="text-muted-foreground">Brutto / h</span>
+        <span className="tabular-nums">CHF {CHF.format(w)}</span>
+      </div>
+      <div className="flex items-baseline justify-between text-muted-foreground">
+        <span>− Abzüge ({totalDeductionPct.toFixed(2)}%)</span>
+        <span className="tabular-nums">CHF {CHF.format(deductionAmount)}</span>
+      </div>
+      <div className="flex items-baseline justify-between pt-1 border-t border-foreground/10">
+        <span className="font-semibold">Netto / h</span>
+        <span className="font-semibold tabular-nums">CHF {CHF.format(netto)}</span>
+      </div>
+      <div className="flex items-baseline justify-between text-muted-foreground pt-1">
+        <span>Vollkosten / h (inkl. AG)</span>
+        <span className="tabular-nums">CHF {CHF.format(vollkosten)}</span>
+      </div>
     </div>
   );
 }

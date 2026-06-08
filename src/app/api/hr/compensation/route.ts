@@ -32,7 +32,7 @@ export async function GET() {
   // Aktuelle Compensation-Zeile pro User (effective_to IS NULL).
   const { data: comps, error: compErr } = await admin
     .from("employee_compensation")
-    .select("id, profile_id, hourly_wage_chf, employer_costs_chf_per_hour, effective_from, notes")
+    .select("id, profile_id, hourly_wage_chf, employer_costs_chf_per_hour, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct")
     .is("effective_to", null);
   if (compErr) return NextResponse.json({ success: false, error: compErr.message }, { status: 500 });
 
@@ -53,6 +53,12 @@ export async function GET() {
             employer_costs_chf_per_hour: Number(c.employer_costs_chf_per_hour),
             effective_from: c.effective_from,
             notes: c.notes,
+            ahv_iv_eo_pct: Number(c.ahv_iv_eo_pct ?? 5.3),
+            alv_pct: Number(c.alv_pct ?? 1.1),
+            nbu_pct: Number(c.nbu_pct ?? 1.4),
+            bvg_pct: Number(c.bvg_pct ?? 0),
+            ktg_pct: Number(c.ktg_pct ?? 0),
+            quellensteuer_pct: Number(c.quellensteuer_pct ?? 0),
           }
         : null,
     };
@@ -75,6 +81,23 @@ export async function POST(request: Request) {
     : 0;
   const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+
+  // Abzuege (% vom Brutto). Bei fehlendem Body-Feld → Default beibehalten
+  // (= bisheriger Wert auf der Row bleibt durch DB-Default abgesichert,
+  // hier aber explizit aus der Eingabe).
+  function pct(key: string, fallback: number): number {
+    const v = body[key];
+    if (v == null) return fallback;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
+    return n;
+  }
+  const ahv_iv_eo_pct = pct("ahv_iv_eo_pct", 5.3);
+  const alv_pct = pct("alv_pct", 1.1);
+  const nbu_pct = pct("nbu_pct", 1.4);
+  const bvg_pct = pct("bvg_pct", 0);
+  const ktg_pct = pct("ktg_pct", 0);
+  const quellensteuer_pct = pct("quellensteuer_pct", 0);
 
   if (!profile_id) return NextResponse.json({ success: false, error: "profile_id fehlt" }, { status: 400 });
   if (hourly_wage_chf === null || hourly_wage_chf < 0) {
@@ -107,6 +130,7 @@ export async function POST(request: Request) {
           hourly_wage_chf,
           employer_costs_chf_per_hour,
           notes,
+          ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct,
           created_by: auth.user.id,
         })
         .eq("id", current.id);
@@ -132,6 +156,7 @@ export async function POST(request: Request) {
     employer_costs_chf_per_hour,
     effective_from,
     notes,
+    ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct,
     created_by: auth.user.id,
   });
   if (insErr) return NextResponse.json({ success: false, error: insErr.message }, { status: 500 });
