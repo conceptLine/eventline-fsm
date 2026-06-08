@@ -16,7 +16,7 @@
  * dort haben den gleichen Status, das Reporting waere sinnfrei.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { deleteRow } from "@/lib/db-mutations";
@@ -25,20 +25,31 @@ import { usePermissions } from "@/lib/use-permissions";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact, VertriebStatus, VertriebPriority, VertriebKategorie } from "@/types";
-import { Plus, TrendingUp, Search, Archive, PartyPopper, Trophy } from "lucide-react";
+import {
+  Plus, TrendingUp, Search, Archive, PartyPopper, Trophy, AlertTriangle, Flame,
+  LayoutGrid, LayoutList, Columns3, Table2, Activity,
+} from "lucide-react";
 import { toast } from "sonner";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS, emptyForm } from "./constants";
 import { LeadCard } from "@/components/vertrieb/lead-card";
 import { LeadForm } from "@/components/vertrieb/lead-form";
 import { CategoryPicker } from "@/components/vertrieb/category-picker";
+import { VertriebTableView } from "@/components/vertrieb/views/table-view";
+import { VertriebKanbanView } from "@/components/vertrieb/views/kanban-view";
+import { VertriebPivotView } from "@/components/vertrieb/views/pivot-view";
+import { VertriebHeatmapView } from "@/components/vertrieb/views/heatmap-view";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { SearchableSelect } from "@/components/searchable-select";
+import { detectLeadAnomaly, hasAnomaly, daysSinceLastTouch, parseEventStart as parseEventStartCommon } from "@/lib/vertrieb-anomaly";
 
 type Counts = {
   total: number; offen: number; kontaktiert: number; gespraech: number;
   gewonnen: number; abgesagt: number; step_1: number; step_2: number;
   step_3: number; step_4: number;
 };
+
+type ViewMode = "cards" | "table" | "kanban" | "pivot" | "heatmap";
+type QuickChip = "mine" | "hot" | "stale" | "soon" | "today";
 
 export default function VertriebPage() {
   const router = useRouter();
@@ -49,6 +60,7 @@ export default function VertriebPage() {
   // Daten
   const [contacts, setContacts] = useState<VertriebContact[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null; phone: string | null }[]>([]);
   // Sales-Mitarbeiter fuer den Assignee-Toggle. Hardcoded gefiltert auf
   // Leo+Mischa+Raul per Email — die anderen Admins (admin test, ggf. andere)
@@ -68,6 +80,37 @@ export default function VertriebPage() {
   //  - priority: top zuerst (was ist wichtig)
   type SortBy = "nr" | "event" | "stale" | "priority";
   const [sortBy, setSortBy] = useState<SortBy>("nr");
+
+  // Quick-Chips + View-Toggle — beide persistent in localStorage damit
+  // beim Reload die Praeferenz nicht verloren geht.
+  const [activeChips, setActiveChips] = useState<Set<QuickChip>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const stored = JSON.parse(localStorage.getItem("vertrieb-chips") || "[]") as QuickChip[];
+      return new Set(stored);
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("vertrieb-chips", JSON.stringify(Array.from(activeChips)));
+    }
+  }, [activeChips]);
+  const [view, setView] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "cards";
+    return (localStorage.getItem("vertrieb-view") as ViewMode | null) ?? "cards";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("vertrieb-view", view);
+  }, [view]);
+
+  function toggleChip(c: QuickChip) {
+    setActiveChips((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
+  }
 
   // Archiv-Modus: zeigt ausschliesslich abgesagte Leads. Persistent damit
   // ein versehentlicher Reload den Modus nicht verliert. Pattern uebernommen
@@ -97,7 +140,7 @@ export default function VertriebPage() {
   }, []);
 
   async function load() {
-    const [{ data }, custRes, countsRes, salesRes] = await Promise.all([
+    const [{ data }, custRes, countsRes, salesRes, userRes] = await Promise.all([
       supabase.from("vertrieb_contacts").select("*").order("nr").limit(2000),
       supabase.from("customers").select("id, name, email, phone").eq("is_active", true).order("name"),
       supabase.from("vertrieb_counts").select("*").single(),
@@ -107,11 +150,13 @@ export default function VertriebPage() {
         .in("email", ["leo@eventline-basel.com", "mischa@eventline-basel.com", "raul@eventline-basel.com"])
         .eq("is_active", true)
         .order("full_name"),
+      supabase.auth.getUser(),
     ]);
     if (data) setContacts(data as VertriebContact[]);
     if (custRes.data) setCustomers(custRes.data);
     if (countsRes.data) setCounts(countsRes.data);
     if (salesRes.data) setSalesPeople(salesRes.data);
+    if (userRes.data.user) setCurrentUserId(userRes.data.user.id);
     setLoading(false);
   }
 
@@ -239,16 +284,10 @@ export default function VertriebPage() {
   const noop = () => {};
   const noopAsync = async () => {};
 
-  // event_start aus dem JSON-encodeten notizen-Feld pul len. Wird fuer
-  // Event-Sort + Stat-Card "Events 30 Tage" gebraucht.
-  function parseEventStart(c: VertriebContact): Date | null {
-    try {
-      const d = (JSON.parse(c.notizen || "{}") as { _details?: { event_start?: string } })?._details?.event_start;
-      if (!d) return null;
-      const dt = new Date(d);
-      return Number.isNaN(dt.getTime()) ? null : dt;
-    } catch { return null; }
-  }
+  // event_start aus dem JSON-encodeten notizen-Feld pullen. Stable closure
+  // ueber den shared parser aus lib/vertrieb-anomaly.
+  const parseEventStart = parseEventStartCommon;
+  const nowMs = Date.now();
 
   const filtered = contacts
     // Archiv-Trennung: Standard-View blendet 'abgesagt' aus, Archiv-View
@@ -260,6 +299,28 @@ export default function VertriebPage() {
     .filter((c) => {
       const q = search.toLowerCase();
       return !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q) || (c.branche || "").toLowerCase().includes(q);
+    })
+    // Quick-Chips: AND-Verknuepfung (mehrere Chips engen weiter ein).
+    .filter((c) => {
+      if (activeChips.size === 0) return true;
+      if (activeChips.has("mine") && c.assigned_to !== currentUserId) return false;
+      if (activeChips.has("hot") && c.prioritaet !== "top") return false;
+      if (activeChips.has("stale")) {
+        const d = daysSinceLastTouch(c, nowMs);
+        if (d === null || d <= 14) return false;
+      }
+      if (activeChips.has("soon")) {
+        const ev = parseEventStart(c);
+        if (!ev) return false;
+        const days = Math.floor((ev.getTime() - nowMs) / (1000 * 60 * 60 * 24));
+        if (days < 0 || days > 30) return false;
+      }
+      if (activeChips.has("today")) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        if (c.datum_kontakt !== todayIso) return false;
+      }
+      return true;
     });
 
   // Sortierung — separat nach Filter, damit die Filter-Logik linear bleibt.
@@ -292,6 +353,29 @@ export default function VertriebPage() {
     offen: counts.offen, kontaktiert: counts.kontaktiert, gespraech: counts.gespraech,
     gewonnen: counts.gewonnen, abgesagt: counts.abgesagt,
   } : {};
+
+  // Quick-Chip-Badge-Counts (gegen GESAMTE aktive Daten — nicht gegen
+  // bereits gefilterte, damit die Zahlen stabil bleiben).
+  const chipCounts = useMemo(() => {
+    const active = contacts.filter((c) => c.status !== "abgesagt" && c.status !== "gewonnen");
+    let mine = 0, hot = 0, stale = 0, soon = 0, today = 0, anomalies = 0;
+    const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
+    const todayIso = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
+    for (const c of active) {
+      if (c.assigned_to === currentUserId) mine++;
+      if (c.prioritaet === "top") hot++;
+      const d = daysSinceLastTouch(c, nowMs);
+      if (d !== null && d > 14) stale++;
+      const ev = parseEventStart(c);
+      if (ev) {
+        const days = Math.floor((ev.getTime() - nowMs) / (1000 * 60 * 60 * 24));
+        if (days >= 0 && days <= 30) soon++;
+      }
+      if (c.datum_kontakt === todayIso) today++;
+      if (hasAnomaly(detectLeadAnomaly(c, nowMs))) anomalies++;
+    }
+    return { mine, hot, stale, soon, today, anomalies };
+  }, [contacts, currentUserId, nowMs, parseEventStart]);
 
   return (
     <div className="space-y-6">
@@ -331,13 +415,33 @@ export default function VertriebPage() {
           ebenfalls (zu viel vertikaler Platz; die Lead-Cards selbst
           zeigen Status + Priority pro Eintrag). */}
       {!showArchive && counts && counts.total > 0 && (
-        <div className="hidden md:grid gap-3 md:grid-cols-3">
-          <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} />
+        <div className="hidden md:grid gap-3 md:grid-cols-4">
+          <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} anomalyCount={chipCounts.anomalies} />
         </div>
       )}
       {!showArchive && counts && counts.total > 0 && (
         <div className="hidden md:block">
           <Funnel counts={counts} />
+        </div>
+      )}
+
+      {/* Quick-Chips + View-Toggle. Chips toggleable, badge zeigt Anzahl
+          die der Chip im Datenset findet. */}
+      {!showArchive && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Chip label="Meine" active={activeChips.has("mine")} onClick={() => toggleChip("mine")} badge={chipCounts.mine} />
+          <Chip label="Hot" icon={Flame} active={activeChips.has("hot")} onClick={() => toggleChip("hot")} badge={chipCounts.hot} />
+          <Chip label="Stale >14d" icon={AlertTriangle} active={activeChips.has("stale")} onClick={() => toggleChip("stale")} badge={chipCounts.stale} tone="red" />
+          <Chip label="Event <30d" icon={PartyPopper} active={activeChips.has("soon")} onClick={() => toggleChip("soon")} badge={chipCounts.soon} tone="purple" />
+          <Chip label="Heute kontaktiert" active={activeChips.has("today")} onClick={() => toggleChip("today")} badge={chipCounts.today} />
+
+          <div className="sm:ml-auto flex gap-1 p-1 rounded-lg bg-muted">
+            <ViewBtn icon={LayoutGrid} label="Cards" active={view === "cards"} onClick={() => setView("cards")} />
+            <ViewBtn icon={LayoutList} label="Tabelle" active={view === "table"} onClick={() => setView("table")} />
+            <ViewBtn icon={Columns3} label="Kanban" active={view === "kanban"} onClick={() => setView("kanban")} />
+            <ViewBtn icon={Table2} label="Pivot" active={view === "pivot"} onClick={() => setView("pivot")} />
+            <ViewBtn icon={Activity} label="Heatmap" active={view === "heatmap"} onClick={() => setView("heatmap")} />
+          </div>
         </div>
       )}
 
@@ -446,6 +550,14 @@ export default function VertriebPage() {
             </p>
           </CardContent>
         </Card>
+      ) : view === "table" ? (
+        <VertriebTableView contacts={sorted} salesPeople={salesPeople} />
+      ) : view === "kanban" ? (
+        <VertriebKanbanView contacts={sorted} salesPeople={salesPeople} />
+      ) : view === "pivot" ? (
+        <VertriebPivotView contacts={sorted} salesPeople={salesPeople} />
+      ) : view === "heatmap" ? (
+        <VertriebHeatmapView contacts={sorted} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((c) => (
@@ -466,6 +578,56 @@ export default function VertriebPage() {
   );
 }
 
+// ------------------ Quick-Chip + ViewBtn ------------------
+
+function Chip({
+  label, icon: Icon, active, onClick, badge, tone,
+}: {
+  label: string;
+  icon?: typeof Flame;
+  active: boolean;
+  onClick: () => void;
+  badge: number;
+  tone?: "red" | "purple";
+}) {
+  const toneClass = !active
+    ? "kasten-toggle-off"
+    : tone === "red"
+      ? "kasten kasten-red"
+      : tone === "purple"
+        ? "kasten kasten-purple"
+        : "kasten-active";
+  return (
+    <button type="button" onClick={onClick} className={toneClass}>
+      {Icon && <Icon className="h-3.5 w-3.5" />}
+      {label}
+      {badge > 0 && (
+        <span className="ml-1 px-1.5 py-0 text-[10px] font-semibold rounded-full bg-foreground/15 dark:bg-foreground/20">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ViewBtn({ icon: Icon, label, active, onClick }: {
+  icon: typeof LayoutGrid; label: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-7 px-2.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+        active ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+      }`}
+      data-tooltip={label}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="hidden md:inline">{label}</span>
+    </button>
+  );
+}
+
 /* --------------------------------------------------------------------------
  * StatCards — drei kompakte Kennzahl-Karten als Sales-Cockpit:
  *   1. Aktive Pipeline   — alle Leads in nicht-terminalen Stages
@@ -476,10 +638,12 @@ function StatCards({
   counts,
   contacts,
   parseEventStart,
+  anomalyCount,
 }: {
   counts: Counts;
   contacts: VertriebContact[];
   parseEventStart: (c: VertriebContact) => Date | null;
+  anomalyCount: number;
 }) {
   const aktive = counts.step_1 + counts.step_2 + counts.step_3 + counts.step_4;
 
@@ -538,6 +702,20 @@ function StatCards({
               <p className="text-[11px] text-muted-foreground mt-1">
                 {closed > 0 ? `${counts.gewonnen} von ${closed} abgeschlossen` : "noch keine abgeschlossen"}
               </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Auffaellig</p>
+              <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{anomalyCount}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Stale, Hot-Idle, Event-bald, Vergessen</p>
             </div>
           </div>
         </CardContent>
