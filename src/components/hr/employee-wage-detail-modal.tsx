@@ -45,17 +45,23 @@ interface DetailResp {
   hours: { stempel_minutes: number; geplant_minutes: number; rapport_minutes: number };
   night: {
     count: number; limit: number;
-    dates: { date: string; entries: number }[];
+    dates: DayWithEntries[];
     surcharge_pct: number;
     note: string;
   };
   sunday_holiday: {
     count: number; limit: number;
-    dates: { date: string; label: string }[];
+    dates: DayWithEntries[];
     surcharge_pct: number;
     note: string;
   };
   base_wage_for_surcharge: number;
+}
+
+interface DayWithEntries {
+  date: string;
+  label?: string;
+  entries: { entry_number: number; start_local: string; end_local: string }[];
 }
 
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -149,7 +155,7 @@ export function EmployeeWageDetailModal({ open, profileId, initialYear, onClose 
               baseWage={data.base_wage_for_surcharge}
             />
             {data.night.dates.length > 0 && (
-              <DateList dates={data.night.dates.map((d) => ({ date: d.date, label: d.entries > 1 ? `${d.entries}×` : "" }))} />
+              <DateList dates={data.night.dates} />
             )}
           </Section>
 
@@ -163,7 +169,7 @@ export function EmployeeWageDetailModal({ open, profileId, initialYear, onClose 
               baseWage={data.base_wage_for_surcharge}
             />
             {data.sunday_holiday.dates.length > 0 && (
-              <DateList dates={data.sunday_holiday.dates.map((d) => ({ date: d.date, label: d.label }))} />
+              <DateList dates={data.sunday_holiday.dates} />
             )}
           </Section>
         </div>
@@ -278,14 +284,26 @@ function CounterCard({ count, limit, surchargePct, note, baseWage }: {
   );
 }
 
-function DateList({ dates }: { dates: { date: string; label: string }[] }) {
+function DateList({ dates }: { dates: DayWithEntries[] }) {
   return (
-    <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-foreground/[0.02] dark:bg-foreground/[0.04]">
+    <div className="max-h-56 overflow-y-auto rounded-lg border border-border bg-foreground/[0.02] dark:bg-foreground/[0.04]">
       <ul className="text-xs divide-y divide-foreground/5">
         {dates.map((d) => (
-          <li key={d.date} className="flex items-center justify-between px-3 py-1.5">
-            <span>{fmtDate(d.date)}</span>
-            {d.label && <span className="text-[10px] text-muted-foreground">{d.label}</span>}
+          <li key={d.date} className="px-3 py-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{fmtDate(d.date)}</span>
+              {d.label && <span className="text-[10px] text-muted-foreground">{d.label}</span>}
+            </div>
+            {d.entries.length > 0 && (
+              <ul className="mt-1 space-y-0.5 pl-3 border-l border-foreground/10">
+                {d.entries.map((e) => (
+                  <li key={e.entry_number} className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+                    <code className="text-[10px] tabular-nums text-foreground/60">STM-{String(e.entry_number).padStart(5, "0")}</code>
+                    <span className="tabular-nums">{e.start_local}–{e.end_local}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>

@@ -42,11 +42,6 @@ function localWeekday(d: Date): number {
   return map[w] ?? 0;
 }
 
-interface TimeEntryRow {
-  clock_in: string;
-  clock_out: string | null;
-}
-
 export async function GET(req: Request) {
   const auth = await requireTrustedDevice("lohn:manage");
   if (auth.error) return auth.error;
@@ -89,43 +84,63 @@ export async function GET(req: Request) {
   const yearEnd = `${year + 1}-01-01T00:00:00+01:00`;
   const { data: entries } = await admin
     .from("time_entries")
-    .select("clock_in, clock_out")
+    .select("entry_number, clock_in, clock_out")
     .eq("user_id", profileId)
     .gte("clock_in", yearStart)
     .lt("clock_in", yearEnd)
     .order("clock_in");
 
+  const localTimeHM = (d: Date) => {
+    const f = new Intl.DateTimeFormat("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit", hour12: false });
+    return f.format(d);
+  };
+
   // Aggregate: per-Minute-Date-Attribution (Schichten ueber Mitternacht
-  // verteilen ihre Minuten korrekt auf 2 Tage). Vorher haben wir clock_in-
-  // Datum genommen und Sa-Nacht-→-So-Schichten bekamen keinen Sonntag-Zuschlag.
+  // verteilen ihre Minuten korrekt auf 2 Tage). Pro Date sammeln wir auch
+  // die einzelnen Time-Entries die diesen Tag beruehrt haben, mit
+  // Stempelnummer + lokalen Zeiten — fuer die UI-Aufschluesselung.
+  interface EntryTouch { entry_number: number; start_local: string; end_local: string; }
+  const perDate = new Map<string, { night: boolean; worked: boolean; entries: EntryTouch[] }>();
   const holidays = swissHolidaysForYear(year);
   const holidayMap = new Map(holidays.map((h) => [h.date, h.name]));
 
-  // Pro Datum: hatte da Nachtstunden? Hat da gearbeitet? (fuer Sonntag/Feiertag)
-  const perDate = new Map<string, { night: boolean; worked: boolean }>();
-
   let stempel_minutes = 0;
-  for (const e of (entries as TimeEntryRow[] | null) ?? []) {
+  type EntryRowWithNum = { entry_number: number; clock_in: string; clock_out: string | null };
+  for (const e of (entries as EntryRowWithNum[] | null) ?? []) {
     if (!e.clock_out) continue;
     const start = new Date(e.clock_in).getTime();
     const end = new Date(e.clock_out).getTime();
     if (end <= start) continue;
     stempel_minutes += Math.floor((end - start) / 60000);
+    // Datums die der Entry beruehrt
+    const touched = new Set<string>();
     for (let t = start; t < end; t += 60_000) {
       const d = new Date(t);
       const date = localDateIso(d);
       const h = localHour(d);
       let bucket = perDate.get(date);
-      if (!bucket) { bucket = { night: false, worked: true }; perDate.set(date, bucket); }
+      if (!bucket) { bucket = { night: false, worked: true, entries: [] }; perDate.set(date, bucket); }
       bucket.worked = true;
       if (h >= 23 || h < 6) bucket.night = true;
+      touched.add(date);
+    }
+    // Entry-Stempel zu jeder beruehrten Datums-Bucket hinzufuegen
+    const startLocal = localTimeHM(new Date(start));
+    const endLocal = localTimeHM(new Date(end));
+    for (const date of touched) {
+      perDate.get(date)!.entries.push({
+        entry_number: e.entry_number,
+        start_local: startLocal,
+        end_local: endLocal,
+      });
     }
   }
 
-  const nightDates = new Map<string, { date: string; entries: number }>();
-  const sundayHolidayDates = new Map<string, { date: string; label: string }>();
+  interface DayWithEntries { date: string; label?: string; entries: EntryTouch[]; }
+  const nightDates = new Map<string, DayWithEntries>();
+  const sundayHolidayDates = new Map<string, DayWithEntries>();
   for (const [date, b] of perDate.entries()) {
-    if (b.night) nightDates.set(date, { date, entries: 1 });
+    if (b.night) nightDates.set(date, { date, entries: b.entries });
     const [y, m, d] = date.split("-").map(Number);
     const noon = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
     const wd = localWeekday(noon);
@@ -133,7 +148,7 @@ export async function GET(req: Request) {
     const isHoliday = holidayMap.has(date);
     if (b.worked && (isSunday || isHoliday)) {
       const label = isHoliday ? (holidayMap.get(date) ?? "") : "Sonntag";
-      sundayHolidayDates.set(date, { date, label });
+      sundayHolidayDates.set(date, { date, label, entries: b.entries });
     }
   }
 

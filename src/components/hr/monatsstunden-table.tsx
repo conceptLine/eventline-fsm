@@ -132,7 +132,7 @@ export function MonatsstundenTable() {
             <Wallet className="h-4 w-4" /> Lohnabrechnung
           </h2>
           <p className="text-xs text-muted-foreground">
-            Stunden + Kosten pro Mitarbeiter. Lohnkosten = effektive Stunden × Stundenlohn.
+            Auszahlung pro Mitarbeiter — inkl. Nacht-/Sonntags-Zuschläge nach Schweizer ArG. Klick auf einen Namen für Details.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -166,35 +166,36 @@ export function MonatsstundenTable() {
             <div className="p-8 text-center text-sm text-muted-foreground">Keine Mitarbeiter.</div>
           ) : (
             <div className="divide-y">
-              {/* Header-Row (desktop) */}
-              <div className="hidden md:grid items-center gap-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground"
-                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
+              {/* Header-Row (desktop) — drei visuelle Gruppen via Border-
+                  Separators: Mitarbeiter · Stunden · Vergütung. */}
+              <div className="hidden md:grid items-center gap-x-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground"
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
               >
                 <div>Mitarbeiter</div>
-                <div className="text-right">Stempel</div>
-                <div className="text-right">Geplant</div>
-                <div className="text-right">Rapport</div>
-                <div className="text-right">Lohn/h</div>
-                <div className="text-right">Zuschlag</div>
-                <div className="text-right">Brutto</div>
-                <div className="text-right">Netto</div>
-                <div className="text-right">Vollkosten</div>
+                <div className="text-right border-l border-border pl-2" data-tooltip="Gestempelte Stunden im Monat">Stempel</div>
+                <div className="text-right" data-tooltip="Eingeplante Stunden (Termine zugewiesen)">Geplant</div>
+                <div className="text-right" data-tooltip="Rapportierte Stunden (= Basis für die Auszahlung)">Rapport</div>
+                <div className="text-right border-l border-border pl-2" data-tooltip="Brutto-Stundenlohn">Lohn/h</div>
+                <div className="text-right" data-tooltip="Nacht/Sonntag/Feiertag-Zuschläge dieses Monats">Zuschlag</div>
+                <div className="text-right" data-tooltip="Brutto = Basis-Lohn + Zuschläge">Brutto</div>
+                <div className="text-right text-emerald-700 dark:text-emerald-300 font-semibold" data-tooltip="= Brutto − Mitarbeiter-Abzüge. Das was auf dem Konto landet.">Auszahlung</div>
+                <div className="text-right" data-tooltip="Brutto + Arbeitgeber-Anteil (Vollkosten für die Firma)">Vollkosten</div>
               </div>
               {data.map((r) => (
                 <StatsRow key={r.profile_id} row={r} onClick={() => setDetailFor(r.profile_id)} />
               ))}
               {/* Summen-Zeile */}
-              <div className="hidden md:grid items-center gap-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
-                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
+              <div className="hidden md:grid items-center gap-x-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
               >
                 <div>Summe ({data.length})</div>
-                <div className="text-right tabular-nums">{fmtHours(totals.stempel)}</div>
+                <div className="text-right tabular-nums border-l border-border pl-2">{fmtHours(totals.stempel)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.geplant)}</div>
                 <div className="text-right tabular-nums">{fmtHours(totals.rapport)}</div>
-                <div className="text-right tabular-nums">—</div>
+                <div className="text-right tabular-nums border-l border-border pl-2">—</div>
                 <div className="text-right tabular-nums">{totals.surcharge > 0 ? `+ ${CHF.format(totals.surcharge)}` : "—"}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.lohnkosten)}</div>
-                <div className="text-right tabular-nums">CHF {CHF.format(totals.netto)}</div>
+                <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">CHF {CHF.format(totals.netto)}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.vollkosten)}</div>
               </div>
             </div>
@@ -228,8 +229,8 @@ function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void })
 
   return (
     <div
-      className={`grid items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer ${row.is_active ? "" : "opacity-60"}`}
-      style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
+      className={`grid items-center gap-x-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer ${row.is_active ? "" : "opacity-60"}`}
+      style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
       onClick={onClick}
     >
       <div className="min-w-0">
@@ -243,10 +244,10 @@ function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void })
         </div>
         <div className="text-[11px] text-muted-foreground truncate">{row.role}</div>
       </div>
-      <div className="text-right tabular-nums">{fmtHours(row.stempel_minutes)}</div>
+      <div className="text-right tabular-nums border-l border-border pl-2">{fmtHours(row.stempel_minutes)}</div>
       <div className="text-right tabular-nums">{fmtHours(row.geplant_minutes)}</div>
       <div className="text-right tabular-nums">{fmtHours(row.rapport_minutes)}</div>
-      <div className="text-right tabular-nums text-muted-foreground">
+      <div className="text-right tabular-nums text-muted-foreground border-l border-border pl-2">
         {row.hourly_wage_chf != null ? `CHF ${CHF.format(row.hourly_wage_chf)}` : "—"}
       </div>
       <div className={`text-right tabular-nums ${hasSurcharge ? "text-amber-700 dark:text-amber-300 font-medium" : "text-muted-foreground"}`}
@@ -259,8 +260,8 @@ function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void })
       >
         {row.lohnkosten_chf != null ? `CHF ${CHF.format(row.lohnkosten_chf)}` : "—"}
       </div>
-      <div className="text-right tabular-nums font-semibold"
-        data-tooltip={`Brutto − Abzüge (${row.total_deduction_pct.toFixed(2)}%) = Netto`}
+      <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300"
+        data-tooltip={`Brutto − Abzüge (${row.total_deduction_pct.toFixed(2)}%) = Auszahlung`}
       >
         {row.nettolohn_chf != null ? `CHF ${CHF.format(row.nettolohn_chf)}` : "—"}
       </div>
