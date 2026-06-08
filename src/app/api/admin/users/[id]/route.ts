@@ -143,20 +143,20 @@ export async function DELETE(
     );
   }
 
-  // Wage-Dokumente (PDFs) im Storage entfernen BEVOR der Profile-Row
-  // weg ist — sonst hat man Orphan-Files in lohndokumente/<profile_id>/...
-  // die niemand mehr aufraeumt. Best-effort: Fehler werden geloggt aber
-  // blockieren den Delete-Flow nicht (Hard-Delete ist Admin-explicit).
+  // VORHER: Storage-Cleanup direkt im DELETE-Pfad.
+  // JETZT: Admin muss zuerst /dossier aufrufen (= ZIP-Backup aller Daten
+  // inkl. PDFs in personal-dossiers-Bucket archivieren). Erst dann
+  // duerfen die Original-Dateien geloescht werden. Schuetzt vor
+  // Datenverlust bei Hard-Delete. Frontend zwingt diesen Flow.
+  // Wir entfernen die lohndokumente-Files trotzdem mit (= aufraeumen
+  // nach Backup) — das Dossier hat sie ja archiviert.
   try {
     const { data: stFiles } = await admin.storage
       .from("lohndokumente")
       .list(id, { limit: 1000 });
     if (stFiles && stFiles.length > 0) {
-      // Nested-Listing: List gibt Folder/File-Eintraege auf der einen Ebene
-      // zurueck. Wir muessen rekursiv die Jahres-Unterordner durchgehen.
       const allPaths: string[] = [];
       for (const entry of stFiles) {
-        // Year-Ordner enthalten die PDFs
         const { data: yearFiles } = await admin.storage
           .from("lohndokumente")
           .list(`${id}/${entry.name}`, { limit: 1000 });

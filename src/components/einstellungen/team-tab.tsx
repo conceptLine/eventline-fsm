@@ -251,13 +251,32 @@ export function TeamTab() {
 
   async function hardDelete(p: Profile) {
     const ok = await confirm({
-      title: "Endgültig löschen?",
-      message: `${p.full_name} wird unwiderruflich aus dem System entfernt. Auf alten Aufträgen wird die Zuordnung entfernt (auf "—" gesetzt). Diese Aktion kann nicht rückgängig gemacht werden.`,
-      confirmLabel: "Endgültig löschen",
+      title: "Dossier erstellen + endgültig löschen?",
+      message: `Bevor ${p.full_name} gelöscht wird, packen wir alle Daten (Stempel, Rapporte, Lohndokumente, Notifications, hochgeladene Dateien) in ein ZIP-Dossier zum Download. Dann wird der Benutzer aus dem System entfernt. Diese Aktion kann nicht rückgängig gemacht werden.`,
+      confirmLabel: "Dossier + löschen",
       variant: "red",
     });
     if (!ok) return;
     setBusyId(p.id);
+
+    // 1) Dossier generieren (= ZIP-Backup aller Daten + PDFs)
+    let dossierUrl: string | null = null;
+    try {
+      const dossierRes = await fetch(`/api/admin/users/${p.id}/dossier`, { method: "POST" });
+      const dossierJson = await dossierRes.json();
+      if (!dossierJson.success) {
+        setBusyId(null);
+        TOAST.errorOr(dossierJson.error || "Dossier konnte nicht erstellt werden — Benutzer NICHT gelöscht");
+        return;
+      }
+      dossierUrl = dossierJson.download_url ?? null;
+    } catch (err) {
+      setBusyId(null);
+      toast.error("Dossier-Fehler: " + (err instanceof Error ? err.message : "Netzwerk") + " — Benutzer NICHT gelöscht");
+      return;
+    }
+
+    // 2) User löschen
     const res = await fetch(`/api/admin/users/${p.id}`, { method: "DELETE" });
     const json = await res.json();
     setBusyId(null);
@@ -265,7 +284,27 @@ export function TeamTab() {
       TOAST.errorOr(json.error);
       return;
     }
-    toast.success(`${p.full_name} endgültig gelöscht`);
+
+    // 3) Toast mit Download-Link (1h gültig)
+    if (dossierUrl) {
+      toast.success(`${p.full_name} gelöscht — Dossier verfügbar`, {
+        action: {
+          label: "Download",
+          onClick: () => {
+            const a = document.createElement("a");
+            a.href = dossierUrl!;
+            a.download = `dossier_${p.full_name}.zip`;
+            a.target = "_blank";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          },
+        },
+        duration: 60000, // 60s sichtbar
+      });
+    } else {
+      toast.success(`${p.full_name} endgültig gelöscht`);
+    }
     load();
   }
 
