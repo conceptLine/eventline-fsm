@@ -10,6 +10,7 @@ import { TOAST } from "@/lib/messages";
 import { validateFileList } from "@/lib/file-upload";
 import { toLocalIsoString, toDbDate } from "@/lib/format";
 import { FormRenderer, validateForm, type FormValues } from "@/components/partner-form/form-renderer";
+import { Loading } from "@/components/ui/spinner";
 import { extractFormValues } from "@/lib/partner-form/extract";
 import { DEFAULT_PARTNER_FORM_SCHEMA } from "@/lib/partner-form/default-schema";
 import type { FormSchema } from "@/lib/partner-form/types";
@@ -248,7 +249,7 @@ export default function NeueAnfragePage() {
       <Card className="bg-card">
         <CardContent className="p-5">
           {!schema ? (
-            <p className="text-sm text-muted-foreground">Form wird geladen…</p>
+            <Loading label="Form wird geladen…" />
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); save(hasPrimaryAppointment ? "send" : "draft"); }} className="space-y-4">
               <FormRenderer schema={schema} values={values} onChange={setValues} />

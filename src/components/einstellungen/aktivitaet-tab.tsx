@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
+import { Loading } from "@/components/ui/spinner";
 import { Modal } from "@/components/ui/modal";
 import { Activity, Clock, LogOut, Hourglass, Calendar } from "lucide-react";
 import { TOAST } from "@/lib/messages";
@@ -220,7 +221,7 @@ export function AktivitaetTab({ scope = "firma" }: AktivitaetTabProps = {}) {
       </div>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Lade…</p>
+        <Loading />
       ) : users.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-8 text-center text-sm text-muted-foreground">

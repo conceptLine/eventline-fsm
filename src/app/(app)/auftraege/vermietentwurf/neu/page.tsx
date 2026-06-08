@@ -16,6 +16,7 @@ import { popFormDraft, saveFormDraft } from "@/lib/form-resume";
 import { validateFileList } from "@/lib/file-upload";
 import { logError } from "@/lib/log";
 import { toDbDate } from "@/lib/format";
+import { Loading } from "@/components/ui/spinner";
 
 const RETURN_PATH = "/auftraege/vermietentwurf/neu";
 
@@ -431,7 +432,7 @@ function NeueAnfragePageContent() {
 
 export default function NeueAnfragePage() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-muted-foreground">Laden…</div>}>
+    <Suspense fallback={<Loading className="py-20" label="Laden…" />}>
       <NeueAnfragePageContent />
     </Suspense>
   );

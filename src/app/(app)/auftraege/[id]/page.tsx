@@ -34,6 +34,7 @@ import { RapportFormModal } from "@/components/auftrag/rapport-form-modal";
 import { HoursAuditCard } from "@/components/auftrag/hours-audit-card";
 import { JobStempelButton } from "@/components/stempel/job-stempel-button";
 import { PartnerFormAnswersCard } from "@/components/auftrag/partner-form-answers-card";
+import { Loading } from "@/components/ui/spinner";
 import { usePermissions } from "@/lib/use-permissions";
 
 export default function AuftragDetailPage() {
@@ -278,7 +279,7 @@ export default function AuftragDetailPage() {
     e.target.value = "";
   }
 
-  if (!job) return <div className="py-20 text-center text-muted-foreground">Laden...</div>;
+  if (!job) return <Loading className="py-20" label="Laden…" />;
 
   // Bei Standort-Auftraegen ist customer NULL — der Verwaltungs-Kunde aus
   // location.customer wird als Fallback verwendet (zeigt z.B. "SCALA Verwaltung").

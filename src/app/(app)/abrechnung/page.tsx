@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { Loading } from "@/components/ui/spinner";
 import { Receipt, FileText, Clock, CheckCircle2, FolderArchive, XCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
@@ -419,7 +420,7 @@ export default function AbrechnungPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Lade…</p>
+        <Loading />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-6 lg:gap-y-0">
           {/* Linke Spalte — Auftraege. lg:border-r + Padding macht den

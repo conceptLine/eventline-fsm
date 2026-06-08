@@ -12,6 +12,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/address-autocomplete";
+import { Loading } from "@/components/ui/spinner";
 
 // Land-Optionen — mehr als die Nachbarn macht aktuell keinen Sinn,
 // 99% der Kunden sind Schweizer. Bei Bedarf erweitern.
@@ -329,7 +330,7 @@ function NeuerKundeContent() {
 
 export default function NeuerKundePage() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-muted-foreground">Laden…</div>}>
+    <Suspense fallback={<Loading className="py-20" label="Laden…" />}>
       <NeuerKundeContent />
     </Suspense>
   );

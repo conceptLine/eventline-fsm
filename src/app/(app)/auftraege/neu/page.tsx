@@ -18,6 +18,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { JobNumber } from "@/components/job-number";
+import { Loading } from "@/components/ui/spinner";
 import { popFormDraft, saveFormDraft } from "@/lib/form-resume";
 import { validateFileList } from "@/lib/file-upload";
 import { logError } from "@/lib/log";
@@ -376,7 +377,7 @@ function NeuerAuftragPageContent() {
 
 export default function NeuerAuftragPage() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-muted-foreground">Laden…</div>}>
+    <Suspense fallback={<Loading className="py-20" label="Laden…" />}>
       <NeuerAuftragPageContent />
     </Suspense>
   );

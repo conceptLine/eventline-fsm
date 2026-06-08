@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Wallet } from "lucide-react";
 import { toast } from "sonner";
+import { Loading } from "@/components/ui/spinner";
 import { EmployeeWageDetailModal } from "@/components/hr/employee-wage-detail-modal";
 
 interface EmployeeStats {
@@ -147,7 +148,7 @@ export function MonatsstundenTable() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Lade …</div>
+            <Loading />
           ) : data.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Keine Mitarbeiter.</div>
           ) : (

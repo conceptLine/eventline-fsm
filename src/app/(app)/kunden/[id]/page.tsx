@@ -13,6 +13,7 @@ import {
   ClipboardList, Trash2, Archive, ArchiveRestore, StickyNote, ChevronDown, Plus,
 } from "lucide-react";
 import { BexioButton } from "@/components/bexio-button";
+import { Loading } from "@/components/ui/spinner";
 import { JobNumber } from "@/components/job-number";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/address-autocomplete";
 import { Modal } from "@/components/ui/modal";
@@ -204,7 +205,7 @@ export default function KundenDetailPage() {
     }
   }
 
-  if (!customer) return <div className="py-20 text-center text-muted-foreground">Laden...</div>;
+  if (!customer) return <Loading className="py-20" label="Laden…" />;
 
   const typeIcon = customer.type === "company" ? <Building2 className="h-5 w-5" /> : customer.type === "individual" ? <User className="h-5 w-5" /> : <Globe className="h-5 w-5" />;
 

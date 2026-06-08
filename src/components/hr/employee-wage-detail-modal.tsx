@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { Loading } from "@/components/ui/spinner";
 import { ChevronLeft, ChevronRight, Moon, CalendarDays, Wallet, AlertTriangle } from "lucide-react";
 
 interface Props {
@@ -94,7 +95,7 @@ export function EmployeeWageDetailModal({ open, profileId, initialYear, onClose 
   return (
     <Modal open={open} onClose={onClose} title={data?.profile.full_name ? `${data.profile.full_name} — Lohn-Details` : "Lohn-Details"} size="lg">
       {!profileId ? null : loading ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">Lade …</p>
+        <Loading />
       ) : !data ? (
         <p className="text-sm text-muted-foreground py-8 text-center">Keine Daten</p>
       ) : (

@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { Loading } from "@/components/ui/spinner";
 import { Plane, ThermometerSun, Repeat, Coffee, Plus, Check, X, Trash2, Calendar, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
@@ -297,7 +298,7 @@ export default function FerienPage() {
 
       {/* List */}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Lade…</p>
+        <Loading />
       ) : visible.length === 0 ? (
         <Card className="bg-card border-dashed">
           <CardContent className="py-10 text-center">

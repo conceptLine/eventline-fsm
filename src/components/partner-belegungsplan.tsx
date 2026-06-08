@@ -14,6 +14,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Spinner } from "@/components/ui/spinner";
 
 type BookingKind = "entwurf" | "partner_anfrage" | "bestaetigt" | "bestaetigt_unzugewiesen" | "storniert" | "vermietung" | "belegt";
 
@@ -341,7 +342,9 @@ export function PartnerBelegungsplan({ locationId }: Props) {
           })}
         </div>
         {loading && (
-          <div className="p-3 text-center text-xs text-muted-foreground border-t">Lade…</div>
+          <div className="p-3 flex items-center justify-center gap-2 text-xs text-muted-foreground border-t">
+            <Spinner size={14} /> Lade…
+          </div>
         )}
 
         {/* Legende — gruppiert nach Owner (Deine Anfragen / EVENTLINE)

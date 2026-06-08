@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/logo";
+import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { useTheme } from "next-themes";
 import { useEnterAsTab } from "@/lib/use-enter-as-tab";
@@ -101,10 +102,8 @@ export default function PartnerPortalLayout({ children }: { children: React.Reac
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center flex flex-col items-center">
           <Logo size="lg" />
-          <div className="mt-4 flex items-center justify-center gap-1.5">
-            <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-            <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse [animation-delay:200ms]" />
-            <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse [animation-delay:400ms]" />
+          <div className="mt-4 flex items-center justify-center">
+            <Spinner size={24} />
           </div>
         </div>
       </div>

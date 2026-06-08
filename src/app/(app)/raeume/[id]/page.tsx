@@ -13,6 +13,7 @@ import {
   DoorOpen, X, Banknote, Wrench, FileText, Upload, Download, Pencil, Eye,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { Loading } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { PdfPopup } from "@/components/pdf-popup";
@@ -198,7 +199,7 @@ export default function RaumDetailPage() {
     }
   }
 
-  if (!room) return <div className="py-20 text-center text-muted-foreground">Laden...</div>;
+  if (!room) return <Loading className="py-20" label="Laden…" />;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">

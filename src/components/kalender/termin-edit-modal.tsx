@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { deleteRow } from "@/lib/db-mutations";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { Loading } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
@@ -175,7 +176,7 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
         closable={!saving && !deleting}
       >
         {loading || !appt ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">Lädt…</div>
+          <Loading />
         ) : (
           <form onSubmit={save} className="space-y-4">
             {/* Zugewiesen-Info — read-only, weil ein Termin pro Person eine

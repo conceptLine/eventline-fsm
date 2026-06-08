@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/searchable-select";
+import { Loading } from "@/components/ui/spinner";
 import { Save, Send, FileCode, LayoutGrid, ExternalLink, RotateCcw, AlertTriangle, Loader2, Plus, Globe, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
@@ -354,7 +355,7 @@ export function PartnerFormTab() {
         </Card>
       )}
 
-      {loading && <p className="text-sm text-muted-foreground">Form wird geladen…</p>}
+      {loading && <Loading label="Form wird geladen…" />}
 
       {/* Mode-Switch + Editoren — nur wenn editierbar */}
       {!loading && (!noOverrideYet || draft.blocks.length > 0) && (

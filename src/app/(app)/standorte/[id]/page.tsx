@@ -13,6 +13,7 @@ import {
   Users, Phone, Mail, Trash2, Camera, Image as ImageIcon, X,
   ClipboardList, Building2, FileText, Upload, Download, Eye,
 } from "lucide-react";
+import { Loading } from "@/components/ui/spinner";
 import { BackButton } from "@/components/ui/back-button";
 import { usePermissions } from "@/lib/use-permissions";
 import { toast } from "sonner";
@@ -329,7 +330,7 @@ export default function StandortDetailPage() {
     if (tasks.length > 0) loadPhotoUrls();
   }, [tasks]);
 
-  if (!location) return <div className="py-20 text-center text-muted-foreground">Laden...</div>;
+  if (!location) return <Loading className="py-20" label="Laden…" />;
 
   const filteredTasks = tasks.filter((t) => taskFilter === "all" || effectiveTaskStatus(t) === taskFilter);
 
