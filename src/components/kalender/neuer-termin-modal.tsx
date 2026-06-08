@@ -20,7 +20,6 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import type { Profile, TimeOffType } from "@/types";
-import type { CalendarItem } from "./types";
 import { useTimeOffConflicts, buildConflictMap } from "@/lib/use-time-off-conflicts";
 import { AlertTriangle } from "lucide-react";
 import { toLocalIsoString } from "@/lib/format";
@@ -28,12 +27,19 @@ import { toLocalIsoString } from "@/lib/format";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Kalender-Items als Auftrag-Picker-Source — schon im Parent geladen. */
-  items: CalendarItem[];
   /** Nach erfolgreichem Speichern: Kalender neu laden. */
   onCreated: () => void;
   /** Vorausgefuelltes Datum (Klick auf eine Cell → Termin fuer den Tag). */
   initialDate?: Date | null;
+}
+
+/** Auftrag wie er im Picker erscheint — eigene DB-Ladung, NICHT die
+ *  datums-gefensterten Kalender-Items (sonst fehlen Auftraege ausserhalb
+ *  des aktuell sichtbaren Monats, z.B. ein Event in 3 Monaten). */
+interface PickerJob {
+  id: string;
+  title: string;
+  customerName: string | null;
 }
 
 // Sentinel-Wert fuer "Nicht Auftrag bezogen" — Auftrag-Auswahl ist Pflicht,
@@ -51,10 +57,12 @@ function toLocalDateString(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function NeuerTerminModal({ open, onClose, items, onCreated, initialDate }: Props) {
+export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Props) {
   const supabase = createClient();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [jobs, setJobs] = useState<PickerJob[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Auftrag-Auswahl ist Pflicht, mit NO_JOB ("none") als expliziter Opt-Out-Wahl
@@ -89,6 +97,49 @@ export function NeuerTerminModal({ open, onClose, items, onCreated, initialDate 
       setProfilesLoaded(true);
     })();
   }, [open, profilesLoaded, supabase]);
+
+  // Auftraege lazy laden — alle waehlbaren, OHNE Datums-Fenster. Bewusst eine
+  // eigene DB-Query (nicht die Kalender-Items): so erscheinen auch Auftraege
+  // ausserhalb des aktuell angezeigten Monats. Anzeige-Titel identisch zum
+  // Kalender aufgebaut (INT-Nr | Body), damit die Suche per Nummer greift.
+  useEffect(() => {
+    if (!open || jobsLoaded) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("id, title, status, job_number, was_anfrage, cancelled_as_anfrage, customer:customers(name)")
+        .neq("is_deleted", true)
+        .neq("status", "storniert")
+        .order("start_date", { ascending: false, nullsFirst: false });
+      if (error) {
+        logError("kalender.neuer-termin.load-jobs", error);
+        return;
+      }
+      type RawJob = {
+        id: string;
+        title: string;
+        status: string;
+        job_number: number | null;
+        was_anfrage: boolean | null;
+        cancelled_as_anfrage: boolean | null;
+        customer: { name: string } | { name: string }[] | null;
+      };
+      const mapped: PickerJob[] = ((data ?? []) as RawJob[])
+        // Stornierte Vermietentwuerfe (cancelled_as_anfrage) raus — gleiche
+        // Regel wie im Kalender. status=storniert ist schon per Query weg.
+        .filter((j) => j.cancelled_as_anfrage !== true)
+        .map((j) => {
+          const cust = Array.isArray(j.customer) ? j.customer[0] : j.customer;
+          const customerName = cust?.name ?? null;
+          const isVermietung = j.status === "anfrage";
+          const body = isVermietung ? customerName ?? j.title : j.title;
+          const title = j.job_number != null ? `INT-${j.job_number} | ${body}` : body;
+          return { id: j.id, title, customerName };
+        });
+      setJobs(mapped);
+      setJobsLoaded(true);
+    })();
+  }, [open, jobsLoaded, supabase]);
 
   // Beim Oeffnen: Datum aus initialDate uebernehmen wenn gegeben.
   useEffect(() => {
@@ -125,12 +176,12 @@ export function NeuerTerminModal({ open, onClose, items, onCreated, initialDate 
   }
 
   const filteredJobs = useMemo(() => {
-    if (!jobSearch.trim()) return items.slice(0, 30);
+    if (!jobSearch.trim()) return jobs.slice(0, 30);
     const q = jobSearch.toLowerCase();
-    return items.filter((it) => it.title.toLowerCase().includes(q) || (it.customerName?.toLowerCase().includes(q) ?? false)).slice(0, 30);
-  }, [items, jobSearch]);
+    return jobs.filter((it) => it.title.toLowerCase().includes(q) || (it.customerName?.toLowerCase().includes(q) ?? false)).slice(0, 30);
+  }, [jobs, jobSearch]);
 
-  const selectedJob = jobId && jobId !== NO_JOB ? items.find((it) => it.id === jobId) ?? null : null;
+  const selectedJob = jobId && jobId !== NO_JOB ? jobs.find((it) => it.id === jobId) ?? null : null;
   const isNoJobSelected = jobId === NO_JOB;
 
   async function submit(e: React.FormEvent) {

@@ -372,7 +372,6 @@ export default function KalenderPage() {
       <NeuerTerminModal
         open={showNeuerTermin}
         onClose={() => setShowNeuerTermin(false)}
-        items={items}
         onCreated={load}
         // In Monatsansicht: ausgewaehlter Tag wird vorausgefuellt damit der
         // User nicht nochmal das Datum tippen muss.
