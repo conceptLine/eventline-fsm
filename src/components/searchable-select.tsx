@@ -95,13 +95,22 @@ export function SearchableSelect({
 
   useEffect(() => setMounted(true), []);
 
-  // Position des Dropdowns
+  // Position des Dropdowns — flippt ueber den Trigger wenn unter
+  // dem Bildschirmrand zu wenig Platz waere (Standard-Combobox-Verhalten).
   useEffect(() => {
     if (!open) return;
     function update() {
       if (!inputRef.current) return;
       const r = inputRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+      const dropdownMax = 288; // max-h-72 (Tailwind = 18rem = 288px)
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+      // Wenn nicht genug Platz UND oben mehr ist → ueber dem Trigger oeffnen
+      if (spaceBelow < dropdownMax && spaceAbove > spaceBelow) {
+        setPos({ top: Math.max(8, r.top - dropdownMax - 4), left: r.left, width: r.width });
+      } else {
+        setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+      }
     }
     update();
     window.addEventListener("scroll", update, true);
