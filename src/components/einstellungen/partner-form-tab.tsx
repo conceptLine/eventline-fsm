@@ -234,16 +234,17 @@ export function PartnerFormTab() {
   }
 
   function createOverride() {
-    // Startet mit globalem Live-Form als Basis (oder DEFAULT wenn auch kein
-    // globales Live existiert). Wird NOCH NICHT persistiert — Admin
-    // editiert + drueckt dann "Draft speichern" um den Override anzulegen.
+    // Startet mit globalem Live-Form als Basis. Wenn KEIN globales Live
+    // existiert, warnen wir den Admin — sonst wuerde der Override mit
+    // DEFAULT-Schema gespeichert und das kriegt nie wieder Updates wenn
+    // spaeter ein globales Form gebaut wird.
+    if (!globalFallback) {
+      const ok = confirm(
+        "Es gibt noch kein globales Live-Form. Du legst hier ein eigenes komplett von Null an — wenn später ein globales Form publishet wird, kriegt diese Location das nicht automatisch. Trotzdem fortfahren?"
+      );
+      if (!ok) return;
+    }
     setDraft(globalFallback ?? DEFAULT_PARTNER_FORM_SCHEMA);
-    // dirty muss true werden damit "Draft speichern" anschlaegt. Trick:
-    // setze einen "virtuellen leeren Row" damit der Vergleich
-    // draft != row.draft_schema true ist. Aber dann waere row nicht-null
-    // und das Insert-Pfad griffe nicht. Stattdessen: nichts setzen — row
-    // bleibt null, und wir machen aus dem "Draft speichern"-Button
-    // explizit "Override anlegen". Renderer unten entscheidet.
   }
 
   const isLocationScope = selectedLocationId !== null;

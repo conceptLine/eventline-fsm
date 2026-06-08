@@ -29,6 +29,7 @@ interface RpcRow {
   profile_id: string;
   full_name: string;
   role: string;
+  is_active: boolean;
   stempel_minutes: number;
   geplant_minutes: number;
   rapport_minutes: number;
@@ -58,23 +59,30 @@ function localWeekday(d: Date): number {
   return map[f.format(d)] ?? 0;
 }
 
-/** Minuten eines Time-Entries die ins Nacht-Fenster (23:00-06:00 lokal) fallen. */
-function nightMinutes(clockIn: string, clockOut: string): number {
+/** Bucketize Minutes per local-date — eine Schicht 22:00-04:00 verteilt
+ *  ihre Minuten korrekt auf 2 Datums-Buckets. Vorher wurde alles dem
+ *  clock_in-Datum zugeschrieben → Sa-Nacht-Stunden bekamen keinen
+ *  Sonntags-Zuschlag. */
+function bucketizeEntry(
+  clockIn: string,
+  clockOut: string,
+  perDate: Map<string, { date: string; total_minutes: number; night_minutes: number }>,
+) {
   const start = new Date(clockIn).getTime();
   const end = new Date(clockOut).getTime();
-  if (end <= start) return 0;
-  let mins = 0;
+  if (end <= start) return;
   for (let t = start; t < end; t += 60_000) {
-    const h = localHour(new Date(t));
-    if (h >= 23 || h < 6) mins++;
+    const d = new Date(t);
+    const date = localDateIso(d);
+    let b = perDate.get(date);
+    if (!b) {
+      b = { date, total_minutes: 0, night_minutes: 0 };
+      perDate.set(date, b);
+    }
+    b.total_minutes++;
+    const h = localHour(d);
+    if (h >= 23 || h < 6) b.night_minutes++;
   }
-  return mins;
-}
-
-/** Gesamt-Minuten eines Time-Entries. */
-function totalMinutes(clockIn: string, clockOut: string): number {
-  const ms = new Date(clockOut).getTime() - new Date(clockIn).getTime();
-  return Math.max(0, Math.floor(ms / 60000));
 }
 
 interface DayBucket {
@@ -124,46 +132,61 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
-  // Alle Time-Entries des Jahres fuer alle Mitarbeiter im RPC-Result.
-  // Wir nutzen admin-client weil die RPC die Sichtbarkeit schon
-  // checked (admin-only), die TS-Filter sind nur fuer Performance.
+  // Alle Time-Entries die LOKAL irgendeinen Anteil im Kalenderjahr haben.
+  // Filter ist clock_in zwischen [Vorjahres-Dez-30, Folgejahr-Jan-2] um
+  // Schichten an Jahres-Wechseln (z.B. Silvester 22:00 - 1.1. 04:00)
+  // korrekt zu erfassen — die Per-Minute-Attribution sortiert sie dann
+  // anhand des lokalen Datums in den richtigen Day-Bucket. UTC-Cutoffs
+  // mit grosszuegigem Puffer.
   const profileIds = (data as RpcRow[]).map((r) => r.profile_id);
-  const yearStartIso = `${year}-01-01T00:00:00+01:00`;
-  const yearEndIso = `${year + 1}-01-01T00:00:00+01:00`;
+  const fetchStartIso = new Date(`${year - 1}-12-30T00:00:00Z`).toISOString();
+  const fetchEndIso = new Date(`${year + 1}-01-02T00:00:00Z`).toISOString();
   const { data: entries } = await adminClient
     .from("time_entries")
     .select("user_id, clock_in, clock_out")
     .in("user_id", profileIds)
-    .gte("clock_in", yearStartIso)
-    .lt("clock_in", yearEndIso)
+    .gte("clock_in", fetchStartIso)
+    .lt("clock_in", fetchEndIso)
     .not("clock_out", "is", null);
 
-  // Pro Profile + Datum aggregieren
+  // Pro Profile + Datum aggregieren — per-Minute-Attribution
   const holidays = swissHolidaysForYear(year);
   const holidaySet = new Set(holidays.map((h) => h.date));
   const monthPrefix = `${yearStr}-${monthStr.padStart(2, "0")}-`;
+  const yearPrefix = `${yearStr}-`;
 
   type EntryRow = { user_id: string; clock_in: string; clock_out: string };
   const perProfileDays = new Map<string, Map<string, DayBucket>>();
   for (const e of (entries as EntryRow[] | null) ?? []) {
-    const dateIso = localDateIso(new Date(e.clock_in));
     let byDate = perProfileDays.get(e.user_id);
     if (!byDate) { byDate = new Map(); perProfileDays.set(e.user_id, byDate); }
-    let bucket = byDate.get(dateIso);
-    if (!bucket) {
-      const wd = localWeekday(new Date(e.clock_in));
-      const isSunHol = wd === 0 || holidaySet.has(dateIso);
-      bucket = {
-        date: dateIso,
-        total_minutes: 0,
-        night_minutes: 0,
-        is_sunhol: isSunHol,
-        in_current_month: dateIso.startsWith(monthPrefix),
-      };
-      byDate.set(dateIso, bucket);
+    // Sammele Minuten pro local-date
+    const rawDates = new Map<string, { date: string; total_minutes: number; night_minutes: number }>();
+    bucketizeEntry(e.clock_in, e.clock_out, rawDates);
+    // In den Profile-Buckets mergen + is_sunhol/in_current_month annotieren
+    for (const r of rawDates.values()) {
+      // Date ausserhalb des Ziel-Kalenderjahres ignorieren (Silvester-
+      // Schicht spannt 2 Jahre, hier nur das Ziel-Jahr behalten).
+      if (!r.date.startsWith(yearPrefix)) continue;
+      let bucket = byDate.get(r.date);
+      if (!bucket) {
+        // Wochentag bestimmen via Date-Konstruktor lokal — wir nehmen
+        // 12:00 Mittag des Datums um DST-/Mitternacht-Edges zu vermeiden.
+        const [y, m, d] = r.date.split("-").map(Number);
+        const noon = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+        const wd = localWeekday(noon);
+        bucket = {
+          date: r.date,
+          total_minutes: 0,
+          night_minutes: 0,
+          is_sunhol: wd === 0 || holidaySet.has(r.date),
+          in_current_month: r.date.startsWith(monthPrefix),
+        };
+        byDate.set(r.date, bucket);
+      }
+      bucket.total_minutes += r.total_minutes;
+      bucket.night_minutes += r.night_minutes;
     }
-    bucket.total_minutes += totalMinutes(e.clock_in, e.clock_out);
-    bucket.night_minutes += nightMinutes(e.clock_in, e.clock_out);
   }
 
   // Pro Mitarbeiter: Surcharge-Berechnung anhand seiner YTD-Tage. Sortiert

@@ -166,7 +166,7 @@ export function VisualBuilder({ blocks, onChange }: BuilderProps) {
             <p>Wähle einen Block in der Mitte aus, um seine Eigenschaften zu bearbeiten.</p>
           </div>
         ) : (
-          <BlockEditor block={selectedBlock} onChange={(next) => update(selectedIndex, next)} />
+          <BlockEditor block={selectedBlock} allBlocks={blocks} onChange={(next) => update(selectedIndex, next)} />
         )}
       </aside>
     </div>
@@ -326,10 +326,18 @@ function DropZone({ isActive, onDragOver, onDragLeave, onDrop }: {
 // Inspektor — per-type Editor
 // ============================================================
 
-function BlockEditor({ block, onChange }: { block: FormBlock; onChange: (next: FormBlock) => void }) {
+const RESERVED_IDS = new Set(["termin_date", "termin_time_range"]);
+
+function BlockEditor({ block, allBlocks, onChange }: { block: FormBlock; allBlocks: FormBlock[]; onChange: (next: FormBlock) => void }) {
   function patchAny(key: string, value: unknown) {
     onChange({ ...(block as unknown as Record<string, unknown>), [key]: value } as unknown as FormBlock);
   }
+
+  // Validation: ID muss unique sein (excl. self). RESERVED-IDs sind fuer
+  // die Primary-Appointment-Detection — Umbenennen bricht "Anfrage senden".
+  const idIsDuplicate = allBlocks.some((b) => b !== block && b.id === block.id);
+  const idIsEmpty = !block.id;
+  const idIsReserved = RESERVED_IDS.has(block.id);
 
   return (
     <div className="space-y-3 pr-1">
@@ -338,7 +346,22 @@ function BlockEditor({ block, onChange }: { block: FormBlock; onChange: (next: F
       </Row>
 
       <Row label="Block-ID" hint="a-z, 0-9, _ — Antworten sind unter dieser ID gespeichert.">
-        <Input value={block.id} onChange={(e) => patchAny("id", e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))} />
+        <Input
+          value={block.id}
+          onChange={(e) => patchAny("id", e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+          className={idIsDuplicate || idIsEmpty ? "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/40" : undefined}
+        />
+        {idIsEmpty && (
+          <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">Block-ID darf nicht leer sein</p>
+        )}
+        {idIsDuplicate && (
+          <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">Diese ID gibt&apos;s schon — Antworten würden sich überschreiben</p>
+        )}
+        {idIsReserved && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+            🔒 Reserved-ID für Primary-Appointment — nicht umbenennen, sonst geht „Anfrage senden“ kaputt.
+          </p>
+        )}
       </Row>
 
       {block.type === "section-header" && (

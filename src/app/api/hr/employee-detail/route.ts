@@ -23,10 +23,6 @@ import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 // auch auf dem Server (Node hat ICU).
 const ZRH_TZ = "Europe/Zurich";
 
-function toZrhDate(iso: string): Date {
-  return new Date(iso); // UTC parsed; wir formatieren mit ZRH bei Bedarf
-}
-
 function localDateIso(d: Date): string {
   // YYYY-MM-DD in Europe/Zurich
   const f = new Intl.DateTimeFormat("en-CA", { timeZone: ZRH_TZ, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -49,25 +45,6 @@ function localWeekday(d: Date): number {
 interface TimeEntryRow {
   clock_in: string;
   clock_out: string | null;
-}
-
-// Ein Time-Entry deckt Nachtstunden ab, wenn er IRGENDWIE 23:00-06:00
-// (Zuerich-Lokal) ueberlappt. Wir checken stundenweise — eine Sample-
-// Stunde je Stunde im Zeitraum reicht weil die Window 23-06 ist.
-function entryTouchesNight(entry: TimeEntryRow): boolean {
-  if (!entry.clock_out) return false;
-  const start = new Date(entry.clock_in).getTime();
-  const end = new Date(entry.clock_out).getTime();
-  if (end <= start) return false;
-  // Step in 30-min-Schritten durch den Eintrag und check ob die Stunde
-  // im Nacht-Fenster (>=23 || <6) liegt.
-  for (let t = start; t < end; t += 30 * 60 * 1000) {
-    const h = localHour(new Date(t));
-    if (h >= 23 || h < 6) return true;
-  }
-  // Sicherstellen dass der letzte Moment (end - 1ms) auch geprueft wird.
-  const lastH = localHour(new Date(end - 1));
-  return lastH >= 23 || lastH < 6;
 }
 
 export async function GET(req: Request) {
@@ -118,33 +95,45 @@ export async function GET(req: Request) {
     .lt("clock_in", yearEnd)
     .order("clock_in");
 
-  // Aggregate: Nachtarbeit + Sonntag/Feiertag (per Kalendertag dedupliziert).
+  // Aggregate: per-Minute-Date-Attribution (Schichten ueber Mitternacht
+  // verteilen ihre Minuten korrekt auf 2 Tage). Vorher haben wir clock_in-
+  // Datum genommen und Sa-Nacht-→-So-Schichten bekamen keinen Sonntag-Zuschlag.
   const holidays = swissHolidaysForYear(year);
   const holidayMap = new Map(holidays.map((h) => [h.date, h.name]));
 
-  const nightDates = new Map<string, { date: string; entries: number }>();
-  const sundayHolidayDates = new Map<string, { date: string; label: string }>();
+  // Pro Datum: hatte da Nachtstunden? Hat da gearbeitet? (fuer Sonntag/Feiertag)
+  const perDate = new Map<string, { night: boolean; worked: boolean }>();
 
   let stempel_minutes = 0;
   for (const e of (entries as TimeEntryRow[] | null) ?? []) {
-    if (e.clock_out) {
-      const ms = new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime();
-      if (ms > 0) stempel_minutes += Math.floor(ms / 60000);
+    if (!e.clock_out) continue;
+    const start = new Date(e.clock_in).getTime();
+    const end = new Date(e.clock_out).getTime();
+    if (end <= start) continue;
+    stempel_minutes += Math.floor((end - start) / 60000);
+    for (let t = start; t < end; t += 60_000) {
+      const d = new Date(t);
+      const date = localDateIso(d);
+      const h = localHour(d);
+      let bucket = perDate.get(date);
+      if (!bucket) { bucket = { night: false, worked: true }; perDate.set(date, bucket); }
+      bucket.worked = true;
+      if (h >= 23 || h < 6) bucket.night = true;
     }
-    const startDate = toZrhDate(e.clock_in);
-    const dateIso = localDateIso(startDate);
-    // Nacht-Detection
-    if (entryTouchesNight(e)) {
-      const cur = nightDates.get(dateIso);
-      nightDates.set(dateIso, { date: dateIso, entries: (cur?.entries ?? 0) + 1 });
-    }
-    // Sonntag/Feiertag
-    const wd = localWeekday(startDate);
+  }
+
+  const nightDates = new Map<string, { date: string; entries: number }>();
+  const sundayHolidayDates = new Map<string, { date: string; label: string }>();
+  for (const [date, b] of perDate.entries()) {
+    if (b.night) nightDates.set(date, { date, entries: 1 });
+    const [y, m, d] = date.split("-").map(Number);
+    const noon = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    const wd = localWeekday(noon);
     const isSunday = wd === 0;
-    const isHoliday = holidayMap.has(dateIso);
-    if (isSunday || isHoliday) {
-      const label = isHoliday ? (holidayMap.get(dateIso) ?? "") : "Sonntag";
-      sundayHolidayDates.set(dateIso, { date: dateIso, label });
+    const isHoliday = holidayMap.has(date);
+    if (b.worked && (isSunday || isHoliday)) {
+      const label = isHoliday ? (holidayMap.get(date) ?? "") : "Sonntag";
+      sundayHolidayDates.set(date, { date, label });
     }
   }
 
@@ -178,8 +167,10 @@ export async function GET(req: Request) {
       if (!/^\d{2}:\d{2}$/.test(s) || !/^\d{2}:\d{2}$/.test(en)) continue;
       const [sh, sm] = s.split(":").map(Number);
       const [eh, em] = en.split(":").map(Number);
-      const mins = Math.max(0, eh * 60 + em - sh * 60 - sm - pause);
-      rapport_minutes += mins;
+      let diff = eh * 60 + em - sh * 60 - sm;
+      // Mitternacht-Fix: end < start → Schicht ueber Mitternacht, +24h.
+      if (diff < 0) diff += 1440;
+      rapport_minutes += Math.max(0, diff - pause);
     }
   }
 

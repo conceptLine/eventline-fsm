@@ -15,7 +15,7 @@
  * Default = aktueller Monat.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ interface EmployeeStats {
   profile_id: string;
   full_name: string;
   role: string;
+  is_active: boolean;
   stempel_minutes: number;
   geplant_minutes: number;
   rapport_minutes: number;
@@ -86,23 +87,26 @@ export function MonatsstundenTable() {
   const [loading, setLoading] = useState(true);
   const [detailFor, setDetailFor] = useState<string | null>(null);
 
-  const load = useCallback(async (p: { year: number; month: number }) => {
+  // Cancel-Token: bei rapidem Monatswechsel verwerfen wir Stale-Fetches
+  // damit das Result vom letzten Klick gewinnt (nicht der schnellere
+  // frueheren Request).
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    try {
-      const res = await fetch(`/api/hr/monthly-stats?month=${fmtMonth(p)}`);
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        toast.error(json.error || "Daten konnten nicht geladen werden");
-        setData([]);
-        return;
-      }
-      setData(json.employees as EmployeeStats[]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(period); }, [period, load]);
+    fetch(`/api/hr/monthly-stats?month=${fmtMonth(period)}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (!json.success) {
+          toast.error(json.error || "Daten konnten nicht geladen werden");
+          setData([]);
+          return;
+        }
+        setData(json.employees as EmployeeStats[]);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [period]);
 
   // Summen-Zeile berechnen
   const totals = data.reduce(
@@ -224,12 +228,19 @@ function StatsRow({ row, onClick }: { row: EmployeeStats; onClick: () => void })
 
   return (
     <div
-      className="grid items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer"
+      className={`grid items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer ${row.is_active ? "" : "opacity-60"}`}
       style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 95px 95px" }}
       onClick={onClick}
     >
       <div className="min-w-0">
-        <div className="font-medium truncate hover:underline">{row.full_name}</div>
+        <div className="font-medium truncate hover:underline flex items-center gap-1.5">
+          {row.full_name}
+          {!row.is_active && (
+            <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-foreground/10 dark:bg-foreground/20 text-muted-foreground font-normal">
+              deaktiv
+            </span>
+          )}
+        </div>
         <div className="text-[11px] text-muted-foreground truncate">{row.role}</div>
       </div>
       <div className="text-right tabular-nums">{fmtHours(row.stempel_minutes)}</div>

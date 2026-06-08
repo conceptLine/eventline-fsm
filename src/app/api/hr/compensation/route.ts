@@ -74,22 +74,31 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ success: false, error: "Ungueltiger Body" }, { status: 400 });
 
+  // Coerce zuerst → Number, dann isFinite-Check. Body kann sowohl Number
+  // als auch String-formatierte Zahl liefern (JSON Type kann beides).
+  const toNum = (v: unknown): number | null => {
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   const profile_id = typeof body.profile_id === "string" ? body.profile_id : null;
-  const hourly_wage_chf = Number.isFinite(body.hourly_wage_chf) ? Number(body.hourly_wage_chf) : null;
-  const employer_costs_chf_per_hour = Number.isFinite(body.employer_costs_chf_per_hour)
-    ? Number(body.employer_costs_chf_per_hour)
-    : 0;
+  const hourly_wage_chf = toNum(body.hourly_wage_chf);
+  const employer_costs_chf_per_hour = toNum(body.employer_costs_chf_per_hour) ?? 0;
   const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
 
-  // Abzuege (% vom Brutto). Bei fehlendem Body-Feld → Default beibehalten
-  // (= bisheriger Wert auf der Row bleibt durch DB-Default abgesichert,
-  // hier aber explizit aus der Eingabe).
+  // Abzuege (% vom Brutto). Wenn Feld fehlt → Default. Wenn Feld da aber
+  // out-of-range → 400 statt silent fallback (sonst speichert man invalid
+  // Werte ohne Feedback).
+  let validationError: string | null = null;
   function pct(key: string, fallback: number): number {
     const v = body[key];
     if (v == null) return fallback;
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      validationError ??= `${key} ungültig (erwartet 0-100, war ${v})`;
+      return fallback;
+    }
     return n;
   }
   const ahv_iv_eo_pct = pct("ahv_iv_eo_pct", 5.3);
@@ -98,6 +107,7 @@ export async function POST(request: Request) {
   const bvg_pct = pct("bvg_pct", 0);
   const ktg_pct = pct("ktg_pct", 0);
   const quellensteuer_pct = pct("quellensteuer_pct", 0);
+  if (validationError) return NextResponse.json({ success: false, error: validationError }, { status: 400 });
 
   if (!profile_id) return NextResponse.json({ success: false, error: "profile_id fehlt" }, { status: 400 });
   if (hourly_wage_chf === null || hourly_wage_chf < 0) {

@@ -111,6 +111,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
           filter: `user_id=eq.${user.id}`,
         }, dispatch("time_entries"))
         .on("postgres_changes", { event: "*", schema: "public", table: "vertrieb_contacts" }, dispatch("vertrieb_contacts"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, dispatch("tickets"))
         .subscribe();
     })();
 
