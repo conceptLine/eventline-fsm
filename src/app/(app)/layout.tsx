@@ -28,7 +28,6 @@ import { useScrollRestoration } from "@/lib/use-scroll-restoration";
 import { PermissionsProvider, usePermissions } from "@/lib/use-permissions";
 import { StempelProvider } from "@/lib/use-stempel";
 import { NavCountsProvider, useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
-import { EveChat } from "@/components/eve-chat";
 
 // Outer-Wrapper — nur Provider. Der Inner-Layout kann den Provider
 // dann via Hook konsumieren statt eigenem Self-Load.
@@ -351,11 +350,6 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       </Sheet>
 
       <Toaster />
-      {/* Eve — der app-interne Chatbot, fuer alle eingeloggten Mitarbeiter
-          sichtbar. RLS auf den DB-Tools sorgt dafuer dass jeder nur eigene
-          Daten sieht. Wird ausgeblendet wenn das Mobile-Menue offen ist —
-          sonst klebt die Bubble neben dem Sheet und irritiert. */}
-      {profile && !mobileMenuOpen && <EveChat />}
     </div>
     </NavCountsProvider>
   );
