@@ -211,6 +211,21 @@ function detectAnomaly(e: NormalizedEntry, nowMs: number): Anomaly {
 }
 function hasAnomaly(a: Anomaly): boolean { return a.longShift || a.forgotten; }
 
+/** 1-2 Initialen aus einem Namen ("Mathis Berger" -> "MB"). */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Stabile HSL-Farbe pro Name (gleicher Name -> gleiche Farbe). */
+function colorForName(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 55% 45%)`;
+}
+
 interface DayBucket {
   date: string;
   totalMin: number;
@@ -902,16 +917,36 @@ function EntryCard({
   return (
     <Card className={`card-hover bg-card ${borderClass}`}>
       <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-          entry.jobLabel ? "bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400"
-                         : "bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400"
-        }`}>
-          {entry.jobLabel ? <Briefcase className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-        </div>
+        {entry.userName ? (
+          // Admin-View: Initialen-Avatar links damit man auf einen Blick
+          // sieht WER gestempelt hat. Job-Type wird kleines Inline-Icon
+          // neben dem Job-Label.
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white"
+            style={{ backgroundColor: colorForName(entry.userName) }}
+            data-tooltip={entry.userName}
+          >
+            {initials(entry.userName)}
+          </div>
+        ) : (
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+            entry.jobLabel ? "bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400"
+                           : "bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          }`}>
+            {entry.jobLabel ? <Briefcase className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          {entry.userName && (
+            <p className="text-sm font-bold leading-tight" style={{ color: colorForName(entry.userName) }}>
+              {entry.userName}
+            </p>
+          )}
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             {entry.userName && (
-              <span className="text-xs font-medium px-1.5 py-0 rounded-full bg-muted">{entry.userName}</span>
+              entry.jobLabel
+                ? <Briefcase className="h-3 w-3 text-red-600 dark:text-red-400 shrink-0" />
+                : <FileText className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
             )}
             {entry.jobLabel ? (
               entry.jobHref ? (
