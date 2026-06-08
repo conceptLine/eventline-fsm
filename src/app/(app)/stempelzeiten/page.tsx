@@ -263,6 +263,7 @@ export default function StempelzeitenPage() {
   const { active } = useStempel();
   const { confirm, ConfirmModalElement } = useConfirm();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [showStempelTicket, setShowStempelTicket] = useState(false);
   const { can } = usePermissions();
@@ -288,6 +289,7 @@ export default function StempelzeitenPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setCurrentUserId(user.id);
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       setIsAdmin(profile?.role === "admin");
     })();
@@ -322,9 +324,16 @@ export default function StempelzeitenPage() {
       if (error) TOAST.supabaseError(error, "Stempel-Eintraege konnten nicht geladen werden");
       setAdminEntries((data as AdminEntry[]) ?? []);
     } else {
+      // RLS-Bug-Schutz: Admins haetten via RLS-Policy Zugriff auf ALLE
+      // time_entries — ohne expliziten user_id-Filter zeigt "Eigene Sicht"
+      // auch fremde Eintraege. Daher hier zwingend nach currentUserId
+      // filtern. Wenn currentUserId noch nicht geladen, kein Query (load
+      // wird re-triggered sobald gesetzt).
+      if (!currentUserId) { setLoading(false); return; }
       let q = supabase
         .from("time_entries")
         .select("id, job_id, clock_in, clock_out, description, notes, job:jobs(job_number, title)")
+        .eq("user_id", currentUserId)
         .order("clock_in", { ascending: false });
       if (filterFrom) q = q.gte("clock_in", new Date(filterFrom + "T00:00:00").toISOString());
       if (filterTo) q = q.lt("clock_in", new Date(filterTo + "T23:59:59").toISOString());
@@ -332,7 +341,7 @@ export default function StempelzeitenPage() {
       setOwnEntries((data as unknown as OwnEntry[]) ?? []);
     }
     setLoading(false);
-  }, [supabase, showAll, isAdmin, filterUserId, filterFrom, filterTo]);
+  }, [supabase, showAll, isAdmin, currentUserId, filterUserId, filterFrom, filterTo]);
 
   useEffect(() => { load(); }, [load]);
 
