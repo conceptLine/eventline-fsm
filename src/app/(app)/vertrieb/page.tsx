@@ -30,14 +30,13 @@ import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact } from "@/types";
-import { Plus, TrendingUp, PartyPopper, Trophy, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
+import { Plus, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { LeadEditor } from "@/components/vertrieb/lead-editor";
 import { GoalTracker } from "@/components/vertrieb/goal-tracker";
 import { GeneralColumn } from "@/components/vertrieb/columns/general-column";
 import { PersonalColumn } from "@/components/vertrieb/columns/personal-column";
 import { useConfirm } from "@/components/ui/use-confirm";
-import { parseEventStart } from "@/lib/vertrieb-anomaly";
 
 type Counts = {
   total: number; offen: number; kontaktiert: number; gespraech: number;
@@ -195,13 +194,6 @@ export default function VertriebPage() {
         </div>
       </div>
 
-      {/* KPIs (only desktop) */}
-      {counts && counts.total > 0 && (
-        <div className="hidden md:grid gap-3 md:grid-cols-3 shrink-0">
-          <StatCards counts={counts} contacts={contacts} />
-        </div>
-      )}
-
       {/* Goal-Tracker */}
       <div className="shrink-0">
         <GoalTracker contacts={contacts} isAdmin={isAdmin} salesPeople={salesPeople} />
@@ -346,63 +338,3 @@ function DetailEmptyState() {
   );
 }
 
-// ------------------ KPI-Cards ------------------
-
-function StatCards({ counts, contacts }: { counts: Counts; contacts: VertriebContact[] }) {
-  const aktive = counts.step_1 + counts.step_2 + counts.step_3 + counts.step_4;
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in30 = new Date(today); in30.setDate(today.getDate() + 30);
-  const events30 = contacts.filter((c) => {
-    if (c.status === "abgesagt" || c.status === "gewonnen") return false;
-    const ed = parseEventStart(c);
-    return !!ed && ed >= today && ed <= in30;
-  }).length;
-
-  const closed = counts.gewonnen + counts.abgesagt;
-  const winRate = closed > 0 ? Math.round((counts.gewonnen / closed) * 100) : null;
-
-  return (
-    <>
-      <KpiCard icon={TrendingUp} tone="blue" label="Aktive Pipeline" value={aktive} sub="Leads in Bearbeitung" />
-      <KpiCard icon={PartyPopper} tone="purple" label="Events nächste 30 Tage" value={events30} sub="anstehend" />
-      <KpiCard
-        icon={Trophy}
-        tone="green"
-        label="Win-Rate"
-        value={winRate !== null ? `${winRate}%` : "—"}
-        sub={closed > 0 ? `${counts.gewonnen} von ${closed} abgeschlossen` : "noch keine abgeschlossen"}
-      />
-    </>
-  );
-}
-
-function KpiCard({ icon: Icon, tone, label, value, sub }: {
-  icon: typeof TrendingUp;
-  tone: "blue" | "purple" | "green";
-  label: string;
-  value: number | string;
-  sub: string;
-}) {
-  const toneClass = tone === "blue"
-    ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400"
-    : tone === "purple"
-      ? "bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400"
-      : "bg-green-50 dark:bg-green-500/15 text-green-600 dark:text-green-400";
-  return (
-    <Card className="bg-card">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${toneClass}`}>
-            <Icon className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{value}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
