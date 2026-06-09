@@ -55,6 +55,9 @@ export function LeadRow({ contact: c, selected, onClick, draggable = true }: Pro
         <div className={`w-1 self-stretch rounded-full shrink-0 ${stepColorClass(stepNr)}`} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[9px] font-mono text-muted-foreground bg-foreground/[0.06] dark:bg-foreground/[0.1] px-1 py-0 rounded shrink-0">
+              {String(c.nr).padStart(4, "0")}
+            </span>
             <p className="text-xs font-semibold truncate">{c.firma}</p>
             {isHot && <Flame className="h-2.5 w-2.5 text-orange-500 shrink-0" data-tooltip="Top-Prio" />}
             {flagged && <AlertTriangle className="h-2.5 w-2.5 text-amber-500 shrink-0" data-tooltip="Auffaellig" />}
