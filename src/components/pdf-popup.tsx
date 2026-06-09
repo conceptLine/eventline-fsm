@@ -19,7 +19,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { X, ExternalLink } from "lucide-react";
+
+// pdf.js nur auf Mobile + lazy laden, damit es nicht ins Haupt-Bundle wandert.
+const PdfMobileViewer = dynamic(() => import("./pdf-mobile-viewer"), { ssr: false });
 
 interface Props {
   url: string;
@@ -149,12 +153,11 @@ export function PdfPopup({ url, title, onClose }: Props) {
         // Teil des Dokuments nicht hinter der Leiste klemmt.
         style={isMobile ? { paddingBottom: "env(safe-area-inset-bottom)" } : undefined}
       >
-        {/* Bilder kriegen ein <img> mit max-width:100% damit sie sich an
-            die Popup-Breite anpassen — sonst rendert das iframe das
-            Bild in nativer Aufloesung und man muss horizontal scrollen.
-            PDFs bleiben im iframe (Browser-PDF-Viewer fittet selbst auf
-            Breite). Andere Typen (Office-Docs) faengt der Browser sowieso
-            mit Download ab. */}
+        {/* Bilder: <img> mit max-width:100%, passt sich der Popup-Breite an.
+            PDFs auf Mobile: eigener PDF.js-Viewer (das native iframe zeigt
+            dort nur Seite 1 und laesst sich nicht zoomen). PDFs auf Desktop:
+            iframe (Browser-PDF-Viewer mit Toolbar funktioniert dort gut).
+            Andere Typen (Office-Docs) faengt der Browser per Download ab. */}
         {/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(title) ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -162,6 +165,8 @@ export function PdfPopup({ url, title, onClose }: Props) {
             alt={title}
             className="block max-w-full h-auto mx-auto"
           />
+        ) : isMobile ? (
+          <PdfMobileViewer url={url} />
         ) : (
           <iframe
             src={url}
