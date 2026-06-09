@@ -38,6 +38,11 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return contacts
+      // Pool-Sicht: nur nicht-zugewiesene Leads. Sobald jemand einen
+      // Lead per Drag-Drop in seine Personal-Column zieht, verschwindet
+      // er aus dieser Liste. Admins koennen via Personal-Column-Switcher
+      // fremde Zuweisungen anschauen.
+      .filter((c) => !c.assigned_to)
       .filter((c) => c.status !== "gewonnen" && c.status !== "abgesagt")
       .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
       .filter((c) => !filterHot || c.prioritaet === "top")
