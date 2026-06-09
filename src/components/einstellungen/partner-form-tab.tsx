@@ -55,6 +55,26 @@ interface LocationOption {
 // Sentinel-Wert im SearchableSelect fuer das globale Template.
 const GLOBAL_SCOPE_VALUE = "__global__";
 
+/** Stable JSON-Stringify: Object-Keys werden rekursiv sortiert damit
+ *  zwei strukturell gleiche Objekte mit unterschiedlicher Key-Reihenfolge
+ *  denselben String liefern. Arrays bleiben in Reihenfolge.
+ *
+ *  Brauchen wir weil Postgres jsonb beim Roundtrip die Keys alphabetisch
+ *  sortiert — JSON.stringify wuerde sonst "dirty" trotz identischer Daten
+ *  zurueckgeben. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
+        sorted[k] = (val as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return val;
+  });
+}
+
 export function PartnerFormTab() {
   const supabase = createClient();
   const { confirm, ConfirmModalElement } = useConfirm();
@@ -139,14 +159,19 @@ export function PartnerFormTab() {
     }
   }, [mode, draft]);
 
+  // WICHTIG: Postgres jsonb sortiert Object-Keys alphabetisch beim
+  // Roundtrip. JSON.stringify ist key-order-sensitiv, daher wuerde ein
+  // direkter Vergleich nach Save 'dirty' = true zurueckgeben obwohl
+  // die Daten identisch sind. stableStringify normalisiert die
+  // Key-Reihenfolge auf beiden Seiten.
   const dirty = useMemo(() => {
     if (!row) return false; // Ohne Row gilt's erst als dirty nach "Override anlegen"
-    return JSON.stringify(row.draft_schema) !== JSON.stringify(draft);
+    return stableStringify(row.draft_schema) !== stableStringify(draft);
   }, [row, draft]);
 
   const draftDiffersFromLive = useMemo(() => {
     if (!row?.live_schema) return true;
-    return JSON.stringify(row.live_schema) !== JSON.stringify(draft);
+    return stableStringify(row.live_schema) !== stableStringify(draft);
   }, [row, draft]);
 
   // Schema-Linter: verhindert Save mit broken Schema.
