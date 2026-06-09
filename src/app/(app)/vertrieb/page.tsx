@@ -189,11 +189,9 @@ export default function VertriebPage() {
           <Link href="/vertrieb/archiv" className="kasten kasten-muted text-xs">
             <Archive className="h-3.5 w-3.5" />Archiv
           </Link>
-          {can("vertrieb:create") && (
-            <Link href="/vertrieb/neu" className="kasten kasten-red">
-              <Plus className="h-3.5 w-3.5" />Lead
-            </Link>
-          )}
+          {/* 'Lead +' lebt jetzt als vertikale Leiste rechts neben dem
+              Detail-Bereich (siehe unten) — hier oben weglassen damit
+              kein Duplikat. */}
         </div>
       </div>
 
@@ -292,6 +290,28 @@ export default function VertriebPage() {
             <DetailEmptyState />
           )}
         </div>
+
+        {/* Vertikale "Neuer Lead"-Leiste ganz rechts. Volle Spalten-Hoehe,
+            schmal (~40px), Text vertikal. Auf Mobile ausgeblendet — dort
+            ist 'Lead +' als FAB-aehnliche Tab-Strategie evtl. besser
+            (zukuenftig). */}
+        {can("vertrieb:create") && (
+          <Link
+            href="/vertrieb/neu"
+            className="hidden md:flex w-10 shrink-0 rounded-lg border-2 border-red-500 bg-red-500/10 hover:bg-red-500/20 transition-colors items-center justify-center group"
+            data-tooltip="Neuer Lead"
+          >
+            <div className="flex flex-col items-center gap-2 text-red-600 dark:text-red-400">
+              <Plus className="h-4 w-4" />
+              <span
+                className="text-xs font-semibold uppercase tracking-wider"
+                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+              >
+                Neuer Lead
+              </span>
+            </div>
+          </Link>
+        )}
       </div>
 
       {ConfirmModalElement}
