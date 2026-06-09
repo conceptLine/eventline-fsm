@@ -12,6 +12,7 @@
 
 import type { FormSchema, FormBlock, DateRangeBlock } from "./types";
 import { isInputBlock } from "./types";
+import { isBlockVisible } from "./conditions";
 import type { FormValues } from "@/components/partner-form/form-renderer";
 
 export interface ExtractedForm {
@@ -32,6 +33,11 @@ export function extractFormValues(schema: FormSchema, values: FormValues): Extra
   const primaryAppointment: ExtractedForm["primaryAppointment"] = {};
 
   for (const b of schema.blocks) {
+    // Unsichtbare Bloecke werden komplett uebersprungen — keine Werte
+    // in core/answers/files/primaryAppointment. Damit verhalten sich
+    // versteckte Pflichtfelder konsistent (kein Spookwert in der DB).
+    if (!isBlockVisible(b, values)) continue;
+
     const v = values[b.id];
 
     if (b.type === "daterange") {

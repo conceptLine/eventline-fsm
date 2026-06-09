@@ -14,6 +14,7 @@ import { Loading } from "@/components/ui/spinner";
 import { extractFormValues } from "@/lib/partner-form/extract";
 import { DEFAULT_PARTNER_FORM_SCHEMA } from "@/lib/partner-form/default-schema";
 import { resolveSubmitRules, type FormSchema } from "@/lib/partner-form/types";
+import { isBlockVisible } from "@/lib/partner-form/conditions";
 import { todayLocalISO } from "@/components/auftrag-form-fields";
 
 // Partner-Anfrage-Form — komplett vom Admin im Builder konfiguriert.
@@ -68,10 +69,20 @@ export default function NeueAnfragePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Primary-Appointment-Status (Convention: termin_date + termin_time_range)
-  // entscheidet, ob "Anfrage senden" aktiv ist.
+  // Primary-Appointment-Status (Convention: termin_date + termin_time_range).
+  // Wenn der TimeRange-Block aktuell via visibleIf versteckt ist (z.B.
+  // Toggle "EVENTLINE setzt die Zeit" = on), gilt der Termin schon mit
+  // nur Datum als "vollstaendig". In dem Fall wird KEIN job_appointment
+  // angelegt — der Admin pflegt die Zeit spaeter selbst nach.
+  const timeRangeBlock = schema?.blocks.find((b) => b.id === "termin_time_range");
+  const timeRangeVisible = !schema || !timeRangeBlock || isBlockVisible(timeRangeBlock, values);
   const apt = schema ? extractFormValues(schema, values).primaryAppointment : {};
-  const hasPrimaryAppointment = Boolean(apt.date && apt.start_time && apt.end_time);
+  const hasPrimaryAppointment = timeRangeVisible
+    ? Boolean(apt.date && apt.start_time && apt.end_time)
+    : Boolean(apt.date);
+  // Termin in der DB anlegen nur wenn date + time vollstaendig — sonst
+  // wuerde job_appointments.start_time NOT NULL crashen.
+  const willInsertAppointment = Boolean(apt.date && apt.start_time && apt.end_time);
 
   async function save(mode: "draft" | "send") {
     if (!schema) return;
@@ -108,7 +119,11 @@ export default function NeueAnfragePage() {
     const rules = resolveSubmitRules(schema);
     if (mode === "send") {
       if (rules.appointment_required && !hasPrimaryAppointment) {
-        toast.error("Zum Absenden ist ein Termin (Datum + Zeit) Pflicht");
+        toast.error(
+          timeRangeVisible
+            ? "Zum Absenden ist ein Termin (Datum + Zeit) Pflicht"
+            : "Zum Absenden ist ein Termin-Datum Pflicht",
+        );
         return;
       }
       if (rules.title_required && !core.title) {
@@ -143,10 +158,12 @@ export default function NeueAnfragePage() {
       return;
     }
 
-    // 5) Primary Appointment ggf. zusammenbauen
+    // 5) Primary Appointment ggf. zusammenbauen — nur wenn date + time
+    //    beide vorhanden. Bei "nur Datum" (TimeRange versteckt) wird kein
+    //    job_appointments-Datensatz angelegt.
     let aptStartIso: string | null = null;
     let aptEndIso: string | null = null;
-    if (hasPrimaryAppointment) {
+    if (willInsertAppointment) {
       if (primaryAppointment.date! < effectiveStartDate || primaryAppointment.date! > effectiveEndDate) {
         toast.error("Termin-Datum muss innerhalb der Veranstaltung liegen");
         return;
@@ -189,7 +206,17 @@ export default function NeueAnfragePage() {
         // Schema-Snapshot NUR bei send-Mode — Drafts kommen ggf. wieder
         // in den Editor und sollten beim spaeteren Submit den aktuellen
         // Schema-Stand einfangen, nicht den vom Draft-Anlegen.
-        form_schema_snapshot: mode === "send" ? schema : null,
+        //
+        // Effective-Snapshot-Anpassung: wenn TimeRange via visibleIf
+        // versteckt war, gilt fuer diesen Job appointment_required=false
+        // — sonst wuerde der Edit-Flow-RPC (partner_submit_anfrage) den
+        // hardcoded count>0-Check failen und der Partner kaeme bei einem
+        // spaeteren Re-Submit nicht durch.
+        form_schema_snapshot: mode === "send"
+          ? (timeRangeVisible
+              ? schema
+              : { ...schema, submit: { ...(schema.submit ?? {}), appointment_required: false } })
+          : null,
       })
       .select("id")
       .single();
@@ -199,9 +226,12 @@ export default function NeueAnfragePage() {
       return;
     }
 
-    // Termin nur anlegen wenn ausgefuellt
+    // Termin nur anlegen wenn date + time vollstaendig vorhanden waren.
+    // Bei "nur Datum"-Anfragen (TimeRange versteckt) wird kein
+    // job_appointments-Datensatz angelegt — der Admin pflegt die Zeit
+    // spaeter nach.
     let aptErr: { message: string } | null = null;
-    if (hasPrimaryAppointment && aptStartIso && aptEndIso) {
+    if (willInsertAppointment && aptStartIso && aptEndIso) {
       const { error: tErr } = await supabase.from("job_appointments").insert({
         job_id: data.id,
         title: titleForInsert,
