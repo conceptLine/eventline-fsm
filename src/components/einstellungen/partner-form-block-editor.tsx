@@ -29,7 +29,7 @@ import {
   CalendarRange, Clock, Clock4, ChevronDown, CircleDot, ToggleLeft, ListChecks,
   Upload, MousePointer2,
 } from "lucide-react";
-import { KNOWN_BLOCK_TYPES, generateBlockId, type FormBlock, type FormBlockType, type BlockWidth, type DropdownOption, type FormSchema, resolveSubmitRules } from "@/lib/partner-form/types";
+import { KNOWN_BLOCK_TYPES, generateBlockId, type FormBlock, type FormBlockType, type BlockWidth, type DropdownOption, type FormSchema, type BlockCondition, resolveSubmitRules } from "@/lib/partner-form/types";
 import { groupBlocksIntoRows, colSpanClass, widthOf, WIDTH_OPTIONS } from "@/lib/partner-form/layout";
 
 // ============================================================
@@ -490,7 +490,129 @@ function BlockEditor({ block, allBlocks, onChange }: { block: FormBlock; allBloc
           <MapToSelect value={(block as { mapTo?: string }).mapTo} onChange={(v) => patchAny("mapTo", v)} only={["title", "description", "start_date", "end_date", "contact_person", "contact_phone", "contact_email", "guest_count"]} />
         </Row>
       )}
+
+      {/* Conditions — am Ende weil Power-User-Feature. Trennlinie damit's
+          klar als getrennter Section-Block wirkt. */}
+      <div className="pt-3 mt-3 border-t border-border/60 space-y-3">
+        <ConditionEditor
+          label="Sichtbar wenn"
+          hint="Block wird nur gezeigt wenn die Kondition erfüllt ist."
+          value={block.visibleIf}
+          onChange={(c) => patchAny("visibleIf", c)}
+          allBlocks={allBlocks}
+          selfId={block.id}
+        />
+        <ConditionEditor
+          label="Pflicht wenn"
+          hint="Pflicht-Check greift nur wenn die Kondition erfüllt ist. Block bleibt sichtbar."
+          value={block.requiredIf}
+          onChange={(c) => patchAny("requiredIf", c)}
+          allBlocks={allBlocks}
+          selfId={block.id}
+        />
+      </div>
     </div>
+  );
+}
+
+function ConditionEditor({
+  label, hint, value, onChange, allBlocks, selfId,
+}: {
+  label: string;
+  hint: string;
+  value: BlockCondition | undefined;
+  onChange: (next: BlockCondition | undefined) => void;
+  allBlocks: FormBlock[];
+  selfId: string;
+}) {
+  const enabled = Boolean(value);
+  // Quell-Bloecke: alle Input-Bloecke ausser dem Self. Display-Blocks
+  // (header/divider/info-banner/markdown-text) liefern keinen Wert,
+  // also als Quelle nicht sinnvoll.
+  const sourceBlocks = allBlocks.filter((b) =>
+    b.id !== selfId &&
+    b.type !== "section-header" && b.type !== "divider" &&
+    b.type !== "info-banner" && b.type !== "markdown-text"
+  );
+  const sourceBlock = value?.blockId ? allBlocks.find((b) => b.id === value.blockId) : null;
+  const needsValue = value?.op === "equals" || value?.op === "not-equals";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-medium">{label}</label>
+        <Toggle
+          value={enabled}
+          onChange={(on) => onChange(on ? { blockId: "", op: "on" } : undefined)}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground/70">{hint}</p>
+      {enabled && value && (
+        <div className="space-y-1.5 pl-1 border-l-2 border-border/60">
+          <select
+            value={value.blockId}
+            onChange={(e) => onChange({ ...value, blockId: e.target.value })}
+            className="h-8 w-full px-2 text-xs rounded-lg border border-border bg-card"
+          >
+            <option value="">— Quell-Block wählen —</option>
+            {sourceBlocks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.id} — {("label" in b ? b.label : b.type) as string}
+              </option>
+            ))}
+          </select>
+          <select
+            value={value.op}
+            onChange={(e) => onChange({ ...value, op: e.target.value as BlockCondition["op"] })}
+            className="h-8 w-full px-2 text-xs rounded-lg border border-border bg-card"
+          >
+            <option value="on">ist an / ausgefüllt</option>
+            <option value="off">ist aus / leer</option>
+            <option value="equals">gleich…</option>
+            <option value="not-equals">ungleich…</option>
+          </select>
+          {needsValue && (
+            <ConditionValueInput
+              source={sourceBlock}
+              value={value.value ?? ""}
+              onChange={(v) => onChange({ ...value, value: v })}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Value-Input fuer equals/not-equals — Dropdown wenn Quell-Block
+ *  Optionen hat (radio/dropdown/toggle-group), sonst freier Text. */
+function ConditionValueInput({
+  source, value, onChange,
+}: {
+  source: FormBlock | null | undefined;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (source && (source.type === "dropdown" || source.type === "radio" || source.type === "toggle-group")) {
+    const opts = (source as { options?: DropdownOption[] }).options ?? [];
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-full px-2 text-xs rounded-lg border border-border bg-card"
+      >
+        <option value="">— Wert wählen —</option>
+        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    );
+  }
+  return (
+    <Input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Vergleichswert"
+      className="h-8 text-xs"
+    />
   );
 }
 

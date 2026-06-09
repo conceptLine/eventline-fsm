@@ -115,6 +115,24 @@ export const KNOWN_BLOCK_TYPES = [
  *  layout.ts → groupBlocksIntoRows). */
 export type BlockWidth = "1/4" | "1/3" | "1/2" | "2/3" | "3/4" | "full";
 
+/** Kondition fuer visibleIf / requiredIf.
+ *
+ *  blockId: ID des Blocks dessen Wert geprueft wird.
+ *  op:
+ *    - 'on'         : value ist truthy (true / nicht-leer / array.length > 0)
+ *    - 'off'        : value ist falsy
+ *    - 'equals'     : value === condition.value
+ *    - 'not-equals' : value !== condition.value
+ *
+ *  Beispiel: "Zeitfelder nur sichtbar wenn Toggle 'EVENTLINE setzt Zeit' OFF"
+ *    visibleIf: { blockId: "eventline_sets_time", op: "off" }
+ */
+export interface BlockCondition {
+  blockId: string;
+  op: "on" | "off" | "equals" | "not-equals";
+  value?: string;
+}
+
 interface BlockBase {
   id: string;
   type: FormBlockType;
@@ -123,6 +141,14 @@ interface BlockBase {
   /** Spalten-Breite (default 'full'). Mehrere Bloecke in einer Zeile
    *  via Summenrechnung — siehe groupBlocksIntoRows. */
   width?: BlockWidth;
+  /** Block wird nur gerendert wenn die Kondition true ist. Wenn nicht
+   *  sichtbar -> kein Render, kein Required-Check (automatisch). */
+  visibleIf?: BlockCondition;
+  /** Pflicht-Kondition fuer Bloecke mit eigenem required-Schema
+   *  (daterange, timerange). Bei normalen Input-Bloecken liegt das auf
+   *  InputBlockBase. Im Renderer wird der Pflicht-Check uebersprungen wenn
+   *  die Kondition false ist. */
+  requiredIf?: BlockCondition;
 }
 
 // ============================================================
@@ -168,6 +194,10 @@ type CoreColumn =
 interface InputBlockBase extends BlockBase {
   label: string;
   required?: boolean;
+  /** Wenn gesetzt, ist der Block nur dann Pflicht wenn die Kondition true
+   *  ist. Ueberschreibt 'required' nur fuer den Pflicht-Check — der Block
+   *  bleibt sichtbar (im Gegensatz zu visibleIf). */
+  requiredIf?: BlockCondition;
   /** Wenn gesetzt, landet der Wert in der Job-Spalte. Sonst in
    *  jobs.form_answers[block.id]. */
   mapTo?: CoreColumn;

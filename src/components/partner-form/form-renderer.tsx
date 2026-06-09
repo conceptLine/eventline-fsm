@@ -24,6 +24,7 @@ import type {
   DateBlock, TimeBlock, FileUploadBlock, InfoBannerBlock,
 } from "@/lib/partner-form/types";
 import { groupBlocksIntoRows, colSpanClass } from "@/lib/partner-form/layout";
+import { isBlockVisible, isBlockRequired } from "@/lib/partner-form/conditions";
 
 export type FormValues = Record<string, unknown>;
 
@@ -39,7 +40,10 @@ export function FormRenderer({ schema, values, onChange, readOnly = false }: Ren
   function update(blockId: string, value: unknown) {
     onChange({ ...values, [blockId]: value });
   }
-  const rows = groupBlocksIntoRows(schema.blocks);
+  // Bloecke mit visibleIf raus-filtern BEVOR die Zeilen gruppiert werden,
+  // damit unsichtbare 1/2-Bloecke nicht eine halbe Zeile leer lassen.
+  const visibleBlocks = schema.blocks.filter((b) => isBlockVisible(b, values));
+  const rows = groupBlocksIntoRows(visibleBlocks);
 
   return (
     <div className="space-y-4">
@@ -400,44 +404,54 @@ function FileUploadRow({ block, value, onValue, readOnly }: CommonRowProps<FileU
 export function validateForm(schema: FormSchema, values: FormValues): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const b of schema.blocks) {
+    // Unsichtbare Bloecke werden weder gerendert noch validiert — ein
+    // Pflichtfeld das versteckt ist waere unerfuellbar.
+    if (!isBlockVisible(b, values)) continue;
+
     const v = values[b.id];
+    // requiredIf-aware Helper. Bei daterange koennen required_start/end
+    // unterschiedlich sein, also wird die selbe Condition fuer beide
+    // gechecked. timerange hat nur ein required-Flag.
+    const reqIf = b.requiredIf;
+    const req = (flag: boolean | undefined) => isBlockRequired(flag, reqIf, values);
+
     switch (b.type) {
       case "text": case "textarea": case "email": case "phone": case "number":
-        if (b.required && !String(v ?? "").trim()) errors[b.id] = `${b.label} ist Pflicht`;
+        if (req(b.required) && !String(v ?? "").trim()) errors[b.id] = `${b.label} ist Pflicht`;
         if (b.type === "email" && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) errors[b.id] = "Ungültige E-Mail";
         break;
       case "date":
-        if (b.required && !v) errors[b.id] = `${b.label} ist Pflicht`;
+        if (req(b.required) && !v) errors[b.id] = `${b.label} ist Pflicht`;
         break;
       case "daterange": {
         const dv = (v as { start?: string; end?: string }) ?? {};
-        if (b.required_start && !dv.start) errors[b.id] = `${b.start_label} ist Pflicht`;
+        if (req(b.required_start) && !dv.start) errors[b.id] = `${b.start_label} ist Pflicht`;
         if (dv.start && dv.end && dv.end < dv.start) errors[b.id] = "Enddatum vor Startdatum";
         break;
       }
       case "time":
-        if (b.required && !v) errors[b.id] = `${b.label} ist Pflicht`;
+        if (req(b.required) && !v) errors[b.id] = `${b.label} ist Pflicht`;
         break;
       case "timerange": {
         const tv = (v as { start?: string; end?: string }) ?? {};
-        if (b.required && (!tv.start || !tv.end)) errors[b.id] = `${b.start_label}/${b.end_label} fehlen`;
+        if (req(b.required) && (!tv.start || !tv.end)) errors[b.id] = `${b.start_label}/${b.end_label} fehlen`;
         if (tv.start && tv.end && tv.end <= tv.start) errors[b.id] = "Endzeit muss nach Startzeit liegen";
         break;
       }
       case "dropdown": case "radio":
-        if (b.required && !v) errors[b.id] = `${b.label} ist Pflicht`;
+        if (req(b.required) && !v) errors[b.id] = `${b.label} ist Pflicht`;
         break;
       case "toggle":
-        if (b.required && v !== true) errors[b.id] = `${b.label} muss aktiv sein`;
+        if (req(b.required) && v !== true) errors[b.id] = `${b.label} muss aktiv sein`;
         break;
       case "toggle-group": {
         const arr = Array.isArray(v) ? v : v ? [v as string] : [];
-        if (b.required && arr.length === 0) errors[b.id] = `${b.label}: mindestens eine Option`;
+        if (req(b.required) && arr.length === 0) errors[b.id] = `${b.label}: mindestens eine Option`;
         break;
       }
       case "file-upload": {
         const files = (v as File[]) ?? [];
-        if (b.required && files.length === 0) errors[b.id] = `${b.label} ist Pflicht`;
+        if (req(b.required) && files.length === 0) errors[b.id] = `${b.label} ist Pflicht`;
         break;
       }
       default:
