@@ -118,15 +118,7 @@ export function VisualBuilder({ blocks, onChange, submit, onSubmitChange }: Buil
         className="flex-1 min-w-0 rounded-lg border border-border bg-foreground/[0.015] dark:bg-foreground/[0.025] p-3 lg:overflow-y-auto"
         onClick={() => setSelectedId(null)}
       >
-        <div className="max-w-3xl mx-auto space-y-3">
-          {onSubmitChange && (
-            <SubmitRulesPanel
-              submit={submit}
-              onChange={onSubmitChange}
-              blocks={blocks}
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
+        <div className="max-w-3xl mx-auto">
           {blocks.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-xs">
               Noch keine Bausteine — Palette links benutzen.
@@ -170,17 +162,30 @@ export function VisualBuilder({ blocks, onChange, submit, onSubmitChange }: Buil
         </div>
       </main>
 
-      {/* Inspektor — scrollt intern */}
-      <aside className="lg:w-80 shrink-0 rounded-lg border border-border bg-card p-3 space-y-3 lg:overflow-y-auto">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Inspektor</p>
-        {!selectedBlock ? (
-          <div className="py-8 text-center text-muted-foreground text-xs flex flex-col items-center gap-2">
-            <MousePointer2 className="h-5 w-5 opacity-50" />
-            <p>Wähle einen Block in der Mitte aus, um seine Eigenschaften zu bearbeiten.</p>
+      {/* Rechte Spalte: Submit-Regeln oben (wenn gesteuert), Inspektor unten.
+          Wrapper-Aside teilt die Hoehe — Submit-Regeln-Panel ist fix,
+          Inspektor scrollt darunter. */}
+      <aside className="lg:w-80 shrink-0 flex flex-col gap-3 lg:overflow-hidden">
+        {onSubmitChange && (
+          <div className="rounded-lg border border-border bg-card p-3 shrink-0">
+            <SubmitRulesPanel
+              submit={submit}
+              onChange={onSubmitChange}
+              blocks={blocks}
+            />
           </div>
-        ) : (
-          <BlockEditor block={selectedBlock} allBlocks={blocks} onChange={(next) => update(selectedIndex, next)} />
         )}
+        <div className="flex-1 min-h-0 rounded-lg border border-border bg-card p-3 space-y-3 lg:overflow-y-auto">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Inspektor</p>
+          {!selectedBlock ? (
+            <div className="py-8 text-center text-muted-foreground text-xs flex flex-col items-center gap-2">
+              <MousePointer2 className="h-5 w-5 opacity-50" />
+              <p>Wähle einen Block in der Mitte aus, um seine Eigenschaften zu bearbeiten.</p>
+            </div>
+          ) : (
+            <BlockEditor block={selectedBlock} allBlocks={blocks} onChange={(next) => update(selectedIndex, next)} />
+          )}
+        </div>
       </aside>
     </div>
   );
@@ -588,12 +593,11 @@ function OptionsEditor({ options, onChange }: { options: DropdownOption[]; onCha
 // ============================================================
 
 function SubmitRulesPanel({
-  submit, onChange, blocks, onClick,
+  submit, onChange, blocks,
 }: {
   submit: FormSchema["submit"];
   onChange: (next: FormSchema["submit"]) => void;
   blocks: FormBlock[];
-  onClick?: (e: React.MouseEvent) => void;
 }) {
   const rules = resolveSubmitRules({ version: 1, blocks: [], submit });
   function patch(key: keyof NonNullable<FormSchema["submit"]>, value: unknown) {
@@ -618,39 +622,20 @@ function SubmitRulesPanel({
   }
 
   return (
-    <div
-      className="rounded-lg border border-border bg-card/60 p-3 space-y-2"
-      onClick={onClick}
-    >
-      <div className="flex items-baseline justify-between gap-2">
+    <div className="space-y-2">
+      <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Submit-Regeln</p>
-        <p className="text-[9px] text-muted-foreground/70">Was muss ausgefuellt sein um „Anfrage senden“ zu druecken?</p>
+        <p className="text-[9px] text-muted-foreground/70 mt-0.5">Pflicht zum „Anfrage senden“.</p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
-        <RuleRow
-          label="Termin (Datum + Zeit)"
-          value={rules.appointment_required}
-          onChange={(v) => patch("appointment_required", v)}
-        />
-        <RuleRow
-          label="Titel"
-          value={rules.title_required}
-          onChange={(v) => patch("title_required", v)}
-        />
-        <RuleRow
-          label="Start-Datum"
-          value={rules.start_date_required}
-          onChange={(v) => patch("start_date_required", v)}
-        />
-        <RuleRow
-          label="Kontakt (Person + Telefon)"
-          value={rules.contact_required}
-          onChange={(v) => patch("contact_required", v)}
-        />
+      <div className="space-y-1">
+        <RuleRow label="Termin (Datum + Zeit)" value={rules.appointment_required} onChange={(v) => patch("appointment_required", v)} />
+        <RuleRow label="Titel" value={rules.title_required} onChange={(v) => patch("title_required", v)} />
+        <RuleRow label="Start-Datum" value={rules.start_date_required} onChange={(v) => patch("start_date_required", v)} />
+        <RuleRow label="Kontakt (Person + Telefon)" value={rules.contact_required} onChange={(v) => patch("contact_required", v)} />
       </div>
       {requiredBlocks.length > 0 && (
         <div className="pt-2 border-t border-border/60">
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[10px] text-muted-foreground leading-snug">
             <span className="font-semibold">Plus Pflichtfelder ({requiredBlocks.length}):</span>{" "}
             {requiredBlocks.map((r) => r.label).join(", ")}
           </p>
