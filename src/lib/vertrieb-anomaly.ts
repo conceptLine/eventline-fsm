@@ -3,7 +3,7 @@ import type { VertriebContact } from "@/types";
 /**
  * Anomalien-Detection fuer Vertriebs-Leads.
  *
- *  - stale: seit >14 Tagen kein Kontakt UND noch aktiv (step >= 2).
+ *  - stale: seit >7 Tagen kein Kontakt UND noch aktiv (step >= 2).
  *  - hotIdle: prioritaet=top + step=1 (= heisser Lead aber nichts passiert).
  *  - eventSoon: event_start in <14 Tagen aber noch nicht in step 4
  *    (Operations) — Vorbereitung knapp.
@@ -27,7 +27,7 @@ export function detectLeadAnomaly(c: VertriebContact, nowMs: number): LeadAnomal
 
   const step = c.step || 1;
   const daysSince = daysSinceLastTouch(c, nowMs);
-  const stale = step >= 2 && daysSince !== null && daysSince > 14;
+  const stale = step >= 2 && daysSince !== null && daysSince > 7;
   const hotIdle = c.prioritaet === "top" && step === 1;
   const forgotten = step === 1 && !c.datum_kontakt && daysSince !== null && daysSince > 7;
 

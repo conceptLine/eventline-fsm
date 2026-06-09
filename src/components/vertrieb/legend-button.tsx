@@ -58,7 +58,7 @@ export function LegendButton() {
             </Section>
             <Section title="Text">
               <Item swatch={<span className="text-[10px] tabular-nums">3d</span>} label="Tage seit letztem Kontakt" />
-              <Item swatch={<span className="text-[10px] tabular-nums text-red-600 dark:text-red-400 font-semibold">15d</span>} label="Rot bold = stale (>14 Tage)" />
+              <Item swatch={<span className="text-[10px] tabular-nums text-red-600 dark:text-red-400 font-semibold">8d</span>} label="Rot bold = stale (>7 Tage)" />
               <Item swatch={<span className="text-[10px] tabular-nums">2/4</span>} label="Aktuelle Stage / Total" />
             </Section>
           </div>
