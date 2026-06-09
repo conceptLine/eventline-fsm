@@ -435,6 +435,8 @@ export function PartnerFormTab() {
             <VisualBuilder
               blocks={draft.blocks}
               onChange={(next) => setDraft({ ...draft, blocks: next })}
+              submit={draft.submit}
+              onSubmitChange={(next) => setDraft({ ...draft, submit: next })}
             />
           )}
 

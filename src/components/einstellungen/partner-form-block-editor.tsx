@@ -29,7 +29,7 @@ import {
   CalendarRange, Clock, Clock4, ChevronDown, CircleDot, ToggleLeft, ListChecks,
   Upload, MousePointer2,
 } from "lucide-react";
-import { KNOWN_BLOCK_TYPES, generateBlockId, type FormBlock, type FormBlockType, type BlockWidth, type DropdownOption, type FormSchema } from "@/lib/partner-form/types";
+import { KNOWN_BLOCK_TYPES, generateBlockId, type FormBlock, type FormBlockType, type BlockWidth, type DropdownOption, type FormSchema, resolveSubmitRules } from "@/lib/partner-form/types";
 import { groupBlocksIntoRows, colSpanClass, widthOf, WIDTH_OPTIONS } from "@/lib/partner-form/layout";
 
 // ============================================================
@@ -39,9 +39,14 @@ import { groupBlocksIntoRows, colSpanClass, widthOf, WIDTH_OPTIONS } from "@/lib
 interface BuilderProps {
   blocks: FormBlock[];
   onChange: (next: FormBlock[]) => void;
+  /** Submit-Regeln aus FormSchema.submit — wenn gesetzt, rendert der
+   *  Builder oben einen "Submit-Regeln"-Panel. Wenn nicht gesetzt:
+   *  rueckwaertskompatibel — Submit-Panel wird nicht gerendert. */
+  submit?: FormSchema["submit"];
+  onSubmitChange?: (next: FormSchema["submit"]) => void;
 }
 
-export function VisualBuilder({ blocks, onChange }: BuilderProps) {
+export function VisualBuilder({ blocks, onChange, submit, onSubmitChange }: BuilderProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragOverZone, setDragOverZone] = useState<number | null>(null);
 
@@ -113,7 +118,15 @@ export function VisualBuilder({ blocks, onChange }: BuilderProps) {
         className="flex-1 min-w-0 rounded-lg border border-border bg-foreground/[0.015] dark:bg-foreground/[0.025] p-3 lg:overflow-y-auto"
         onClick={() => setSelectedId(null)}
       >
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto space-y-3">
+          {onSubmitChange && (
+            <SubmitRulesPanel
+              submit={submit}
+              onChange={onSubmitChange}
+              blocks={blocks}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           {blocks.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-xs">
               Noch keine Bausteine — Palette links benutzen.
@@ -569,6 +582,92 @@ function OptionsEditor({ options, onChange }: { options: DropdownOption[]; onCha
 // ============================================================
 // Default-Block-Factory
 // ============================================================
+
+// ============================================================
+// Submit-Regeln-Panel — oben im Canvas
+// ============================================================
+
+function SubmitRulesPanel({
+  submit, onChange, blocks, onClick,
+}: {
+  submit: FormSchema["submit"];
+  onChange: (next: FormSchema["submit"]) => void;
+  blocks: FormBlock[];
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  const rules = resolveSubmitRules({ version: 1, blocks: [], submit });
+  function patch(key: keyof NonNullable<FormSchema["submit"]>, value: unknown) {
+    onChange({ ...(submit ?? {}), [key]: value });
+  }
+
+  // Pflichtfelder-Liste fuer Info-Hinweis: alle Bloecke mit required=true.
+  const requiredBlocks: { id: string; label: string }[] = [];
+  for (const b of blocks) {
+    if (b.type === "daterange") {
+      if (b.required_start) requiredBlocks.push({ id: b.id, label: `${b.start_label} (Start)` });
+      if (b.required_end) requiredBlocks.push({ id: b.id, label: `${b.end_label} (Ende)` });
+      continue;
+    }
+    if (b.type === "timerange") {
+      if (b.required) requiredBlocks.push({ id: b.id, label: `${b.start_label}–${b.end_label}` });
+      continue;
+    }
+    const r = (b as { required?: boolean }).required;
+    const label = (b as { label?: string }).label;
+    if (r && label) requiredBlocks.push({ id: b.id, label });
+  }
+
+  return (
+    <div
+      className="rounded-lg border border-border bg-card/60 p-3 space-y-2"
+      onClick={onClick}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Submit-Regeln</p>
+        <p className="text-[9px] text-muted-foreground/70">Was muss ausgefuellt sein um „Anfrage senden“ zu druecken?</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+        <RuleRow
+          label="Termin (Datum + Zeit)"
+          value={rules.appointment_required}
+          onChange={(v) => patch("appointment_required", v)}
+        />
+        <RuleRow
+          label="Titel"
+          value={rules.title_required}
+          onChange={(v) => patch("title_required", v)}
+        />
+        <RuleRow
+          label="Start-Datum"
+          value={rules.start_date_required}
+          onChange={(v) => patch("start_date_required", v)}
+        />
+        <RuleRow
+          label="Kontakt (Person + Telefon)"
+          value={rules.contact_required}
+          onChange={(v) => patch("contact_required", v)}
+        />
+      </div>
+      {requiredBlocks.length > 0 && (
+        <div className="pt-2 border-t border-border/60">
+          <p className="text-[10px] text-muted-foreground">
+            <span className="font-semibold">Plus Pflichtfelder ({requiredBlocks.length}):</span>{" "}
+            {requiredBlocks.map((r) => r.label).join(", ")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <label className="text-[11px] font-medium">{label}</label>
+      <Toggle value={value} onChange={onChange} />
+    </div>
+  );
+}
 
 function createDefaultBlock(type: FormBlockType): FormBlock {
   const id = generateBlockId();

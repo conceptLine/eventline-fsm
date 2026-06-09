@@ -21,15 +21,47 @@
 
 export interface FormSchema {
   version: 1;
-  /** Submit-Button-Labels (mit Default-Fallbacks im Renderer). */
+  /** Submit-Button-Labels + Pflicht-Regeln zum Senden.
+   *
+   *  Pflicht-Regeln (alle default true fuer backward-compat):
+   *   - appointment_required: Termin (Datum + Zeit) muss gesetzt sein.
+   *   - title_required: jobs.title muss gefuellt sein.
+   *   - start_date_required: jobs.start_date muss gefuellt sein.
+   *   - contact_required: contact_person + contact_phone muessen gefuellt sein.
+   *
+   *  Wenn ein Required-Flag auf false steht und der Block nicht im Form
+   *  existiert, befuellt der Submit-Pfad die DB mit Default-Werten
+   *  ("Ohne Titel", today, etc.) damit NOT-NULL-Constraints respektiert
+   *  werden.
+   */
   submit?: {
     draft_label?: string;
     send_label?: string;
+    appointment_required?: boolean;
+    title_required?: boolean;
+    start_date_required?: boolean;
+    contact_required?: boolean;
   };
-  /** Erlaubt Drafts ohne Termin (= 'Anfrage senden' nur sichtbar wenn alle
-   *  required Felder gefuellt und mindestens ein Termin definiert). v1
-   *  hardcoded auf true im Renderer; spaeter konfigurierbar. */
   blocks: FormBlock[];
+}
+
+/** Default-Regeln wenn nichts gesetzt — entspricht dem alten Hardcoded-
+ *  Verhalten (Termin, Titel, Datum, Kontakt alle Pflicht). */
+export const DEFAULT_SUBMIT_RULES = {
+  appointment_required: true,
+  title_required: true,
+  start_date_required: true,
+  contact_required: true,
+} as const;
+
+export function resolveSubmitRules(schema: FormSchema) {
+  const s = schema.submit ?? {};
+  return {
+    appointment_required: s.appointment_required ?? DEFAULT_SUBMIT_RULES.appointment_required,
+    title_required: s.title_required ?? DEFAULT_SUBMIT_RULES.title_required,
+    start_date_required: s.start_date_required ?? DEFAULT_SUBMIT_RULES.start_date_required,
+    contact_required: s.contact_required ?? DEFAULT_SUBMIT_RULES.contact_required,
+  };
 }
 
 export type FormBlock =

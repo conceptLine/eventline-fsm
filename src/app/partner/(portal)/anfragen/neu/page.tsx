@@ -13,7 +13,8 @@ import { FormRenderer, validateForm, type FormValues } from "@/components/partne
 import { Loading } from "@/components/ui/spinner";
 import { extractFormValues } from "@/lib/partner-form/extract";
 import { DEFAULT_PARTNER_FORM_SCHEMA } from "@/lib/partner-form/default-schema";
-import type { FormSchema } from "@/lib/partner-form/types";
+import { resolveSubmitRules, type FormSchema } from "@/lib/partner-form/types";
+import { todayLocalISO } from "@/components/auftrag-form-fields";
 
 // Partner-Anfrage-Form — komplett vom Admin im Builder konfiguriert.
 // Loadet partner_form_template.live_schema (Fallback Default-Schema)
@@ -100,31 +101,44 @@ export default function NeueAnfragePage() {
       if (!validated) return;
     }
 
-    // 4) Mode-spezifische Checks
-    if (mode === "send" && !hasPrimaryAppointment) {
-      toast.error("Zum Absenden ist ein Termin (Datum + Zeit) Pflicht");
+    // 4) Mode-spezifische Checks — gesteuert von den Schema-Submit-Regeln.
+    //    Der Builder erlaubt dem Admin, Termin / Titel / Startdatum / Kontakt
+    //    als nicht-Pflicht zu konfigurieren. validateForm() greift fuer
+    //    Block-required schon vorher; HIER nur die Mode-Send-Gates.
+    const rules = resolveSubmitRules(schema);
+    if (mode === "send") {
+      if (rules.appointment_required && !hasPrimaryAppointment) {
+        toast.error("Zum Absenden ist ein Termin (Datum + Zeit) Pflicht");
+        return;
+      }
+      if (rules.title_required && !core.title) {
+        toast.error("Titel ist Pflicht");
+        return;
+      }
+      if (rules.start_date_required && !core.start_date) {
+        toast.error("Veranstaltungs-Startdatum ist Pflicht");
+        return;
+      }
+      if (rules.contact_required && (!core.contact_person || !core.contact_phone)) {
+        toast.error("Ansprechperson und Telefon sind Pflicht");
+        return;
+      }
+    }
+    // Sanity-Checks (immer): plausible Datumsangaben.
+    if (core.start_date && core.start_date < "2020-01-01") {
+      toast.error("Startdatum scheint ungültig — bitte korrigieren");
       return;
     }
-    if (!core.title) {
-      toast.error("Titel ist Pflicht");
+    if (core.end_date && core.end_date < "2020-01-01") {
+      toast.error("Enddatum scheint ungültig — bitte korrigieren");
       return;
     }
-    if (!core.start_date) {
-      toast.error("Veranstaltungs-Startdatum ist Pflicht");
-      return;
-    }
-    // Sanity-Check: kein Jahr vor 2020 (verhindert Browser-Date-Input
-    // Jahr-0001-Falle die als BC-timestamp in der DB landet).
-    if (core.start_date < "2020-01-01" || (core.end_date && core.end_date < "2020-01-01")) {
-      toast.error("Datum scheint ungültig — bitte korrigieren");
-      return;
-    }
-    if (!core.contact_person || !core.contact_phone) {
-      toast.error("Ansprechperson und Telefon sind Pflicht");
-      return;
-    }
-    const effectiveEndDate = core.end_date || core.start_date;
-    if (effectiveEndDate < core.start_date) {
+    // Wenn Start-Datum nicht gesetzt: heute als Fallback (DB hat NOT NULL,
+    // aber bei "nicht Pflicht" ist's egal was drinsteht). Wenn doch Pflicht,
+    // ist das schon oben abgefangen.
+    const effectiveStartDate = core.start_date || todayLocalISO();
+    const effectiveEndDate = core.end_date || effectiveStartDate;
+    if (effectiveEndDate < effectiveStartDate) {
       toast.error("Veranstaltungs-Enddatum muss am oder nach Startdatum liegen");
       return;
     }
@@ -133,7 +147,7 @@ export default function NeueAnfragePage() {
     let aptStartIso: string | null = null;
     let aptEndIso: string | null = null;
     if (hasPrimaryAppointment) {
-      if (primaryAppointment.date! < core.start_date || primaryAppointment.date! > effectiveEndDate) {
+      if (primaryAppointment.date! < effectiveStartDate || primaryAppointment.date! > effectiveEndDate) {
         toast.error("Termin-Datum muss innerhalb der Veranstaltung liegen");
         return;
       }
@@ -152,17 +166,23 @@ export default function NeueAnfragePage() {
       return;
     }
     const targetStatus = mode === "send" ? "partner_anfrage" : "partner_entwurf";
+    // Fallback-Werte fuer NOT-NULL-Spalten wenn der Admin die entsprechenden
+    // Pflicht-Regeln deaktiviert hat. Der Wert ist offensichtlich generisch
+    // damit der User auf der Detail-Page sofort sieht "fehlt noch".
+    const titleForInsert = (core.title?.trim() || "Ohne Titel");
+    const contactPersonForInsert = (core.contact_person?.trim() || null);
+    const contactPhoneForInsert = (core.contact_phone?.trim() || null);
     const { data, error } = await supabase
       .from("jobs")
       .insert({
-        title: core.title.trim(),
+        title: titleForInsert,
         description: core.description?.trim() || null,
-        start_date: toDbDate(core.start_date),
+        start_date: toDbDate(effectiveStartDate),
         end_date: toDbDate(effectiveEndDate),
         status: targetStatus,
         location_id: partnerLocationId,
-        contact_person: core.contact_person.trim(),
-        contact_phone: core.contact_phone.trim(),
+        contact_person: contactPersonForInsert,
+        contact_phone: contactPhoneForInsert,
         contact_email: core.contact_email?.trim() || null,
         created_by: user.id,
         form_answers: Object.keys(answers).length > 0 ? answers : null,
@@ -184,7 +204,7 @@ export default function NeueAnfragePage() {
     if (hasPrimaryAppointment && aptStartIso && aptEndIso) {
       const { error: tErr } = await supabase.from("job_appointments").insert({
         job_id: data.id,
-        title: core.title.trim(),
+        title: titleForInsert,
         start_time: aptStartIso,
         end_time: aptEndIso,
         description: null,
