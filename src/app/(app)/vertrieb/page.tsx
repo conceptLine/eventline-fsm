@@ -167,10 +167,18 @@ export default function VertriebPage() {
     gewonnen: counts.gewonnen, abgesagt: counts.abgesagt,
   } : {};
 
+  // Page hat eine fixe Hoehe damit nicht die ganze Seite scrollt —
+  // stattdessen scrollen die einzelnen Spalten intern.
+  // Berechnung (passt zum (app)/layout.tsx Padding):
+  //   Desktop: 100vh - main.padding (32+32) - kleiner Puffer = -72px
+  //   Mobile:  100dvh - safe-area-top - main.pt(12) -
+  //            app-scroll.pb(200 + safe-area-bottom) = ca. -290px
+  // 100dvh > 100vh waehrend die URL-Bar auf Mobile einrollt — verhindert
+  // dass die Layout-Hoehe springt.
   return (
-    <div className="space-y-4 flex flex-col" style={{ minHeight: "calc(100vh - 120px)" }}>
+    <div className="flex flex-col gap-3 sm:gap-4 h-[calc(100dvh-290px)] md:h-[calc(100vh-72px)]">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Vertrieb</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -188,16 +196,18 @@ export default function VertriebPage() {
 
       {/* KPIs (only desktop) */}
       {counts && counts.total > 0 && (
-        <div className="hidden md:grid gap-3 md:grid-cols-3">
+        <div className="hidden md:grid gap-3 md:grid-cols-3 shrink-0">
           <StatCards counts={counts} contacts={contacts} />
         </div>
       )}
 
       {/* Goal-Tracker */}
-      <GoalTracker contacts={contacts} isAdmin={isAdmin} />
+      <div className="shrink-0">
+        <GoalTracker contacts={contacts} isAdmin={isAdmin} />
+      </div>
 
       {/* Mobile Tab-Bar */}
-      <div className="md:hidden flex gap-1 p-1 rounded-lg bg-muted">
+      <div className="md:hidden flex gap-1 p-1 rounded-lg bg-muted shrink-0">
         <MobileTabBtn label="Alle" active={mobileTab === "all"} onClick={() => setMobileTab("all")} />
         <MobileTabBtn label="Meine" active={mobileTab === "mine"} onClick={() => setMobileTab("mine")} />
         {selectedLeadId && (
@@ -205,7 +215,7 @@ export default function VertriebPage() {
         )}
       </div>
 
-      {/* Drei-Spalten-Layout */}
+      {/* Drei-Spalten-Layout — fillt remaining Hoehe, Spalten scrollen intern */}
       <div className="flex-1 min-h-0 flex gap-3 rounded-lg overflow-hidden">
         {/* SPALTE 1 — Alle Leads */}
         <div
