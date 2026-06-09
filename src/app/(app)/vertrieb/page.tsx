@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { deleteRow } from "@/lib/db-mutations";
@@ -26,21 +27,17 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact, VertriebStatus, VertriebPriority, VertriebKategorie } from "@/types";
 import {
-  Plus, TrendingUp, Search, Archive, PartyPopper, Trophy, AlertTriangle, Flame,
-  LayoutGrid, LayoutList, Columns3, Table2, Activity,
+  Plus, TrendingUp, Search, Archive, PartyPopper, Trophy, AlertTriangle,
+  LayoutGrid, LayoutList, Columns3,
 } from "lucide-react";
 import { toast } from "sonner";
-import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS, emptyForm } from "./constants";
+import { STATUS_OPTIONS, PRIORITY_OPTIONS, KATEGORIE_OPTIONS } from "./constants";
 import { LeadCard } from "@/components/vertrieb/lead-card";
-import { LeadForm } from "@/components/vertrieb/lead-form";
-import { CategoryPicker } from "@/components/vertrieb/category-picker";
 import { VertriebTableView } from "@/components/vertrieb/views/table-view";
 import { VertriebKanbanView } from "@/components/vertrieb/views/kanban-view";
-import { VertriebPivotView } from "@/components/vertrieb/views/pivot-view";
-import { VertriebHeatmapView } from "@/components/vertrieb/views/heatmap-view";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { SearchableSelect } from "@/components/searchable-select";
-import { detectLeadAnomaly, hasAnomaly, daysSinceLastTouch, parseEventStart as parseEventStartCommon } from "@/lib/vertrieb-anomaly";
+import { detectLeadAnomaly, hasAnomaly, parseEventStart as parseEventStartCommon } from "@/lib/vertrieb-anomaly";
 
 type Counts = {
   total: number; offen: number; kontaktiert: number; gespraech: number;
@@ -48,8 +45,8 @@ type Counts = {
   step_3: number; step_4: number;
 };
 
-type ViewMode = "cards" | "table" | "kanban" | "pivot" | "heatmap";
-type QuickChip = "mine" | "hot" | "stale" | "soon" | "today";
+type ViewMode = "cards" | "table" | "kanban";
+type OwnerFilter = "all" | "mine" | string; // string = profile-id
 
 export default function VertriebPage() {
   const router = useRouter();
@@ -61,7 +58,6 @@ export default function VertriebPage() {
   const [contacts, setContacts] = useState<VertriebContact[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null; phone: string | null }[]>([]);
   // Sales-Mitarbeiter fuer den Assignee-Toggle. Hardcoded gefiltert auf
   // Leo+Mischa+Raul per Email — die anderen Admins (admin test, ggf. andere)
   // sind nicht im Sales-Workflow. Reihenfolge: alphabetisch nach Name.
@@ -81,36 +77,25 @@ export default function VertriebPage() {
   type SortBy = "nr" | "event" | "stale" | "priority";
   const [sortBy, setSortBy] = useState<SortBy>("nr");
 
-  // Quick-Chips + View-Toggle — beide persistent in localStorage damit
-  // beim Reload die Praeferenz nicht verloren geht.
-  const [activeChips, setActiveChips] = useState<Set<QuickChip>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const stored = JSON.parse(localStorage.getItem("vertrieb-chips") || "[]") as QuickChip[];
-      return new Set(stored);
-    } catch { return new Set(); }
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("vertrieb-chips", JSON.stringify(Array.from(activeChips)));
-    }
-  }, [activeChips]);
+  // View-Toggle (Cards/Tabelle/Kanban) + Owner-Filter — persistent in
+  // localStorage damit beim Reload die Praeferenz erhalten bleibt.
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "cards";
-    return (localStorage.getItem("vertrieb-view") as ViewMode | null) ?? "cards";
+    const stored = localStorage.getItem("vertrieb-view");
+    return (stored === "cards" || stored === "table" || stored === "kanban") ? stored : "cards";
   });
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem("vertrieb-view", view);
   }, [view]);
-
-  function toggleChip(c: QuickChip) {
-    setActiveChips((prev) => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      return next;
-    });
-  }
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>(() =>
+    typeof window !== "undefined" ? (localStorage.getItem("vertrieb-owner") as OwnerFilter) ?? "all" : "all",
+  );
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("vertrieb-owner", ownerFilter);
+  }, [ownerFilter]);
+  // Single Toggle: "Auffaellig" filter — zeigt nur Leads mit aktiver
+  // Anomalie. Ersatz fuer die alten 4 Quick-Chips (Hot/Stale/Soon/Forgotten).
+  const [onlyAnomalies, setOnlyAnomalies] = useState(false);
 
   // Archiv-Modus: zeigt ausschliesslich abgesagte Leads. Persistent damit
   // ein versehentlicher Reload den Modus nicht verliert. Pattern uebernommen
@@ -122,15 +107,6 @@ export default function VertriebPage() {
     if (typeof window !== "undefined") localStorage.setItem("vertrieb-archive", String(showArchive));
   }, [showArchive]);
 
-  // Add-Flow (Inline) — Lead-NEU bleibt hier weil's nur 3 State-Variablen sind.
-  const [showForm, setShowForm] = useState(false);
-  const [categoryPicked, setCategoryPicked] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [visibleBedarf, setVisibleBedarf] = useState<Set<string>>(new Set());
-  const [kundenMode, setKundenMode] = useState<"neu" | "bestehend">("neu");
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-
   useEffect(() => {
     load();
     const handler = () => load();
@@ -140,9 +116,8 @@ export default function VertriebPage() {
   }, []);
 
   async function load() {
-    const [{ data }, custRes, countsRes, salesRes, userRes] = await Promise.all([
+    const [{ data }, countsRes, salesRes, userRes] = await Promise.all([
       supabase.from("vertrieb_contacts").select("*").order("nr").limit(2000),
-      supabase.from("customers").select("id, name, email, phone").eq("is_active", true).order("name"),
       supabase.from("vertrieb_counts").select("*").single(),
       supabase
         .from("profiles")
@@ -153,7 +128,6 @@ export default function VertriebPage() {
       supabase.auth.getUser(),
     ]);
     if (data) setContacts(data as VertriebContact[]);
-    if (custRes.data) setCustomers(custRes.data);
     if (countsRes.data) setCounts(countsRes.data);
     if (salesRes.data) setSalesPeople(salesRes.data);
     if (userRes.data.user) setCurrentUserId(userRes.data.user.id);
@@ -177,98 +151,6 @@ export default function VertriebPage() {
     }
   }
 
-  function openNew() {
-    setForm(emptyForm);
-    setCategoryPicked(false);
-    setKundenMode("neu");
-    setSelectedCustomerId("");
-    setVisibleBedarf(new Set());
-    setShowForm(true);
-  }
-
-  function pickCategory(kategorie: VertriebKategorie) {
-    setForm({ ...emptyForm, kategorie });
-    setCategoryPicked(true);
-  }
-
-  function selectExistingCustomer(customerId: string) {
-    setSelectedCustomerId(customerId);
-    const c = customers.find((x) => x.id === customerId);
-    if (c) setForm((f) => ({ ...f, firma: c.name, email: c.email || "", telefon: c.phone || "", create_customer: false }));
-  }
-
-  function closeForm() {
-    setShowForm(false);
-    setCategoryPicked(false);
-  }
-
-  /** Lead anlegen — Insert + ggf. Customer anlegen + Navigation zur Detail-Page. */
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (saving) return;
-    setSaving(true);
-
-    // Details JSON-encoden — wie bisher, aber nur fuer Insert (kein Update mehr).
-    const details: Record<string, unknown> = {};
-    if (form.event_start) details.event_start = form.event_start;
-    if (form.event_end) details.event_end = form.event_end;
-    if (form.kategorie === "verwaltung") {
-      if (form.infrastruktur) details.infrastruktur = form.infrastruktur;
-      if (form.ort) details.ort = form.ort;
-      if (form.zielgruppe) details.zielgruppe = form.zielgruppe;
-      if (form.programm) details.programm = form.programm;
-      if (form.bedarf_vor_ort) details.bedarf_vor_ort = form.bedarf_vor_ort;
-    } else {
-      const filteredBedarf: Record<string, string> = {};
-      Object.entries(form.bedarf).forEach(([k, v]) => { if (v?.trim()) filteredBedarf[k] = v; });
-      if (Object.keys(filteredBedarf).length > 0) details.bedarf = filteredBedarf;
-    }
-    const notizenStored = (Object.keys(details).length > 0 || form.notizen)
-      ? JSON.stringify({ _text: form.notizen, _details: details })
-      : null;
-
-    const payload = {
-      firma: form.firma,
-      branche: form.branche || null,
-      ansprechperson: form.ansprechperson || null,
-      position: form.position || null,
-      email: form.email || null,
-      telefon: form.telefon || null,
-      event_typ: form.event_typ || null,
-      status: form.status,
-      datum_kontakt: form.datum_kontakt || null,
-      notizen: notizenStored,
-      prioritaet: form.prioritaet,
-      kategorie: form.kategorie,
-    };
-
-    const { data: inserted, error } = await supabase.from("vertrieb_contacts").insert(payload).select("id").single();
-    if (error || !inserted) { TOAST.supabaseError(error); setSaving(false); return; }
-
-    if (form.create_customer && form.firma) {
-      const { data: existing } = await supabase.from("customers").select("id").eq("name", form.firma).maybeSingle();
-      if (!existing) {
-        await supabase.from("customers").insert({
-          name: form.firma, type: "company",
-          email: form.email || null, phone: form.telefon || null,
-          notes: form.ansprechperson ? `Ansprechperson: ${form.ansprechperson}${form.position ? ` (${form.position})` : ""}` : null,
-        });
-        toast.success("Eintrag erstellt · Kunde angelegt");
-      } else {
-        toast.success("Eintrag erstellt · Kunde existiert bereits");
-      }
-    } else {
-      toast.success("Eintrag erstellt");
-    }
-
-    setShowForm(false);
-    setCategoryPicked(false);
-    setForm(emptyForm);
-    setSaving(false);
-    // Direkt zur Detail-Page des neuen Leads — User kann dort weiter editieren
-    router.push(`/vertrieb/${inserted.id}`);
-  }
-
   async function deleteContact(id: string) {
     const ok = await confirm({ title: "Lead löschen?", confirmLabel: "Löschen", variant: "red" });
     if (!ok) return;
@@ -277,12 +159,6 @@ export default function VertriebPage() {
     toast.success("Eintrag gelöscht");
     load();
   }
-
-  // No-op edit-handlers — LeadForm braucht alle Props auch im Add-Modus,
-  // aber dort werden die advanceStep/lost/buchhaltung/etc-Buttons schon
-  // aufgrund von editingId=null nicht gerendert.
-  const noop = () => {};
-  const noopAsync = async () => {};
 
   // event_start aus dem JSON-encodeten notizen-Feld pullen. Stable closure
   // ueber den shared parser aus lib/vertrieb-anomaly.
@@ -300,28 +176,14 @@ export default function VertriebPage() {
       const q = search.toLowerCase();
       return !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q) || (c.branche || "").toLowerCase().includes(q);
     })
-    // Quick-Chips: AND-Verknuepfung (mehrere Chips engen weiter ein).
+    // Owner-Filter: "all" = alle, "mine" = ich, sonst spezifische profile-id
     .filter((c) => {
-      if (activeChips.size === 0) return true;
-      if (activeChips.has("mine") && c.assigned_to !== currentUserId) return false;
-      if (activeChips.has("hot") && c.prioritaet !== "top") return false;
-      if (activeChips.has("stale")) {
-        const d = daysSinceLastTouch(c, nowMs);
-        if (d === null || d <= 14) return false;
-      }
-      if (activeChips.has("soon")) {
-        const ev = parseEventStart(c);
-        if (!ev) return false;
-        const days = Math.floor((ev.getTime() - nowMs) / (1000 * 60 * 60 * 24));
-        if (days < 0 || days > 30) return false;
-      }
-      if (activeChips.has("today")) {
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-        if (c.datum_kontakt !== todayIso) return false;
-      }
-      return true;
-    });
+      if (ownerFilter === "all") return true;
+      if (ownerFilter === "mine") return c.assigned_to === currentUserId;
+      return c.assigned_to === ownerFilter;
+    })
+    // Auffaellig-Toggle: nur Leads mit aktiver Anomalie
+    .filter((c) => !onlyAnomalies || hasAnomaly(detectLeadAnomaly(c, nowMs)));
 
   // Sortierung — separat nach Filter, damit die Filter-Logik linear bleibt.
   const sorted = filtered.slice().sort((a, b) => {
@@ -354,28 +216,14 @@ export default function VertriebPage() {
     gewonnen: counts.gewonnen, abgesagt: counts.abgesagt,
   } : {};
 
-  // Quick-Chip-Badge-Counts (gegen GESAMTE aktive Daten — nicht gegen
-  // bereits gefilterte, damit die Zahlen stabil bleiben).
-  const chipCounts = useMemo(() => {
-    const active = contacts.filter((c) => c.status !== "abgesagt" && c.status !== "gewonnen");
-    let mine = 0, hot = 0, stale = 0, soon = 0, today = 0, anomalies = 0;
-    const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
-    const todayIso = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
-    for (const c of active) {
-      if (c.assigned_to === currentUserId) mine++;
-      if (c.prioritaet === "top") hot++;
-      const d = daysSinceLastTouch(c, nowMs);
-      if (d !== null && d > 14) stale++;
-      const ev = parseEventStart(c);
-      if (ev) {
-        const days = Math.floor((ev.getTime() - nowMs) / (1000 * 60 * 60 * 24));
-        if (days >= 0 && days <= 30) soon++;
-      }
-      if (c.datum_kontakt === todayIso) today++;
-      if (hasAnomaly(detectLeadAnomaly(c, nowMs))) anomalies++;
-    }
-    return { mine, hot, stale, soon, today, anomalies };
-  }, [contacts, currentUserId, nowMs, parseEventStart]);
+  // Anomaly-Count (gegen GESAMTE aktive Daten, nicht gegen gefilterte —
+  // damit die Zahl stabil bleibt egal welcher Filter aktiv ist).
+  const anomalyCount = useMemo(() => {
+    return contacts.reduce((n, c) => {
+      if (c.status === "abgesagt" || c.status === "gewonnen") return n;
+      return n + (hasAnomaly(detectLeadAnomaly(c, nowMs)) ? 1 : 0);
+    }, 0);
+  }, [contacts, nowMs]);
 
   return (
     <div className="space-y-6">
@@ -404,19 +252,17 @@ export default function VertriebPage() {
             {showArchive ? "Aktive anzeigen" : `Archiv (${statusCounts.abgesagt || 0})`}
           </button>
           {!showArchive && can("vertrieb:create") && (
-            <button type="button" onClick={openNew} className="kasten kasten-red">
+            <Link href="/vertrieb/neu" className="kasten kasten-red">
               <Plus className="h-3.5 w-3.5" />Lead
-            </button>
+            </Link>
           )}
         </div>
       </div>
 
-      {/* Pipeline-Stats + Funnel — im Archiv ausgeblendet, auf Mobile
-          ebenfalls (zu viel vertikaler Platz; die Lead-Cards selbst
-          zeigen Status + Priority pro Eintrag). */}
+      {/* KPI-Cards + Funnel — im Archiv und auf Mobile ausgeblendet. */}
       {!showArchive && counts && counts.total > 0 && (
-        <div className="hidden md:grid gap-3 md:grid-cols-4">
-          <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} anomalyCount={chipCounts.anomalies} />
+        <div className="hidden md:grid gap-3 md:grid-cols-3">
+          <StatCards counts={counts} contacts={contacts} parseEventStart={parseEventStart} />
         </div>
       )}
       {!showArchive && counts && counts.total > 0 && (
@@ -425,115 +271,75 @@ export default function VertriebPage() {
         </div>
       )}
 
-      {/* Quick-Chips + View-Toggle. Chips toggleable, badge zeigt Anzahl
-          die der Chip im Datenset findet. */}
-      {!showArchive && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Chip label="Meine" active={activeChips.has("mine")} onClick={() => toggleChip("mine")} badge={chipCounts.mine} />
-          <Chip label="Hot" icon={Flame} active={activeChips.has("hot")} onClick={() => toggleChip("hot")} badge={chipCounts.hot} />
-          <Chip label="Stale >14d" icon={AlertTriangle} active={activeChips.has("stale")} onClick={() => toggleChip("stale")} badge={chipCounts.stale} tone="red" />
-          <Chip label="Event <30d" icon={PartyPopper} active={activeChips.has("soon")} onClick={() => toggleChip("soon")} badge={chipCounts.soon} tone="purple" />
-          <Chip label="Heute kontaktiert" active={activeChips.has("today")} onClick={() => toggleChip("today")} badge={chipCounts.today} />
-
-          <div className="sm:ml-auto flex gap-1 p-1 rounded-lg bg-muted">
-            <ViewBtn icon={LayoutGrid} label="Cards" active={view === "cards"} onClick={() => setView("cards")} />
-            <ViewBtn icon={LayoutList} label="Tabelle" active={view === "table"} onClick={() => setView("table")} />
-            <ViewBtn icon={Columns3} label="Kanban" active={view === "kanban"} onClick={() => setView("kanban")} />
-            <ViewBtn icon={Table2} label="Pivot" active={view === "pivot"} onClick={() => setView("pivot")} />
-            <ViewBtn icon={Activity} label="Heatmap" active={view === "heatmap"} onClick={() => setView("heatmap")} />
-          </div>
-        </div>
-      )}
-
-      {/* Suche + Filter — Search volle Breite oben, Dropdowns als 2x2-Grid
-          auf Mobile (sonst 5 Reihen stack), sm+ wieder inline. */}
+      {/* Toolbar — eine Zeile: Suche + Owner + Status + (Auffaellig) + Views.
+          Kategorie + Priority + Sort wurden in das "Mehr"-Dropdown ausgelagert,
+          um die Standard-Sicht zu entrumpeln. */}
       <div className="space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Firma, Person oder Branche..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 bg-card" />
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-        <div className="sm:w-44">
-          <SearchableSelect
-            value={filterKategorie} onChange={(v) => setFilterKategorie(v as VertriebKategorie | "all")}
-            items={[{ id: "all", label: "Alle Kategorien" }, ...KATEGORIE_OPTIONS.map((k) => ({ id: k.value, label: k.label }))]}
-            searchable={false} clearable={false} active={filterKategorie !== "all"}
-          />
-        </div>
-        {!showArchive && (
-          <div className="sm:w-44">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Owner-Filter — ersetzt den "Meine"-Chip und das Owner-Sub-View
+              gleichzeitig. Default "Alle", "Meine" hebt den eigenen Bestand
+              hervor, sonst spezifische Person. */}
+          <div className="w-40">
             <SearchableSelect
-              value={filterStatus} onChange={(v) => setFilterStatus(v as VertriebStatus | "all")}
+              value={ownerFilter}
+              onChange={(v) => setOwnerFilter(v as OwnerFilter)}
               items={[
-                { id: "all", label: "Alle Status" },
-                // 'abgesagt' raus — dafuer gibt's das Archiv.
-                ...STATUS_OPTIONS.filter((s) => s.value !== "abgesagt").map((s) => ({ id: s.value, label: `${s.label} (${statusCounts[s.value] || 0})` })),
+                { id: "all", label: "Alle Sales" },
+                ...(currentUserId ? [{ id: "mine", label: "Meine" }] : []),
+                ...salesPeople.filter((s) => s.id !== currentUserId).map((s) => ({ id: s.id, label: s.full_name })),
               ]}
-              searchable={false} clearable={false} active={filterStatus !== "all"}
+              searchable={false} clearable={false} active={ownerFilter !== "all"}
             />
           </div>
-        )}
-        <div className="sm:w-44">
-          <SearchableSelect
-            value={filterPriority} onChange={(v) => setFilterPriority(v as VertriebPriority | "all")}
-            items={[{ id: "all", label: "Alle Prioritäten" }, ...PRIORITY_OPTIONS.map((p) => ({ id: p.value, label: p.label }))]}
-            searchable={false} clearable={false} active={filterPriority !== "all"}
+          {/* Status-Filter (wichtigster) */}
+          {!showArchive && (
+            <div className="w-40">
+              <SearchableSelect
+                value={filterStatus} onChange={(v) => setFilterStatus(v as VertriebStatus | "all")}
+                items={[
+                  { id: "all", label: "Alle Status" },
+                  ...STATUS_OPTIONS.filter((s) => s.value !== "abgesagt").map((s) => ({ id: s.value, label: `${s.label} (${statusCounts[s.value] || 0})` })),
+                ]}
+                searchable={false} clearable={false} active={filterStatus !== "all"}
+              />
+            </div>
+          )}
+
+          {/* Mehr-Filter Dropdown — Kategorie/Priority/Sort hier rein,
+              damit die Standard-Toolbar nicht ueberladen wirkt. */}
+          <MoreFiltersPopover
+            filterKategorie={filterKategorie} setFilterKategorie={setFilterKategorie}
+            filterPriority={filterPriority} setFilterPriority={setFilterPriority}
+            sortBy={sortBy} setSortBy={setSortBy}
           />
-        </div>
-        <div className="sm:w-52">
-          <SearchableSelect
-            value={sortBy} onChange={(v) => setSortBy(v as SortBy)}
-            items={[
-              { id: "nr", label: "↕ Reihenfolge (Standard)" },
-              { id: "event", label: "↑ Event-Datum (nächstes)" },
-              { id: "stale", label: "↑ Letzter Kontakt (älteste)" },
-              { id: "priority", label: "★ Priorität (Top zuerst)" },
-            ]}
-            searchable={false} clearable={false} active={sortBy !== "nr"}
-          />
-        </div>
+
+          {/* Auffaellig-Toggle: prominent rechts, mit Count-Badge. */}
+          {!showArchive && anomalyCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setOnlyAnomalies((v) => !v)}
+              className={onlyAnomalies ? "kasten kasten-red" : "kasten-toggle-off"}
+              data-tooltip="Nur Leads die Aufmerksamkeit brauchen (Stale, Hot+Offen, Event bald, Vergessen)"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {anomalyCount} brauchen Aufmerksamkeit
+            </button>
+          )}
+
+          {/* View-Toggle ganz rechts */}
+          {!showArchive && (
+            <div className="ml-auto flex gap-1 p-1 rounded-lg bg-muted">
+              <ViewBtn icon={LayoutGrid} label="Cards" active={view === "cards"} onClick={() => setView("cards")} />
+              <ViewBtn icon={LayoutList} label="Tabelle" active={view === "table"} onClick={() => setView("table")} />
+              <ViewBtn icon={Columns3} label="Kanban" active={view === "kanban"} onClick={() => setView("kanban")} />
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Add-Flow inline (CategoryPicker → LeadForm). Edit lebt auf /vertrieb/[id]. */}
-      {showForm && !categoryPicked && (
-        <CategoryPicker onPick={pickCategory} onClose={() => { setShowForm(false); setCategoryPicked(false); }} />
-      )}
-      {showForm && categoryPicked && (
-        <LeadForm
-          editingId={null}
-          editingStep={1}
-          form={form}
-          setForm={setForm}
-          saving={saving}
-          offertePdf={null}
-          uploadingOfferte={false}
-          sendingBestaetigung={false}
-          visibleBedarf={visibleBedarf}
-          setVisibleBedarf={setVisibleBedarf}
-          kundenMode={kundenMode}
-          setKundenMode={setKundenMode}
-          selectedCustomerId={selectedCustomerId}
-          setSelectedCustomerId={setSelectedCustomerId}
-          customers={customers}
-          contacts={contacts}
-          onSubmit={save}
-          onClose={closeForm}
-          onAdvanceStep={noopAsync}
-          onMarkRecontacted={noopAsync}
-          onOpenLost={noop}
-          onOpenBuchhaltung={noop}
-          onOpenVerbesserung={noop}
-          onOpenTermin={noop}
-          onDeleteTermin={noopAsync}
-          onUploadOfferte={noopAsync}
-          onRemoveOfferte={noopAsync}
-          onSendBestaetigung={noopAsync}
-          onOpenAuftrag={noop}
-          onSelectExistingCustomer={selectExistingCustomer}
-          currentContactWithDetails={() => null}
-        />
-      )}
 
       {/* Liste */}
       {loading ? (
@@ -554,10 +360,6 @@ export default function VertriebPage() {
         <VertriebTableView contacts={sorted} salesPeople={salesPeople} />
       ) : view === "kanban" ? (
         <VertriebKanbanView contacts={sorted} salesPeople={salesPeople} />
-      ) : view === "pivot" ? (
-        <VertriebPivotView contacts={sorted} salesPeople={salesPeople} />
-      ) : view === "heatmap" ? (
-        <VertriebHeatmapView contacts={sorted} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((c) => (
@@ -578,37 +380,7 @@ export default function VertriebPage() {
   );
 }
 
-// ------------------ Quick-Chip + ViewBtn ------------------
-
-function Chip({
-  label, icon: Icon, active, onClick, badge, tone,
-}: {
-  label: string;
-  icon?: typeof Flame;
-  active: boolean;
-  onClick: () => void;
-  badge: number;
-  tone?: "red" | "purple";
-}) {
-  const toneClass = !active
-    ? "kasten-toggle-off"
-    : tone === "red"
-      ? "kasten kasten-red"
-      : tone === "purple"
-        ? "kasten kasten-purple"
-        : "kasten-active";
-  return (
-    <button type="button" onClick={onClick} className={toneClass}>
-      {Icon && <Icon className="h-3.5 w-3.5" />}
-      {label}
-      {badge > 0 && (
-        <span className="ml-1 px-1.5 py-0 text-[10px] font-semibold rounded-full bg-foreground/15 dark:bg-foreground/20">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
+// ------------------ ViewBtn + MoreFiltersPopover ------------------
 
 function ViewBtn({ icon: Icon, label, active, onClick }: {
   icon: typeof LayoutGrid; label: string; active: boolean; onClick: () => void;
@@ -628,6 +400,87 @@ function ViewBtn({ icon: Icon, label, active, onClick }: {
   );
 }
 
+/** Popover mit den selten benutzten Filtern (Kategorie, Priority, Sort).
+ *  Geschlossen by default — entrumpelt die Standard-Toolbar. */
+function MoreFiltersPopover({
+  filterKategorie, setFilterKategorie,
+  filterPriority, setFilterPriority,
+  sortBy, setSortBy,
+}: {
+  filterKategorie: VertriebKategorie | "all";
+  setFilterKategorie: (v: VertriebKategorie | "all") => void;
+  filterPriority: VertriebPriority | "all";
+  setFilterPriority: (v: VertriebPriority | "all") => void;
+  sortBy: "nr" | "event" | "stale" | "priority";
+  setSortBy: (v: "nr" | "event" | "stale" | "priority") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeCount =
+    (filterKategorie !== "all" ? 1 : 0) +
+    (filterPriority !== "all" ? 1 : 0) +
+    (sortBy !== "nr" ? 1 : 0);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={activeCount > 0 ? "kasten-active" : "kasten-toggle-off"}
+      >
+        Mehr
+        {activeCount > 0 && (
+          <span className="ml-1 px-1.5 py-0 text-[10px] font-semibold rounded-full bg-foreground/15 dark:bg-foreground/20">
+            {activeCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          {/* Backdrop zum Schliessen */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 mt-1 right-0 sm:left-0 w-64 rounded-lg border border-border bg-card shadow-lg p-3 space-y-3">
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Kategorie</label>
+              <div className="mt-1">
+                <SearchableSelect
+                  value={filterKategorie} onChange={(v) => setFilterKategorie(v as VertriebKategorie | "all")}
+                  items={[{ id: "all", label: "Alle Kategorien" }, ...KATEGORIE_OPTIONS.map((k) => ({ id: k.value, label: k.label }))]}
+                  searchable={false} clearable={false} active={filterKategorie !== "all"}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Prioritaet</label>
+              <div className="mt-1">
+                <SearchableSelect
+                  value={filterPriority} onChange={(v) => setFilterPriority(v as VertriebPriority | "all")}
+                  items={[{ id: "all", label: "Alle Prioritäten" }, ...PRIORITY_OPTIONS.map((p) => ({ id: p.value, label: p.label }))]}
+                  searchable={false} clearable={false} active={filterPriority !== "all"}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sortierung</label>
+              <div className="mt-1">
+                <SearchableSelect
+                  value={sortBy} onChange={(v) => setSortBy(v as "nr" | "event" | "stale" | "priority")}
+                  items={[
+                    { id: "nr", label: "Reihenfolge (Standard)" },
+                    { id: "event", label: "Event-Datum (nächstes)" },
+                    { id: "stale", label: "Letzter Kontakt (ältester)" },
+                    { id: "priority", label: "Priorität (Top zuerst)" },
+                  ]}
+                  searchable={false} clearable={false} active={sortBy !== "nr"}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* --------------------------------------------------------------------------
  * StatCards — drei kompakte Kennzahl-Karten als Sales-Cockpit:
  *   1. Aktive Pipeline   — alle Leads in nicht-terminalen Stages
@@ -638,12 +491,10 @@ function StatCards({
   counts,
   contacts,
   parseEventStart,
-  anomalyCount,
 }: {
   counts: Counts;
   contacts: VertriebContact[];
   parseEventStart: (c: VertriebContact) => Date | null;
-  anomalyCount: number;
 }) {
   const aktive = counts.step_1 + counts.step_2 + counts.step_3 + counts.step_4;
 
@@ -702,20 +553,6 @@ function StatCards({
               <p className="text-[11px] text-muted-foreground mt-1">
                 {closed > 0 ? `${counts.gewonnen} von ${closed} abgeschlossen` : "noch keine abgeschlossen"}
               </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card className="bg-card">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Auffaellig</p>
-              <p className="text-2xl font-bold leading-none mt-1.5 tabular-nums">{anomalyCount}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">Stale, Hot-Idle, Event-bald, Vergessen</p>
             </div>
           </div>
         </CardContent>
