@@ -258,8 +258,10 @@ export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
           </div>
         </div>
 
-        {/* DREI THEMA-SPALTEN: STAND | PROGNOSE | ZEIT */}
-        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3 pt-1">
+        {/* TOP-LEVEL 2/3 + 1/3 Split: links die 3 Status-Bloecke, rechts die Rangliste */}
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3 pt-1">
+        {/* === LINKS 2/3: STAND | PROGNOSE | ZEIT === */}
+        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3">
           {/* === STAND === */}
           <ThemeBlock title="Stand">
             <div className="flex items-baseline gap-1.5">
@@ -329,10 +331,10 @@ export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
           </ThemeBlock>
         </div>
 
-        {/* === TEAM === */}
-        <div className="pt-1.5 border-t border-border/60">
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Team</p>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-0.5">
+        {/* === RECHTS 1/3: RANGLISTE untereinander === */}
+        <div className="lg:border-l lg:border-border/60 lg:pl-3">
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Rangliste</p>
+        <div className="space-y-0.5">
           {(() => {
             const rows = salesPeople.map((sp) => ({
               id: sp.id,
@@ -369,8 +371,9 @@ export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
           })()}
         </div>
         </div>
+        </div>
 
-        {/* HEATMAP collapsable */}
+        {/* HEATMAP collapsable — full width unter dem 2/3+1/3-Grid */}
         <button
           type="button"
           onClick={() => setHeatmapOpen((v) => !v)}
