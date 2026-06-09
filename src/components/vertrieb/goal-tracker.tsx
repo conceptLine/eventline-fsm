@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * GoalTracker — Team-Vertriebsziel oben in /vertrieb.
+ * GoalTracker — Vertriebsziel-Cockpit mit vollem Druck-Setup.
  *
- * Zeigt: Period + Target + Progress (Anzahl Leads mit step>=2 deren
- * datum_kontakt in der Period liegt) als Bar.
+ * Vier zusammenhaengende Sektionen in einer Card:
+ *  1) PACING:       Tag X / Y, Soll vs Ist, "Du bist Z hinten/vor"
+ *  2) HOCHRECHNUNG: Bei aktuellem Tempo erreichst du M von N (Konsequenz)
+ *  3) LEADERBOARD:  Einzel-Beitraege aller Sales-People, sortiert
+ *  4) HEATMAP:      30-Tage-Grid mit Aktivitaet pro Tag, Streak-Counter
+ *
+ * Definition "bearbeitet": Lead mit step >= 2 und datum_kontakt
+ * innerhalb der Period. Pro-Person via assigned_to.
  *
  * Admin: kann ein Ziel anlegen/aendern via Inline-Form.
  * Nicht-Admin: read-only.
- *
- * Datenmodell: vertrieb_team_goal (siehe Migration 142).
- *  Bei mehreren ueberlappenden Periodien zeigt die UI das zuletzt
- *  aktualisierte (= ORDER BY updated_at DESC LIMIT 1).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,7 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
-import { Target, Pencil, X, Check } from "lucide-react";
+import { Target, Pencil, X, Check, TrendingUp, TrendingDown, Trophy, Flame } from "lucide-react";
 import type { VertriebContact } from "@/types";
 
 interface TeamGoal {
@@ -33,15 +35,17 @@ interface TeamGoal {
 interface Props {
   contacts: VertriebContact[];
   isAdmin: boolean;
+  salesPeople: { id: string; full_name: string }[];
 }
 
-export function GoalTracker({ contacts, isAdmin }: Props) {
+export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
   const supabase = createClient();
   const [goal, setGoal] = useState<TeamGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ start_date: "", end_date: "", target_count: "" });
   const [saving, setSaving] = useState(false);
+  const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -56,16 +60,68 @@ export function GoalTracker({ contacts, isAdmin }: Props) {
     })();
   }, [supabase]);
 
-  // Bearbeitete Leads in der Periode: step >= 2 UND datum_kontakt im Range.
-  const progress = useMemo(() => {
-    if (!goal) return 0;
-    return contacts.reduce((n, c) => {
-      if ((c.step || 1) < 2) return n;
-      if (!c.datum_kontakt) return n;
-      if (c.datum_kontakt < goal.start_date) return n;
-      if (c.datum_kontakt > goal.end_date) return n;
-      return n + 1;
-    }, 0);
+  // Alle Counter-Berechnungen sammeln
+  const stats = useMemo(() => {
+    if (!goal) return null;
+    const start = parseISO(goal.start_date);
+    const end = parseISO(goal.end_date);
+    const today = todayLocal();
+    const totalDays = daysBetween(start, end) + 1;
+    const daysElapsed = clamp(daysBetween(start, today) + 1, 1, totalDays);
+    const daysLeft = Math.max(0, totalDays - daysElapsed);
+    const isOver = today > end;
+    const isFuture = today < start;
+
+    // Pro-Tag-Aktivitaet + Pro-Person-Beitrag
+    const perDay = new Map<string, number>();
+    const perPerson = new Map<string, number>();
+    let totalDone = 0;
+    for (const c of contacts) {
+      if ((c.step || 1) < 2) continue;
+      if (!c.datum_kontakt) continue;
+      if (c.datum_kontakt < goal.start_date || c.datum_kontakt > goal.end_date) continue;
+      totalDone++;
+      perDay.set(c.datum_kontakt, (perDay.get(c.datum_kontakt) ?? 0) + 1);
+      if (c.assigned_to) perPerson.set(c.assigned_to, (perPerson.get(c.assigned_to) ?? 0) + 1);
+    }
+    const unassigned = totalDone - Array.from(perPerson.values()).reduce((a, b) => a + b, 0);
+
+    // Pacing: Soll = anteilig zur verstrichenen Zeit
+    const soll = Math.round((daysElapsed / totalDays) * goal.target_count);
+    const diff = totalDone - soll; // pos = voraus, neg = hinten
+
+    // Hochrechnung: aktuelle Rate * Gesamtdauer
+    const dailyRate = totalDone / daysElapsed;
+    const projected = Math.round(dailyRate * totalDays);
+    const projectedShortfall = goal.target_count - projected;
+
+    // Today: wie viele heute schon?
+    const todayIso = isoOf(today);
+    const todayCount = perDay.get(todayIso) ?? 0;
+
+    // Streak: aufeinanderfolgende Tage am Ende mit Aktivitaet
+    let streakActive = 0, streakNone = 0;
+    let cur = isoOf(today);
+    while (cur >= goal.start_date) {
+      if ((perDay.get(cur) ?? 0) > 0) streakActive++;
+      else break;
+      cur = isoOf(addDays(parseISO(cur), -1));
+    }
+    if (streakActive === 0) {
+      // Zaehle Tage seit letzter Aktivitaet
+      cur = isoOf(today);
+      while (cur >= goal.start_date && (perDay.get(cur) ?? 0) === 0) {
+        streakNone++;
+        cur = isoOf(addDays(parseISO(cur), -1));
+      }
+    }
+
+    return {
+      totalDays, daysElapsed, daysLeft, isOver, isFuture,
+      totalDone, soll, diff, dailyRate, projected, projectedShortfall,
+      todayCount, perDay, perPerson, unassigned, streakActive, streakNone,
+      startDate: goal.start_date, endDate: goal.end_date,
+    };
   }, [contacts, goal]);
 
   function startEdit() {
@@ -107,7 +163,6 @@ export function GoalTracker({ contacts, isAdmin }: Props) {
 
   if (loading) return null;
 
-  // Empty-State: kein Ziel definiert.
   if (!goal && !editing) {
     return (
       <Card className="bg-card border-dashed">
@@ -165,28 +220,33 @@ export function GoalTracker({ contacts, isAdmin }: Props) {
     );
   }
 
-  if (!goal) return null;
-  const pct = Math.min(100, Math.round((progress / goal.target_count) * 100));
-  const onTrack = pct >= 100;
-  const fmt = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
-  };
+  if (!goal || !stats) return null;
+  const behind = stats.diff < 0;
+  const ahead = stats.diff > 0;
+  const onTrack = stats.diff === 0;
+  const accent = behind ? "red" : ahead ? "green" : "muted";
 
   return (
-    <Card className="bg-card">
-      <CardContent className="p-3 space-y-2">
+    <Card className={`bg-card ${behind ? "border-red-300 dark:border-red-500/40" : ahead ? "border-green-300 dark:border-green-500/40" : ""}`}>
+      <CardContent className="p-3 space-y-3">
+        {/* ============ HEADER ============ */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 text-sm">
-            <Target className="h-4 w-4 text-red-500" />
+            <Target className={`h-4 w-4 ${behind ? "text-red-500" : "text-red-500"}`} />
             <span className="font-semibold">Vertriebsziel</span>
-            <span className="text-muted-foreground">{fmt(goal.start_date)} – {fmt(goal.end_date)}</span>
+            <span className="text-muted-foreground">{fmtDate(stats.startDate)} – {fmtDate(stats.endDate)}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm tabular-nums">
-              <strong className={onTrack ? "text-green-600 dark:text-green-400" : ""}>{progress}</strong>
-              <span className="text-muted-foreground"> / {goal.target_count} bearbeitet</span>
-            </span>
+          <div className="flex items-center gap-2">
+            {stats.isOver && (
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0 rounded bg-gray-500/20 text-gray-600 dark:text-gray-400">
+                Beendet
+              </span>
+            )}
+            {stats.isFuture && (
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0 rounded bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                Startet bald
+              </span>
+            )}
             {isAdmin && (
               <button type="button" onClick={startEdit} className="icon-btn icon-btn-muted" aria-label="Ziel bearbeiten" data-tooltip="Ziel bearbeiten">
                 <Pencil className="h-3.5 w-3.5" />
@@ -194,13 +254,252 @@ export function GoalTracker({ contacts, isAdmin }: Props) {
             )}
           </div>
         </div>
-        <div className="h-2 rounded-full bg-foreground/[0.08] dark:bg-foreground/[0.12] overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${onTrack ? "bg-green-500" : "bg-red-500"}`}
-            style={{ width: `${pct}%` }}
-          />
+
+        {/* ============ SECTION A: PACING ============ */}
+        <div>
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className={`text-3xl font-bold tabular-nums ${behind ? "text-red-600 dark:text-red-400" : ahead ? "text-green-600 dark:text-green-400" : ""}`}>
+                {stats.totalDone}
+              </span>
+              <span className="text-sm text-muted-foreground">/ {goal.target_count} bearbeitet</span>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tag</p>
+              <p className="text-sm font-semibold tabular-nums">{stats.daysElapsed}/{stats.totalDays}</p>
+            </div>
+          </div>
+          {/* Progress-Bar mit Soll-Marker */}
+          <div className="relative h-3 rounded-full bg-foreground/[0.08] dark:bg-foreground/[0.12] overflow-hidden">
+            <div
+              className={`h-full transition-all ${behind ? "bg-red-500" : "bg-green-500"}`}
+              style={{ width: `${Math.min(100, (stats.totalDone / goal.target_count) * 100)}%` }}
+            />
+            {/* Soll-Marker als weisser Strich */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-foreground/70"
+              style={{ left: `${Math.min(100, (stats.soll / goal.target_count) * 100)}%` }}
+              data-tooltip={`Soll heute: ${stats.soll}`}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+            <span className="text-muted-foreground">
+              Soll heute: <strong className="text-foreground tabular-nums">{stats.soll}</strong>
+            </span>
+            <span className={`font-bold ${behind ? "text-red-600 dark:text-red-400" : ahead ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+              {behind && <>{Math.abs(stats.diff)} Leads hinten</>}
+              {ahead && <>+{stats.diff} voraus</>}
+              {onTrack && <>auf Plan</>}
+            </span>
+          </div>
         </div>
+
+        <div className="border-t border-border/60" />
+
+        {/* ============ SECTION C: HOCHRECHNUNG ============ */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Bei aktuellem Tempo</p>
+            <p className={`text-lg font-bold tabular-nums ${stats.projected >= goal.target_count ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              {stats.projected} <span className="text-xs text-muted-foreground font-normal">/ {goal.target_count}</span>
+            </p>
+            {stats.projectedShortfall > 0 ? (
+              <p className="text-[10px] text-red-600 dark:text-red-400 flex items-center gap-0.5">
+                <TrendingDown className="h-2.5 w-2.5" />
+                Ziel verfehlt um {stats.projectedShortfall}
+              </p>
+            ) : (
+              <p className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+                <TrendingUp className="h-2.5 w-2.5" />
+                +{Math.abs(stats.projectedShortfall)} ueber dem Ziel
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Heute</p>
+            <p className={`text-lg font-bold tabular-nums ${stats.todayCount === 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+              {stats.todayCount}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {stats.daysLeft > 0
+                ? `${(stats.dailyRate || 0).toFixed(1)} pro Tag`
+                : "Periode beendet"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Restzeit</p>
+            <p className="text-lg font-bold tabular-nums">{stats.daysLeft}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {stats.daysLeft === 1 ? "Tag" : "Tage"}
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t border-border/60" />
+
+        {/* ============ SECTION B: LEADERBOARD ============ */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+            Beitraege pro Person
+          </p>
+          {(() => {
+            const rows = salesPeople.map((sp) => ({
+              id: sp.id,
+              name: sp.full_name,
+              count: stats.perPerson.get(sp.id) ?? 0,
+            })).sort((a, b) => b.count - a.count);
+            const max = Math.max(1, ...rows.map((r) => r.count));
+            return (
+              <div className="space-y-1">
+                {rows.map((r, idx) => (
+                  <div key={r.id} className="flex items-center gap-2">
+                    <span className="w-5 text-[10px] tabular-nums text-muted-foreground text-right shrink-0">
+                      {idx === 0 && r.count > 0 ? <Trophy className="h-3 w-3 text-yellow-500 inline" /> : `${idx + 1}.`}
+                    </span>
+                    <span className="w-20 text-xs font-medium truncate shrink-0">{r.name.split(" ")[0]}</span>
+                    <div className="flex-1 h-2 rounded-full bg-foreground/[0.08] dark:bg-foreground/[0.12] overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${idx === 0 && r.count > 0 ? "bg-yellow-500" : r.count > 0 ? "bg-red-500" : ""}`}
+                        style={{ width: `${(r.count / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right text-xs font-bold tabular-nums shrink-0">{r.count}</span>
+                  </div>
+                ))}
+                {stats.unassigned > 0 && (
+                  <div className="flex items-center gap-2 opacity-60">
+                    <span className="w-5" />
+                    <span className="w-20 text-xs italic shrink-0">Niemand</span>
+                    <div className="flex-1 h-2 rounded-full bg-foreground/[0.04]" />
+                    <span className="w-8 text-right text-xs tabular-nums shrink-0">{stats.unassigned}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* ============ SECTION D: HEATMAP (collapsable) ============ */}
+        <button
+          type="button"
+          onClick={() => setHeatmapOpen((v) => !v)}
+          className="w-full flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors border-t border-border/60 pt-2"
+        >
+          <span className="flex items-center gap-2">
+            Aktivitaets-Heatmap
+            {stats.streakActive > 1 && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full bg-orange-500/20 text-orange-600 dark:text-orange-400 normal-case font-bold">
+                <Flame className="h-2.5 w-2.5" />
+                {stats.streakActive}d Streak
+              </span>
+            )}
+            {stats.streakNone >= 2 && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 normal-case font-bold">
+                {stats.streakNone} Tage ohne Lead
+              </span>
+            )}
+          </span>
+          <span>{heatmapOpen ? "▲" : "▼"}</span>
+        </button>
+        {heatmapOpen && (
+          <Heatmap stats={stats} target={goal.target_count} />
+        )}
       </CardContent>
     </Card>
   );
+}
+
+// =================================================================
+// Heatmap-Subkomponente
+// =================================================================
+
+function Heatmap({
+  stats, target,
+}: {
+  stats: { perDay: Map<string, number>; startDate: string; endDate: string; totalDays: number };
+  target: number;
+}) {
+  const cells = useMemo(() => {
+    const start = parseISO(stats.startDate);
+    const arr: { date: string; count: number; isToday: boolean; isFuture: boolean }[] = [];
+    const todayIso = isoOf(todayLocal());
+    for (let i = 0; i < stats.totalDays; i++) {
+      const d = isoOf(addDays(start, i));
+      arr.push({
+        date: d,
+        count: stats.perDay.get(d) ?? 0,
+        isToday: d === todayIso,
+        isFuture: d > todayIso,
+      });
+    }
+    return arr;
+  }, [stats]);
+
+  // Daily-Soll fuer Farbgebung (= target / totalDays gerundet)
+  const dailySoll = Math.max(1, Math.round(target / stats.totalDays));
+
+  function bg(count: number, isFuture: boolean): string {
+    if (isFuture) return "bg-muted/30";
+    if (count === 0) return "bg-red-200 dark:bg-red-500/25";
+    if (count < dailySoll) return "bg-amber-300 dark:bg-amber-500/40";
+    if (count === dailySoll) return "bg-green-400 dark:bg-green-500/55";
+    return "bg-green-600 dark:bg-green-500/80";
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap gap-1">
+        {cells.map((c) => (
+          <div
+            key={c.date}
+            className={`w-4 h-4 rounded-sm ${bg(c.count, c.isFuture)} ${c.isToday ? "ring-1 ring-foreground" : ""}`}
+            data-tooltip={`${fmtDate(c.date)}: ${c.count} ${c.isFuture ? "(Zukunft)" : ""}`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span>Soll/Tag ≈ {dailySoll}</span>
+        <div className="flex items-center gap-1">
+          <span>0</span>
+          <span className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-500/25" />
+          <span className="w-3 h-3 rounded-sm bg-amber-300 dark:bg-amber-500/40" />
+          <span className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-500/55" />
+          <span className="w-3 h-3 rounded-sm bg-green-600 dark:bg-green-500/80" />
+          <span>viel</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =================================================================
+// Date-Helpers
+// =================================================================
+
+function parseISO(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d, 12);
+}
+function isoOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function todayLocal(): Date {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(d.getDate() + n);
+  return r;
+}
+function daysBetween(a: Date, b: Date): number {
+  const ms = b.getTime() - a.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+function fmtDate(iso: string): string {
+  return parseISO(iso).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
 }

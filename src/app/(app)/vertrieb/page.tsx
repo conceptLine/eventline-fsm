@@ -204,7 +204,7 @@ export default function VertriebPage() {
 
       {/* Goal-Tracker */}
       <div className="shrink-0">
-        <GoalTracker contacts={contacts} isAdmin={isAdmin} />
+        <GoalTracker contacts={contacts} isAdmin={isAdmin} salesPeople={salesPeople} />
       </div>
 
       {/* Mobile Tab-Bar */}
