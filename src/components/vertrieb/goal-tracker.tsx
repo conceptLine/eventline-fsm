@@ -17,12 +17,13 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
-import { Target, Pencil, X, Check, TrendingUp, TrendingDown, Trophy, Flame } from "lucide-react";
+import { Target, Pencil, X, Check, TrendingUp, TrendingDown, Trophy, Flame, Plus } from "lucide-react";
 import type { VertriebContact } from "@/types";
 
 interface TeamGoal {
@@ -36,16 +37,17 @@ interface Props {
   contacts: VertriebContact[];
   isAdmin: boolean;
   salesPeople: { id: string; full_name: string }[];
+  /** Permission ob 'Neuer Lead'-Button gerendert werden soll. */
+  canCreate: boolean;
 }
 
-export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
+export function GoalTracker({ contacts, isAdmin, salesPeople, canCreate }: Props) {
   const supabase = createClient();
   const [goal, setGoal] = useState<TeamGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ start_date: "", end_date: "", target_count: "" });
   const [saving, setSaving] = useState(false);
-  const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -373,16 +375,18 @@ export function GoalTracker({ contacts, isAdmin, salesPeople }: Props) {
         </div>
         </div>
 
-        {/* HEATMAP collapsable — full width unter dem 2/3+1/3-Grid */}
-        <button
-          type="button"
-          onClick={() => setHeatmapOpen((v) => !v)}
-          className="w-full flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <span>Heatmap</span>
-          <span>{heatmapOpen ? "▲" : "▼"}</span>
-        </button>
-        {heatmapOpen && <Heatmap stats={stats} target={goal.target_count} />}
+        {/* NEUER LEAD — prominenter Button anstelle des vorher dort
+            befindlichen Heatmap-Toggles. Volle Breite damit es klar
+            sichtbar bleibt. */}
+        {canCreate && (
+          <Link
+            href="/vertrieb/neu"
+            className="kasten kasten-red w-full justify-center"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Neuer Lead
+          </Link>
+        )}
       </CardContent>
     </Card>
   );
@@ -398,69 +402,6 @@ function ThemeBlock({ title, children }: { title: string; children: React.ReactN
     <div className="space-y-1 min-w-0">
       <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
       {children}
-    </div>
-  );
-}
-
-// =================================================================
-// Heatmap-Subkomponente
-// =================================================================
-
-function Heatmap({
-  stats, target,
-}: {
-  stats: { perDay: Map<string, number>; startDate: string; endDate: string; totalDays: number };
-  target: number;
-}) {
-  const cells = useMemo(() => {
-    const start = parseISO(stats.startDate);
-    const arr: { date: string; count: number; isToday: boolean; isFuture: boolean }[] = [];
-    const todayIso = isoOf(todayLocal());
-    for (let i = 0; i < stats.totalDays; i++) {
-      const d = isoOf(addDays(start, i));
-      arr.push({
-        date: d,
-        count: stats.perDay.get(d) ?? 0,
-        isToday: d === todayIso,
-        isFuture: d > todayIso,
-      });
-    }
-    return arr;
-  }, [stats]);
-
-  // Daily-Soll fuer Farbgebung (= target / totalDays gerundet)
-  const dailySoll = Math.max(1, Math.round(target / stats.totalDays));
-
-  function bg(count: number, isFuture: boolean): string {
-    if (isFuture) return "bg-muted/30";
-    if (count === 0) return "bg-red-200 dark:bg-red-500/25";
-    if (count < dailySoll) return "bg-amber-300 dark:bg-amber-500/40";
-    if (count === dailySoll) return "bg-green-400 dark:bg-green-500/55";
-    return "bg-green-600 dark:bg-green-500/80";
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1">
-        {cells.map((c) => (
-          <div
-            key={c.date}
-            className={`w-4 h-4 rounded-sm ${bg(c.count, c.isFuture)} ${c.isToday ? "ring-1 ring-foreground" : ""}`}
-            data-tooltip={`${fmtDate(c.date)}: ${c.count} ${c.isFuture ? "(Zukunft)" : ""}`}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>Soll/Tag ≈ {dailySoll}</span>
-        <div className="flex items-center gap-1">
-          <span>0</span>
-          <span className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-500/25" />
-          <span className="w-3 h-3 rounded-sm bg-amber-300 dark:bg-amber-500/40" />
-          <span className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-500/55" />
-          <span className="w-3 h-3 rounded-sm bg-green-600 dark:bg-green-500/80" />
-          <span>viel</span>
-        </div>
-      </div>
     </div>
   );
 }

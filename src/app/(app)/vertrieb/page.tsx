@@ -30,7 +30,7 @@ import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact } from "@/types";
-import { Plus, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { LeadEditor } from "@/components/vertrieb/lead-editor";
 import { GoalTracker } from "@/components/vertrieb/goal-tracker";
@@ -196,7 +196,7 @@ export default function VertriebPage() {
 
       {/* Goal-Tracker */}
       <div className="shrink-0">
-        <GoalTracker contacts={contacts} isAdmin={isAdmin} salesPeople={salesPeople} />
+        <GoalTracker contacts={contacts} isAdmin={isAdmin} salesPeople={salesPeople} canCreate={can("vertrieb:create")} />
       </div>
 
       {/* Mobile Tab-Bar */}
@@ -283,27 +283,8 @@ export default function VertriebPage() {
           )}
         </div>
 
-        {/* Vertikale "Neuer Lead"-Leiste ganz rechts. Volle Spalten-Hoehe,
-            schmal (~40px), Text vertikal. Auf Mobile ausgeblendet — dort
-            ist 'Lead +' als FAB-aehnliche Tab-Strategie evtl. besser
-            (zukuenftig). */}
-        {can("vertrieb:create") && (
-          <Link
-            href="/vertrieb/neu"
-            className="hidden md:flex w-10 shrink-0 rounded-lg border-2 border-red-500 bg-red-500/10 hover:bg-red-500/20 transition-colors items-center justify-center group"
-            data-tooltip="Neuer Lead"
-          >
-            <div className="flex flex-col items-center gap-2 text-red-600 dark:text-red-400">
-              <Plus className="h-4 w-4" />
-              <span
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-              >
-                Neuer Lead
-              </span>
-            </div>
-          </Link>
-        )}
+        {/* 'Neuer Lead'-Button lebt jetzt im GoalTracker (unten) — vertikale
+            Leiste war zu viel UI. */}
       </div>
 
       {ConfirmModalElement}

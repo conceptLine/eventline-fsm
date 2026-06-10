@@ -19,7 +19,8 @@
 import { useMemo, useState } from "react";
 import { LeadRow } from "./lead-row";
 import { SearchableSelect } from "@/components/searchable-select";
-import { Inbox } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Inbox, Search } from "lucide-react";
 import type { VertriebContact } from "@/types";
 import { daysSinceLastTouch } from "@/lib/vertrieb-anomaly";
 
@@ -43,11 +44,14 @@ export function PersonalColumn({
   currentUserId, isAdmin, salesPeople, onAssign,
 }: Props) {
   const [dragOver, setDragOver] = useState(false);
+  const [search, setSearch] = useState("");
   const nowMs = Date.now();
 
   const filtered = useMemo(() => {
+    const q = search.toLowerCase();
     return contacts
       .filter((c) => c.assigned_to === viewedUserId && c.status !== "gewonnen" && c.status !== "abgesagt")
+      .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
       .sort((a, b) => {
         const ad = daysSinceLastTouch(a, nowMs);
         const bd = daysSinceLastTouch(b, nowMs);
@@ -56,7 +60,7 @@ export function PersonalColumn({
         if (bd === null) return -1;
         return bd - ad;
       });
-  }, [contacts, viewedUserId, nowMs]);
+  }, [contacts, viewedUserId, nowMs, search]);
 
   const viewedName = salesPeople.find((s) => s.id === viewedUserId)?.full_name ?? "Mich";
 
@@ -90,6 +94,13 @@ export function PersonalColumn({
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
           {viewedUserId === currentUserId ? "Meine" : viewedName} · {filtered.length}
         </p>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suche…" className="pl-7 h-8 text-xs"
+          />
+        </div>
         {/* Person-Switcher fuer Admins. Nicht-Admins sehen fix die eigene. */}
         {isAdmin && peopleOptions.length > 1 && (
           <SearchableSelect
