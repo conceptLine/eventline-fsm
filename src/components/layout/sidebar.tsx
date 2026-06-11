@@ -155,11 +155,11 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
                       )}
                       <span className="flex-1">{item.label}</span>
                       {badge > 0 && (
-                        // Rot pulsierend — soll Aufmerksamkeit auf
-                        // 'wartet auf dich'-Items lenken.
-                        <span className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full bg-red-500 text-white tabular-nums shadow-sm shadow-red-500/30">
-                          <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-40" />
-                          <span className="relative">{badge > 99 ? "99+" : badge}</span>
+                        // Transparenter Filler + roter Border + rote Schrift,
+                        // bg pulst zwischen dunkel-tinted und rot (siehe
+                        // @keyframes badge-pulse in globals.css).
+                        <span className="badge-pulse-anim inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full border border-red-500/60 text-red-600 dark:text-red-300 tabular-nums">
+                          {badge > 99 ? "99+" : badge}
                         </span>
                       )}
                       {active && badge === 0 && (

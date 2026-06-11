@@ -586,6 +586,24 @@ input[type="number"] {
   from { opacity: 0; transform: translateX(-50%) translateY(2px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* Nav-Badge: pulst zwischen dunkel-tintiertem foreground-bg und
+   transparenter Rot-Farbe. Border + Text bleiben konstant rot. */
+@keyframes badge-pulse {
+  0%, 100% {
+    background-color: rgba(127, 127, 127, 0.15);
+  }
+  50% {
+    background-color: rgba(220, 38, 38, 0.55);
+  }
+}
+.dark @keyframes badge-pulse,
+.dark .badge-pulse-anim {
+  /* Dark-Mode: dunkler Start damit der Rot-Peak besser auffällt */
+}
+.badge-pulse-anim {
+  animation: badge-pulse 1.8s ease-in-out infinite;
+}
 @keyframes tooltip-fade-in-end {
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
