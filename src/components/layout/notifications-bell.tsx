@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck, Inbox } from "lucide-react";
+import { Bell, Check, CheckCheck, Inbox, Trash2, RotateCcw, CircleCheck } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -81,6 +81,39 @@ export function NotificationsBell() {
     setUnread(0);
     const { error } = await supabase.from("notifications").update({ is_read: true }).eq("is_read", false);
     if (error) load();
+  }
+
+  async function markAsUnread(id: string) {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: false } : n)));
+    setUnread((prev) => prev + 1);
+    const { error } = await supabase.from("notifications").update({ is_read: false }).eq("id", id);
+    if (error) load();
+  }
+
+  async function deleteOne(id: string) {
+    const n = notifications.find((x) => x.id === id);
+    setNotifications((prev) => prev.filter((x) => x.id !== id));
+    if (n && !n.is_read) setUnread((prev) => Math.max(0, prev - 1));
+    const { error } = await supabase.from("notifications").delete().eq("id", id);
+    if (error) load();
+  }
+
+  /** Aktion-Buttons je Notification-Type. Aktuell unterstuetzt:
+   *  todo_assigned -> 'Erledigt' markiert das verknuepfte Todo als done. */
+  async function performAction(n: Notification, action: string) {
+    if (n.type === "todo_assigned" && action === "done" && n.resource_id) {
+      const { error } = await supabase
+        .from("todos")
+        .update({ status: "erledigt" })
+        .eq("id", n.resource_id);
+      if (error) {
+        toast.error("Konnte Todo nicht abschliessen: " + error.message);
+        return;
+      }
+      toast.success("Todo erledigt");
+      // Notification auch direkt weg + als gelesen markiert
+      await markAsRead(n.id);
+    }
   }
 
   async function clickNotification(n: Notification) {
@@ -222,37 +255,75 @@ export function NotificationsBell() {
                         return (
                           <div
                             key={n.id}
-                            className={`group relative px-5 py-3 border-b border-border/40 hover:bg-muted/40 transition-colors flex items-start gap-3 ${
+                            className={`group relative px-5 py-3 border-b border-border/40 hover:bg-muted/40 transition-colors ${
                               !n.is_read ? "bg-blue-500/[0.04]" : ""
                             }`}
                           >
-                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${ACCENT_CLASSES[meta.accent]}`}>
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => clickNotification(n)}
-                              className="flex-1 min-w-0 text-left"
-                            >
-                              <div className="flex items-start gap-2">
-                                <p className={`text-sm leading-tight ${!n.is_read ? "font-semibold" : ""}`}>{n.title}</p>
-                                {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />}
+                            <div className="flex items-start gap-3">
+                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${ACCENT_CLASSES[meta.accent]}`}>
+                                <Icon className="h-4 w-4" />
                               </div>
-                              {n.message && (
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</p>
-                              )}
-                              <p className="text-[10px] text-muted-foreground/70 mt-1.5">{formatTime(n.created_at)}</p>
-                            </button>
-                            {!n.is_read && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 self-start"
-                                data-tooltip="Als gelesen markieren"
-                                aria-label="Als gelesen markieren"
+                                onClick={() => clickNotification(n)}
+                                className="flex-1 min-w-0 text-left"
                               >
-                                <Check className="h-3.5 w-3.5" />
+                                <div className="flex items-start gap-2">
+                                  <p className={`text-sm leading-tight ${!n.is_read ? "font-semibold" : ""}`}>{n.title}</p>
+                                  {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />}
+                                </div>
+                                {n.message && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</p>
+                                )}
+                                <p className="text-[10px] text-muted-foreground/70 mt-1.5">{formatTime(n.created_at)}</p>
                               </button>
+                              {/* Hover-Action-Strip rechts */}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity self-start">
+                                {n.is_read ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); markAsUnread(n.id); }}
+                                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    data-tooltip="Als ungelesen"
+                                    aria-label="Als ungelesen markieren"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
+                                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    data-tooltip="Als gelesen"
+                                    aria-label="Als gelesen markieren"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); deleteOne(n.id); }}
+                                  className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                                  data-tooltip="Loeschen"
+                                  aria-label="Loeschen"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Type-spezifische Aktion-Buttons unter dem Body */}
+                            {n.type === "todo_assigned" && n.resource_id && (
+                              <div className="flex gap-2 mt-2 ml-12">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); performAction(n, "done"); }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-green-500/15 text-green-700 dark:text-green-300 hover:bg-green-500/25 transition-colors"
+                                >
+                                  <CircleCheck className="h-3 w-3" />
+                                  Erledigt
+                                </button>
+                              </div>
                             )}
                           </div>
                         );
