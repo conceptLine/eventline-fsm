@@ -76,8 +76,13 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   // Channels mehr noetig. Plus zwei Legacy-Events ("jobs:invalidate",
   // "customers:invalidate") die schon im Code referenziert sind.
   useEffect(() => {
-    const dispatch = (table: string) => () => {
-      window.dispatchEvent(new Event(`realtime:${table}`));
+    // CustomEvent damit Konsumenten den Payload (eventType + new + old)
+    // bekommen, statt nur "irgendwas hat sich geaendert". Brauchen wir
+    // z.B. fuer den Toast-on-Receive in der NotificationsBell, der den
+    // Title des NEU eingefuegten Eintrags sofort anzeigen soll ohne
+    // erstmal load() zu triggern.
+    const dispatch = (table: string) => (payload: unknown) => {
+      window.dispatchEvent(new CustomEvent(`realtime:${table}`, { detail: payload }));
     };
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;

@@ -16,7 +16,7 @@
  * RLS filtert pro User automatisch.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Check, CheckCheck, Inbox, Trash2, RotateCcw, CircleCheck } from "lucide-react";
@@ -44,6 +44,10 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"alle" | "ungelesen">("alle");
   const [unread, setUnread] = useState(0);
+  const [pulse, setPulse] = useState(false);
+  // Ref auf seen-IDs damit Realtime-Inserts genau ein Mal Toast triggern
+  // (sonst dispatches mehrfach pro Insert in Edge-Faellen).
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
   async function load() {
     const [{ data }, { count }] = await Promise.all([
@@ -57,17 +61,49 @@ export function NotificationsBell() {
         .select("*", { count: "exact", head: true })
         .eq("is_read", false),
     ]);
-    if (data) setNotifications(data as Notification[]);
+    if (data) {
+      setNotifications(data as Notification[]);
+      // seen-Set fuer Initial-Load fuellen damit der erste Toast nur fuer
+      // echte Live-Inserts kommt, nicht fuer History-Items.
+      for (const n of data as Notification[]) seenIdsRef.current.add(n.id);
+    }
     setUnread(count ?? 0);
   }
 
   useEffect(() => {
     load();
-    const handler = () => load();
-    window.addEventListener("realtime:notifications", handler);
-    return () => window.removeEventListener("realtime:notifications", handler);
+    // Realtime: Payload analysieren. Bei echtem INSERT → Toast + Pulse.
+    // Bei UPDATE/DELETE → nur load() (Drawer aktualisiert sich).
+    const handler = (event: Event) => {
+      const ev = event as CustomEvent<{ eventType?: string; new?: Notification }>;
+      const detail = ev.detail;
+      load();
+      if (detail?.eventType === "INSERT" && detail.new && !seenIdsRef.current.has(detail.new.id)) {
+        seenIdsRef.current.add(detail.new.id);
+        // Toast nur wenn Drawer geschlossen — sonst doppelte Info.
+        if (!open) {
+          toast(detail.new.title, {
+            description: detail.new.message ?? undefined,
+            duration: 5000,
+            action: detail.new.link ? {
+              label: "Öffnen",
+              onClick: () => {
+                if (!detail.new) return;
+                router.push(detail.new.link!);
+                if (!detail.new.is_read) markAsRead(detail.new.id);
+              },
+            } : undefined,
+          });
+        }
+        // Glocke pulsiert 2s als visueller Hint
+        setPulse(true);
+        window.setTimeout(() => setPulse(false), 2000);
+      }
+    };
+    window.addEventListener("realtime:notifications", handler as EventListener);
+    return () => window.removeEventListener("realtime:notifications", handler as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [open]);
 
   async function markAsRead(id: string) {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
@@ -158,15 +194,18 @@ export function NotificationsBell() {
           }
           setOpen(true);
         }}
-        className="relative p-2 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors"
+        className={`relative p-2 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors ${pulse ? "animate-pulse" : ""}`}
         data-tooltip="Benachrichtigungen"
         aria-label="Benachrichtigungen"
       >
-        <Bell className="h-5 w-5" />
+        <Bell className={`h-5 w-5 ${pulse ? "text-red-500" : ""}`} />
         {!isLocked && unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold leading-none">
             {unread > 9 ? "9+" : unread}
           </span>
+        )}
+        {pulse && (
+          <span className="absolute inset-0 rounded-lg bg-red-500/20 animate-ping" />
         )}
       </button>
 
@@ -335,21 +374,16 @@ export function NotificationsBell() {
             )}
           </div>
 
-          {/* Footer */}
-          <div className="px-5 py-3 border-t border-border bg-card/40 shrink-0 flex items-center justify-between">
-            <Link
-              href="/benachrichtigungen"
-              onClick={() => setOpen(false)}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Vollansicht oeffnen →
-            </Link>
+          {/* Footer — nur Einstellungen-Link. Vollansichts-Seite wurde
+              entfernt, da sie keine relevanten Features ueber den Drawer
+              hinaus hatte. */}
+          <div className="px-5 py-3 border-t border-border bg-card/40 shrink-0 flex items-center justify-end">
             <Link
               href="/einstellungen?tab=benachrichtigungen"
               onClick={() => setOpen(false)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Einstellungen
+              Einstellungen →
             </Link>
           </div>
         </SheetContent>

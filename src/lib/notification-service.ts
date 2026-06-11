@@ -59,12 +59,79 @@ interface NotificationRow {
   resource_id: string | null;
 }
 
-/** Low-level Insert. Funktionen unten bauen Rows und reichen sie hier
- *  durch. Insert ist best-effort: Fehler werden geloggt, nicht geworfen. */
+// Fenster fuer Buendelung: kommt eine neue Notif fuer (user, type) und
+// existiert ein ungelesener Eintrag dieser Kombination der vor max
+// BUNDLE_WINDOW_MIN gepostet wurde -> stattdessen bundle_count hochziehen
+// (statt neuer INSERT). Verhindert dass z.B. 5 Auftrags-Zuweisungen
+// morgens als 5 separate Eintraege landen.
+const BUNDLE_WINDOW_MIN = 5;
+
+/** Low-level Insert mit Buendelung: pro Row erst pruefen ob ein
+ *  ungelesener Eintrag derselben (user_id, type) innerhalb des Fensters
+ *  existiert -> UPDATE bundle_count statt INSERT. Best-effort. */
 async function insertMany(client: SupabaseClient, rows: NotificationRow[]) {
   if (rows.length === 0) return;
-  const { error } = await client.from("notifications").insert(rows);
-  if (error) logError("notification-service.insert", error, { count: rows.length });
+  const cutoff = new Date(Date.now() - BUNDLE_WINDOW_MIN * 60_000).toISOString();
+  // Pro Row erst Bundle-Lookup. Wir laden alle Kandidaten in EINEM Query
+  // (IN/OR) und bauen dann lokal die Entscheidung.
+  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+  const types = Array.from(new Set(rows.map((r) => r.type)));
+  const { data: existing } = await client
+    .from("notifications")
+    .select("id, user_id, type, bundle_count, title, message")
+    .in("user_id", userIds)
+    .in("type", types)
+    .eq("is_read", false)
+    .gte("created_at", cutoff);
+  const bundleMap = new Map<string, { id: string; bundle_count: number; title: string; message: string | null }>();
+  for (const row of (existing ?? []) as { id: string; user_id: string; type: string; bundle_count: number; title: string; message: string | null }[]) {
+    bundleMap.set(`${row.user_id}::${row.type}`, row);
+  }
+  const toInsert: NotificationRow[] = [];
+  const toBumpById = new Map<string, { count: number; title: string; latest: NotificationRow }>();
+  for (const r of rows) {
+    const key = `${r.user_id}::${r.type}`;
+    const existing = bundleMap.get(key);
+    if (existing) {
+      const acc = toBumpById.get(existing.id);
+      if (acc) {
+        acc.count += 1;
+        acc.latest = r;
+      } else {
+        toBumpById.set(existing.id, {
+          count: existing.bundle_count + 1,
+          title: existing.title,
+          latest: r,
+        });
+      }
+    } else {
+      toInsert.push(r);
+      // Damit nachfolgende Rows zum gleichen (user, type) in DIESEM Batch
+      // auf den gerade frisch geplanten Eintrag buendeln (zukuenftig).
+      bundleMap.set(key, { id: `__pending::${key}`, bundle_count: 1, title: r.title, message: r.message });
+    }
+  }
+  if (toInsert.length > 0) {
+    const { error } = await client.from("notifications").insert(toInsert);
+    if (error) logError("notification-service.insert", error, { count: toInsert.length });
+  }
+  // Bundle-Updates parallel: bundle_count rauf + Title zu "Sammeleintrag",
+  // Message bekommt den neuesten Subtitel-Hint, created_at refresh.
+  await Promise.all(Array.from(toBumpById.entries()).map(([id, acc]) =>
+    client.from("notifications").update({
+      bundle_count: acc.count,
+      title: `${acc.count}× ${stripCount(acc.title)}`,
+      message: acc.latest.message,
+      link: acc.latest.link,
+      created_at: new Date().toISOString(),
+    }).eq("id", id),
+  ));
+}
+
+/** "5× Neues Ticket: X" -> "Neues Ticket: X" damit der Multiplier nicht
+ *  bei jedem Bundle-Update verschachtelt wird. */
+function stripCount(title: string): string {
+  return title.replace(/^\d+×\s+/, "");
 }
 
 /** Erzeugt eine Row pro Empfaenger mit gleichem Body. */
