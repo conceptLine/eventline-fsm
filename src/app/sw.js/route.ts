@@ -64,6 +64,39 @@ self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
+// PUSH-EVENT: zeigt eine System-Notification an. Payload-Format:
+//   { title, body, url, tag } — vom NotificationService gesendet.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_) {}
+  const title = data.title || "EVENTLINE";
+  const options = {
+    body: data.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: data.tag || "eventline",
+    data: { url: data.url || "/" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Klick auf eine Push-Notification: oeffnet die App auf dem url-Pfad.
+// Wenn die App schon offen ist, fokussieren statt neuen Tab oeffnen.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data && event.notification.data.url || "/";
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of allClients) {
+      if ("focus" in c) {
+        c.navigate(url);
+        return c.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
+});
+
 function isImmutableStatic(url) {
   return (
     url.pathname.startsWith("/_next/static/") ||

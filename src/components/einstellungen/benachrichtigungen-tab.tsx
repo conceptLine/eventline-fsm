@@ -57,7 +57,7 @@ const EVENTS: { type: NotificationType; label: string; description: string }[] =
 const CHANNELS: { key: "in_app" | "email" | "push"; label: string; icon: typeof Bell; enabled: boolean; tooltip?: string }[] = [
   { key: "in_app", label: "In-App",  icon: Bell,        enabled: true  },
   { key: "email",  label: "E-Mail",  icon: Mail,        enabled: false, tooltip: "Folgt in einer naechsten Phase" },
-  { key: "push",   label: "Push",    icon: Smartphone,  enabled: false, tooltip: "Folgt mit Web-Push (Phase 5)" },
+  { key: "push",   label: "Push",    icon: Smartphone,  enabled: true  },
 ];
 
 function effectiveChannel(channels: Channels, type: NotificationType, key: "in_app" | "email" | "push"): boolean {
@@ -168,6 +168,9 @@ export function BenachrichtigungenTab() {
 
   return (
     <div className="space-y-4 max-w-3xl">
+      {/* Push-Setup */}
+      <PushSubscriptionCard />
+
       {/* Intro */}
       <div className="text-sm text-muted-foreground">
         Steuere pro Ereignistyp welcher Kanal genutzt wird. Aenderungen werden automatisch gespeichert.
@@ -265,6 +268,128 @@ export function BenachrichtigungenTab() {
       </Card>
     </div>
   );
+}
+
+/** Push-Subscription-Verwaltung: Permission-Status, Aktivieren/Abmelden,
+ *  pro-Geraet-Liste mit Entfernen-Button. */
+function PushSubscriptionCard() {
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPermission("unsupported");
+      return;
+    }
+    setPermission(Notification.permission);
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setSubscribed(!!sub));
+  }, []);
+
+  async function subscribe() {
+    if (!vapidKey) {
+      toast.error("VAPID-Schluessel ist auf dem Server nicht konfiguriert.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const perm = await Notification.requestPermission();
+      setPermission(perm);
+      if (perm !== "granted") { setBusy(false); return; }
+      const reg = await navigator.serviceWorker.ready;
+      // Cast nach BufferSource — TS-Lib-Mismatch zwischen Uint8Array<ArrayBufferLike>
+      // und dem PushManager-applicationServerKey-Typ. Funktional korrekt.
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+      });
+      const res = await fetch("/api/notifications/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? "Subscribe fehlgeschlagen");
+      setSubscribed(true);
+      toast.success("Push-Benachrichtigungen aktiviert");
+    } catch (e) {
+      toast.error("Aktivierung fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unsubscribe() {
+    setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/notifications/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setSubscribed(false);
+      toast.success("Push deaktiviert");
+    } catch (e) {
+      toast.error("Deaktivierung fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (permission === "unsupported") {
+    return (
+      <Card className="bg-card">
+        <CardContent className="p-4 text-xs text-muted-foreground">
+          Push-Benachrichtigungen werden in diesem Browser nicht unterstuetzt.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="bg-card">
+      <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-red-500/15 text-red-600 dark:text-red-400">
+            <Smartphone className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Push auf diesem Geraet</p>
+            <p className="text-xs text-muted-foreground">
+              {permission === "denied"
+                ? "Im Browser blockiert — Permission in den Browser-Settings zuruecksetzen."
+                : subscribed
+                  ? "Aktiv. Du bekommst System-Benachrichtigungen auch wenn die App geschlossen ist."
+                  : "Nicht aktiviert. Aktivieren um auch ohne offene App benachrichtigt zu werden."}
+            </p>
+          </div>
+        </div>
+        {permission !== "denied" && (
+          subscribed
+            ? <button type="button" onClick={unsubscribe} disabled={busy} className="kasten kasten-muted text-xs">Deaktivieren</button>
+            : <button type="button" onClick={subscribe} disabled={busy} className="kasten kasten-red text-xs">Aktivieren</button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const out = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) out[i] = rawData.charCodeAt(i);
+  return out;
 }
 
 function Toggle({ value, onChange, disabled }: { value: boolean; onChange: () => void; disabled?: boolean }) {

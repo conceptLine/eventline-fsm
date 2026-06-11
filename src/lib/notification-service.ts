@@ -35,8 +35,19 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import webpush from "web-push";
 import { logError } from "@/lib/log";
 import type { NotificationType } from "@/types";
+
+// VAPID-Setup: einmal beim Modul-Load. Wenn die Keys fehlen, wird Push
+// stillschweigend deaktiviert (In-App-Notifs bleiben aktiv).
+const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY ?? "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:admin@eventline-basel.com";
+const PUSH_ENABLED = VAPID_PUBLIC.length > 0 && VAPID_PRIVATE.length > 0;
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+}
 
 interface NotificationRow {
   user_id: string;
@@ -46,39 +57,6 @@ interface NotificationRow {
   link: string | null;
   resource_type: string | null;
   resource_id: string | null;
-}
-
-/** Filtert Empfaenger gegen ihre user_notification_settings.channels.
- *  Default wenn nichts gespeichert: in_app=true (= aktuelles Verhalten).
- *
- *  Lookup ist ein einziger Query mit IN — pro Notify-Call ein DB-Hit. */
-async function filterByInAppSettings(
-  client: SupabaseClient,
-  recipients: string[],
-  type: NotificationType,
-): Promise<string[]> {
-  if (recipients.length === 0) return recipients;
-  const unique = Array.from(new Set(recipients.filter(Boolean)));
-  const { data, error } = await client
-    .from("user_notification_settings")
-    .select("user_id, channels")
-    .in("user_id", unique);
-  if (error) {
-    // Settings-Lookup-Failure soll Notifications nicht blockieren.
-    logError("notification-service.filterByInAppSettings", error);
-    return unique;
-  }
-  const byUser = new Map<string, Record<string, { in_app?: boolean; email?: boolean; push?: boolean }>>();
-  for (const row of data ?? []) {
-    byUser.set(row.user_id, (row.channels as Record<string, { in_app?: boolean; email?: boolean; push?: boolean }>) ?? {});
-  }
-  return unique.filter((uid) => {
-    const ch = byUser.get(uid);
-    if (!ch) return true; // Keine Settings = Default an
-    const evCh = ch[type];
-    if (!evCh) return true; // Kein Event-spezifischer Eintrag = Default an
-    return evCh.in_app !== false;
-  });
 }
 
 /** Low-level Insert. Funktionen unten bauen Rows und reichen sie hier
@@ -104,16 +82,94 @@ function fanOut<T extends Omit<NotificationRow, "user_id">>(
     .map((user_id) => ({ user_id, ...base }));
 }
 
-/** Helper: filtert Empfaenger nach Settings + macht den Insert.
- *  Alle public Service-Funktionen nutzen das statt direkt insertMany. */
+/** Lookup welche Channels pro Empfaenger aktiv sind. Liefert Map
+ *  user_id -> {in_app, push}. Default fuer fehlende Eintraege:
+ *  in_app=true, push=false. */
+async function lookupChannels(
+  client: SupabaseClient,
+  recipients: string[],
+  type: NotificationType,
+): Promise<Map<string, { in_app: boolean; push: boolean }>> {
+  const result = new Map<string, { in_app: boolean; push: boolean }>();
+  for (const id of recipients) result.set(id, { in_app: true, push: false });
+  if (recipients.length === 0) return result;
+  const { data, error } = await client
+    .from("user_notification_settings")
+    .select("user_id, channels")
+    .in("user_id", recipients);
+  if (error) {
+    logError("notification-service.lookupChannels", error);
+    return result;
+  }
+  for (const row of data ?? []) {
+    const ch = (row.channels as Record<string, { in_app?: boolean; push?: boolean }>) ?? {};
+    const evCh = ch[type] ?? {};
+    result.set(row.user_id, {
+      in_app: evCh.in_app !== false, // default true
+      push: evCh.push === true,      // default false
+    });
+  }
+  return result;
+}
+
+/** Pushen an alle Subscriptions der angegebenen User. Best-effort,
+ *  errors loggen aber nicht werfen. Entfernt 410-Gone-Subscriptions. */
+async function sendPushBatch(
+  client: SupabaseClient,
+  userIds: string[],
+  payload: { title: string; body?: string; url?: string; tag?: string },
+) {
+  if (!PUSH_ENABLED || userIds.length === 0) return;
+  const { data: subs } = await client
+    .from("push_subscriptions")
+    .select("endpoint, p256dh, auth")
+    .in("user_id", userIds);
+  if (!subs || subs.length === 0) return;
+  const json = JSON.stringify(payload);
+  const expired: string[] = [];
+  await Promise.all(subs.map(async (s) => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        json,
+      );
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string };
+      if (e?.statusCode === 404 || e?.statusCode === 410) {
+        expired.push(s.endpoint);
+      } else {
+        logError("notification-service.push.send", err);
+      }
+    }
+  }));
+  if (expired.length > 0) {
+    await client.from("push_subscriptions").delete().in("endpoint", expired);
+  }
+}
+
+/** Helper: in-app + push parallel. Alle public Service-Funktionen
+ *  nutzen das statt direkt insertMany. */
 async function deliver(
   client: SupabaseClient,
   recipients: string[],
   type: NotificationType,
   base: Omit<NotificationRow, "user_id" | "type">,
 ) {
-  const allowed = await filterByInAppSettings(client, recipients, type);
-  await insertMany(client, fanOut(allowed, { type, ...base }));
+  const unique = Array.from(new Set(recipients.filter(Boolean)));
+  if (unique.length === 0) return;
+  const channels = await lookupChannels(client, unique, type);
+  const inAppRecipients = unique.filter((id) => channels.get(id)?.in_app);
+  const pushRecipients = unique.filter((id) => channels.get(id)?.push);
+  // In-App + Push parallel
+  await Promise.all([
+    insertMany(client, fanOut(inAppRecipients, { type, ...base })),
+    sendPushBatch(client, pushRecipients, {
+      title: base.title,
+      body: base.message ?? undefined,
+      url: base.link ?? undefined,
+      tag: type,
+    }),
+  ]);
 }
 
 // =============================================================
