@@ -581,4 +581,9 @@ export interface Notification {
   resource_id: string | null;
   is_read: boolean;
   created_at: string;
+  /** Bundle-Counter: 1 = einzeln, >1 = mehrere zusammengefasst */
+  bundle_count?: number;
+  /** Wenn gesetzt + in der Zukunft: Notif ist 'snoozed' und wird im
+   *  UI ausgeblendet bis der Wake-Cron sie wieder aktiviert. */
+  snoozed_until?: string | null;
 }

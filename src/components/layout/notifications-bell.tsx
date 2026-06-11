@@ -19,18 +19,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck, Inbox, Trash2, RotateCcw, CircleCheck } from "lucide-react";
+import { Bell, Check, CheckCheck, Inbox, Trash2, RotateCcw, CircleCheck, AlarmClock, Flame, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
   NOTIFICATION_META,
   ACCENT_CLASSES,
-  timeBucket,
-  TIME_BUCKET_LABEL,
 } from "@/lib/notification-meta";
 import type { Notification, NotificationType } from "@/types";
 import { usePermissions } from "@/lib/use-permissions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+
+// Notif-Types die typischerweise eine User-Reaktion brauchen.
+// Andere (job_assigned, ticket_done, system) sind FYI-Updates.
+const ACTION_REQUIRED_TYPES = new Set<NotificationType>([
+  "ticket_new",
+  "ticket_rejected",
+  "todo_assigned",
+  "appointment_new",
+  "stempel_reminder",
+]);
+
+const SNOOZE_OPTIONS = [
+  { key: "1h", label: "1 Stunde", mins: 60 },
+  { key: "morgen", label: "Morgen 8:00", mins: -1 }, // -1 = special "tomorrow 8am"
+  { key: "1week", label: "Naechste Woche", mins: 60 * 24 * 7 },
+] as const;
+function computeSnoozeUntil(key: typeof SNOOZE_OPTIONS[number]["key"]): string {
+  if (key === "morgen") {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+    return d.toISOString();
+  }
+  const opt = SNOOZE_OPTIONS.find((o) => o.key === key)!;
+  return new Date(Date.now() + opt.mins * 60_000).toISOString();
+}
 
 const PREVIEW_LIMIT = 50;
 
@@ -50,16 +74,19 @@ export function NotificationsBell() {
   const seenIdsRef = useRef<Set<string>>(new Set());
 
   async function load() {
+    const nowIso = new Date().toISOString();
     const [{ data }, { count }] = await Promise.all([
       supabase
         .from("notifications")
         .select("*")
+        .or(`snoozed_until.is.null,snoozed_until.lt.${nowIso}`)
         .order("created_at", { ascending: false })
         .limit(PREVIEW_LIMIT),
       supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
-        .eq("is_read", false),
+        .eq("is_read", false)
+        .or(`snoozed_until.is.null,snoozed_until.lt.${nowIso}`),
     ]);
     if (data) {
       setNotifications(data as Notification[]);
@@ -126,6 +153,23 @@ export function NotificationsBell() {
     if (error) load();
   }
 
+  async function snooze(id: string, key: typeof SNOOZE_OPTIONS[number]["key"]) {
+    const until = computeSnoozeUntil(key);
+    // Im UI sofort weg
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    const wasUnread = notifications.find((n) => n.id === id)?.is_read === false;
+    if (wasUnread) setUnread((prev) => Math.max(0, prev - 1));
+    const { error } = await supabase
+      .from("notifications")
+      .update({ snoozed_until: until })
+      .eq("id", id);
+    if (error) load();
+    else {
+      const opt = SNOOZE_OPTIONS.find((o) => o.key === key)!;
+      toast.success(`Snoozed: ${opt.label}`);
+    }
+  }
+
   async function deleteOne(id: string) {
     const n = notifications.find((x) => x.id === id);
     setNotifications((prev) => prev.filter((x) => x.id !== id));
@@ -169,15 +213,25 @@ export function NotificationsBell() {
     return d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
+  // Action-First-Gruppierung:
+  //  1) Brauchen Aktion: ungelesene Notifs mit action-required-Type
+  //  2) Updates: ungelesene Notifs vom FYI-Type
+  //  3) Erledigt: gelesene Notifs (collapsible default zu)
+  const [doneCollapsed, setDoneCollapsed] = useState(true);
   const grouped = useMemo(() => {
     const filtered = filter === "ungelesen" ? notifications.filter((n) => !n.is_read) : notifications;
-    const buckets: Record<string, Notification[]> = { heute: [], gestern: [], diese_woche: [], aelter: [] };
-    for (const n of filtered) buckets[timeBucket(n.created_at)].push(n);
+    const action: Notification[] = [];
+    const updates: Notification[] = [];
+    const done: Notification[] = [];
+    for (const n of filtered) {
+      if (n.is_read) done.push(n);
+      else if (ACTION_REQUIRED_TYPES.has(n.type as NotificationType)) action.push(n);
+      else updates.push(n);
+    }
     return [
-      { key: "heute", items: buckets.heute },
-      { key: "gestern", items: buckets.gestern },
-      { key: "diese_woche", items: buckets.diese_woche },
-      { key: "aelter", items: buckets.aelter },
+      { key: "action", label: "Brauchen Aktion", icon: Flame, items: action, tone: "red" as const },
+      { key: "updates", label: "Updates", icon: Layers, items: updates, tone: "blue" as const },
+      { key: "done", label: "Erledigt", icon: Check, items: done, tone: "muted" as const, collapsible: true },
     ].filter((g) => g.items.length > 0);
   }, [notifications, filter]);
 
@@ -282,94 +336,124 @@ export function NotificationsBell() {
               </div>
             ) : (
               <div className="pb-4">
-                {grouped.map((group) => (
+                {grouped.map((group) => {
+                  const SectionIcon = group.icon;
+                  const collapsed = group.collapsible && doneCollapsed;
+                  return (
                   <div key={group.key}>
-                    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur px-5 pt-3 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 border-b border-border/50">
-                      {TIME_BUCKET_LABEL[group.key as keyof typeof TIME_BUCKET_LABEL]}
-                    </div>
-                    <div>
-                      {group.items.map((n) => {
-                        const meta = NOTIFICATION_META[(n.type as NotificationType) ?? "system"] ?? NOTIFICATION_META.system;
-                        const Icon = meta.icon;
-                        return (
-                          <div
-                            key={n.id}
-                            className={`group relative px-5 py-3 border-b border-border/40 hover:bg-muted/40 transition-colors ${
-                              !n.is_read ? "bg-blue-500/[0.04]" : ""
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${ACCENT_CLASSES[meta.accent]}`}>
-                                <Icon className="h-4 w-4" />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => clickNotification(n)}
-                                className="flex-1 min-w-0 text-left"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <p className={`text-sm leading-tight ${!n.is_read ? "font-semibold" : ""}`}>{n.title}</p>
-                                  {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />}
+                    <button
+                      type="button"
+                      onClick={group.collapsible ? () => setDoneCollapsed((v) => !v) : undefined}
+                      className={`w-full sticky top-0 z-10 bg-background/95 backdrop-blur px-5 pt-3 pb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider font-semibold border-b border-border/50 transition-colors ${
+                        group.tone === "red" ? "text-red-600 dark:text-red-400" :
+                        group.tone === "blue" ? "text-blue-600 dark:text-blue-400" :
+                        "text-muted-foreground/80"
+                      } ${group.collapsible ? "hover:bg-muted/30 cursor-pointer" : ""}`}
+                    >
+                      <SectionIcon className="h-3 w-3" />
+                      {group.label}
+                      <span className="ml-1 px-1.5 py-0 rounded-full bg-foreground/10 text-foreground/80 tabular-nums">
+                        {group.items.length}
+                      </span>
+                      {group.collapsible && (
+                        <span className="ml-auto text-muted-foreground/60">{collapsed ? "▼" : "▲"}</span>
+                      )}
+                    </button>
+                    {!collapsed && (
+                      <div>
+                        {group.items.map((n) => {
+                          const meta = NOTIFICATION_META[(n.type as NotificationType) ?? "system"] ?? NOTIFICATION_META.system;
+                          const Icon = meta.icon;
+                          const bundleCount = n.bundle_count ?? 1;
+                          return (
+                            <div
+                              key={n.id}
+                              className={`group relative px-5 py-3 border-b border-border/40 hover:bg-muted/40 transition-colors ${
+                                !n.is_read ? "bg-blue-500/[0.04]" : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`relative w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${ACCENT_CLASSES[meta.accent]}`}>
+                                  <Icon className="h-4 w-4" />
+                                  {bundleCount > 1 && (
+                                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-foreground text-background text-[9px] font-bold leading-none">
+                                      {bundleCount}
+                                    </span>
+                                  )}
                                 </div>
-                                {n.message && (
-                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</p>
-                                )}
-                                <p className="text-[10px] text-muted-foreground/70 mt-1.5">{formatTime(n.created_at)}</p>
-                              </button>
-                              {/* Hover-Action-Strip rechts */}
-                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity self-start">
-                                {n.is_read ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); markAsUnread(n.id); }}
-                                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                                    data-tooltip="Als ungelesen"
-                                    aria-label="Als ungelesen markieren"
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
-                                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                                    data-tooltip="Als gelesen"
-                                    aria-label="Als gelesen markieren"
-                                  >
-                                    <Check className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); deleteOne(n.id); }}
-                                  className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                                  data-tooltip="Loeschen"
-                                  aria-label="Loeschen"
+                                  onClick={() => clickNotification(n)}
+                                  className="flex-1 min-w-0 text-left"
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <div className="flex items-start gap-2">
+                                    <p className={`text-sm leading-tight ${!n.is_read ? "font-semibold" : ""}`}>{n.title}</p>
+                                    {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />}
+                                  </div>
+                                  {n.message && (
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</p>
+                                  )}
+                                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">{formatTime(n.created_at)}</p>
                                 </button>
+                                {/* Hover-Action-Strip rechts */}
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity self-start">
+                                  {!n.is_read && (
+                                    <SnoozeMenu onPick={(key) => snooze(n.id, key)} />
+                                  )}
+                                  {n.is_read ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); markAsUnread(n.id); }}
+                                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                                      data-tooltip="Als ungelesen"
+                                      aria-label="Als ungelesen markieren"
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
+                                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                                      data-tooltip="Als gelesen"
+                                      aria-label="Als gelesen markieren"
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); deleteOne(n.id); }}
+                                    className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                                    data-tooltip="Loeschen"
+                                    aria-label="Loeschen"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
 
-                            {/* Type-spezifische Aktion-Buttons unter dem Body */}
-                            {n.type === "todo_assigned" && n.resource_id && (
-                              <div className="flex gap-2 mt-2 ml-12">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); performAction(n, "done"); }}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-green-500/15 text-green-700 dark:text-green-300 hover:bg-green-500/25 transition-colors"
-                                >
-                                  <CircleCheck className="h-3 w-3" />
-                                  Erledigt
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                              {/* Type-spezifische Aktion-Buttons unter dem Body */}
+                              {n.type === "todo_assigned" && n.resource_id && (
+                                <div className="flex gap-2 mt-2 ml-12">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); performAction(n, "done"); }}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-green-500/15 text-green-700 dark:text-green-300 hover:bg-green-500/25 transition-colors"
+                                  >
+                                    <CircleCheck className="h-3 w-3" />
+                                    Erledigt
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -389,5 +473,42 @@ export function NotificationsBell() {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+/** Snooze-Submenu: kleines Popover mit 3 Optionen.
+ *  Positioniert relativ zum Hover-Action-Strip ohne overflow-Probleme. */
+function SnoozeMenu({ onPick }: { onPick: (key: typeof SNOOZE_OPTIONS[number]["key"]) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+        data-tooltip="Snooze"
+        aria-label="Snooze"
+      >
+        <AlarmClock className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[80]" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div className="absolute right-0 top-7 z-[90] w-40 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+            {SNOOZE_OPTIONS.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setOpen(false); onPick(o.key); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors flex items-center gap-2"
+              >
+                <AlarmClock className="h-3 w-3 text-muted-foreground" />
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
