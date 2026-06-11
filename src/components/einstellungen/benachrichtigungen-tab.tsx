@@ -1,0 +1,287 @@
+"use client";
+
+/**
+ * Benachrichtigungs-Einstellungen pro User.
+ *
+ * Matrix Event × Kanal: pro Event-Typ kann der User pro Kanal an/aus
+ * setzen. Default wenn nichts gespeichert: in_app=true, email=false,
+ * push=false (= aktuelles App-Verhalten).
+ *
+ * Quiet Hours: Push-spezifisch (kommt mit Phase 5 Web-Push). In-App
+ * Notifications werden immer geschrieben damit die Historie komplett
+ * bleibt.
+ *
+ * Autosave: Toggle aendert -> sofort upsert in DB, kein Save-Button.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "sonner";
+import { Bell, Mail, Smartphone, Clock } from "lucide-react";
+import type { NotificationType } from "@/types";
+
+interface ChannelSet {
+  in_app?: boolean;
+  email?: boolean;
+  push?: boolean;
+}
+type Channels = Partial<Record<NotificationType, ChannelSet>>;
+
+interface Settings {
+  channels: Channels;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  channels: {},
+  quiet_hours_enabled: false,
+  quiet_hours_start: "22:00",
+  quiet_hours_end: "07:00",
+};
+
+/** Event-Definition fuer die Matrix-UI. */
+const EVENTS: { type: NotificationType; label: string; description: string }[] = [
+  { type: "ticket_new",        label: "Neues Ticket",        description: "Ein Mitarbeiter reicht ein neues Ticket ein (Admin)" },
+  { type: "ticket_done",       label: "Ticket erledigt",     description: "Dein Ticket wurde erledigt" },
+  { type: "ticket_rejected",   label: "Ticket abgelehnt",    description: "Dein Ticket wurde abgelehnt" },
+  { type: "job_assigned",      label: "Auftrag zugewiesen",  description: "Du wurdest einem Auftrag zugewiesen" },
+  { type: "appointment_new",   label: "Neuer Termin",        description: "Ein Termin wurde dir eingetragen" },
+  { type: "todo_assigned",     label: "Todo zugewiesen",     description: "Du hast ein neues Todo bekommen" },
+  { type: "stempel_reminder",  label: "Stempel-Erinnerung",  description: "Du bist noch eingestempelt (Cron alle 30 Min)" },
+  { type: "system",            label: "System",              description: "Allgemeine System-Nachrichten" },
+];
+
+const CHANNELS: { key: "in_app" | "email" | "push"; label: string; icon: typeof Bell; enabled: boolean; tooltip?: string }[] = [
+  { key: "in_app", label: "In-App",  icon: Bell,        enabled: true  },
+  { key: "email",  label: "E-Mail",  icon: Mail,        enabled: false, tooltip: "Folgt in einer naechsten Phase" },
+  { key: "push",   label: "Push",    icon: Smartphone,  enabled: false, tooltip: "Folgt mit Web-Push (Phase 5)" },
+];
+
+function effectiveChannel(channels: Channels, type: NotificationType, key: "in_app" | "email" | "push"): boolean {
+  const ev = channels[type];
+  if (!ev || ev[key] === undefined) {
+    // Default: in_app on, email/push off
+    return key === "in_app";
+  }
+  return Boolean(ev[key]);
+}
+
+export function BenachrichtigungenTab() {
+  const supabase = createClient();
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+      setUserId(user.id);
+      const { data } = await supabase
+        .from("user_notification_settings")
+        .select("channels, quiet_hours_enabled, quiet_hours_start, quiet_hours_end")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data) {
+        setSettings({
+          channels: (data.channels as Channels) ?? {},
+          quiet_hours_enabled: data.quiet_hours_enabled,
+          quiet_hours_start: (data.quiet_hours_start ?? "22:00").slice(0, 5),
+          quiet_hours_end: (data.quiet_hours_end ?? "07:00").slice(0, 5),
+        });
+      }
+      setLoading(false);
+    })();
+  }, [supabase]);
+
+  async function persist(next: Settings) {
+    if (!userId) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("user_notification_settings")
+      .upsert({
+        user_id: userId,
+        channels: next.channels,
+        quiet_hours_enabled: next.quiet_hours_enabled,
+        quiet_hours_start: next.quiet_hours_start + ":00",
+        quiet_hours_end: next.quiet_hours_end + ":00",
+      }, { onConflict: "user_id" });
+    setSaving(false);
+    if (error) {
+      toast.error("Speichern fehlgeschlagen: " + error.message);
+      return;
+    }
+  }
+
+  function toggleChannel(type: NotificationType, key: "in_app" | "email" | "push") {
+    const current = effectiveChannel(settings.channels, type, key);
+    const ev = settings.channels[type] ?? {};
+    const next: Settings = {
+      ...settings,
+      channels: {
+        ...settings.channels,
+        [type]: { ...ev, [key]: !current },
+      },
+    };
+    setSettings(next);
+    persist(next);
+  }
+
+  function setQuietHoursEnabled(enabled: boolean) {
+    const next = { ...settings, quiet_hours_enabled: enabled };
+    setSettings(next);
+    persist(next);
+  }
+
+  function setQuietHoursTime(field: "start" | "end", value: string) {
+    const next = {
+      ...settings,
+      [field === "start" ? "quiet_hours_start" : "quiet_hours_end"]: value,
+    };
+    setSettings(next);
+    persist(next);
+  }
+
+  // Alle aus / Alle an Convenience (in_app-Spalte)
+  const allInAppOn = useMemo(
+    () => EVENTS.every((e) => effectiveChannel(settings.channels, e.type, "in_app")),
+    [settings.channels]
+  );
+
+  function setAllInApp(value: boolean) {
+    const next: Settings = {
+      ...settings,
+      channels: { ...settings.channels },
+    };
+    for (const e of EVENTS) {
+      next.channels[e.type] = { ...(next.channels[e.type] ?? {}), in_app: value };
+    }
+    setSettings(next);
+    persist(next);
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Laedt…</p>;
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      {/* Intro */}
+      <div className="text-sm text-muted-foreground">
+        Steuere pro Ereignistyp welcher Kanal genutzt wird. Aenderungen werden automatisch gespeichert.
+        {saving && <span className="ml-2 text-xs text-muted-foreground/70">(Speichert…)</span>}
+      </div>
+
+      {/* Matrix */}
+      <Card className="bg-card">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold">Ereignis</th>
+                {CHANNELS.map((c) => (
+                  <th key={c.key} className="text-center px-4 py-3 font-semibold w-24">
+                    <div className="flex flex-col items-center gap-1">
+                      <c.icon className={`h-4 w-4 ${c.enabled ? "" : "opacity-40"}`} />
+                      <span className={`text-[10px] uppercase tracking-wider ${c.enabled ? "" : "opacity-40"}`}>{c.label}</span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+              <tr className="border-b border-border bg-muted/20">
+                <td className="px-4 py-2 text-[11px] text-muted-foreground">
+                  <button type="button" onClick={() => setAllInApp(!allInAppOn)} className="hover:text-foreground transition-colors">
+                    {allInAppOn ? "Alle aus" : "Alle an"}
+                  </button>
+                </td>
+                {CHANNELS.map((c) => (
+                  <td key={c.key} className="px-4 py-2 text-center text-[10px] text-muted-foreground">
+                    {!c.enabled && <span data-tooltip={c.tooltip}>noch nicht</span>}
+                  </td>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {EVENTS.map((e) => (
+                <tr key={e.type} className="border-b border-border/40 last:border-b-0 hover:bg-muted/20">
+                  <td className="px-4 py-3 align-top">
+                    <p className="font-medium">{e.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{e.description}</p>
+                  </td>
+                  {CHANNELS.map((c) => (
+                    <td key={c.key} className="px-4 py-3 text-center">
+                      <Toggle
+                        value={effectiveChannel(settings.channels, e.type, c.key)}
+                        onChange={() => toggleChannel(e.type, c.key)}
+                        disabled={!c.enabled}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {/* Quiet Hours */}
+      <Card className="bg-card">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="font-medium text-sm">Stille Stunden</p>
+                <p className="text-xs text-muted-foreground">Wird mit Push-Benachrichtigungen aktiv (Phase 5). In-App-Nachrichten werden trotzdem gespeichert.</p>
+              </div>
+            </div>
+            <Toggle value={settings.quiet_hours_enabled} onChange={() => setQuietHoursEnabled(!settings.quiet_hours_enabled)} />
+          </div>
+          {settings.quiet_hours_enabled && (
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/60">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Von</label>
+                <input
+                  type="time"
+                  value={settings.quiet_hours_start}
+                  onChange={(e) => setQuietHoursTime("start", e.target.value)}
+                  className="mt-1 w-full h-9 px-3 text-sm rounded-lg border border-border bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Bis</label>
+                <input
+                  type="time"
+                  value={settings.quiet_hours_end}
+                  onChange={(e) => setQuietHoursTime("end", e.target.value)}
+                  className="mt-1 w-full h-9 px-3 text-sm rounded-lg border border-border bg-background"
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Toggle({ value, onChange, disabled }: { value: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onChange}
+      role="switch"
+      aria-checked={value}
+      disabled={disabled}
+      className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+        disabled
+          ? "bg-foreground/10 cursor-not-allowed opacity-40"
+          : value ? "bg-red-500" : "bg-foreground/20 dark:bg-foreground/30"
+      }`}
+    >
+      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
+    </button>
+  );
+}

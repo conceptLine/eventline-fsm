@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plug, Users, Shield, Activity, Building2, Handshake, FileText } from "lucide-react";
+import { Plug, Users, Shield, Activity, Building2, Handshake, FileText, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IntegrationenTab } from "@/components/einstellungen/integrationen-tab";
 import { TeamTab } from "@/components/einstellungen/team-tab";
@@ -17,14 +17,15 @@ import { RollenTab } from "@/components/einstellungen/rollen-tab";
 import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { PartnerFormTab } from "@/components/einstellungen/partner-form-tab";
+import { BenachrichtigungenTab } from "@/components/einstellungen/benachrichtigungen-tab";
 import { BuildInfoBadge } from "@/components/einstellungen/build-info-badge";
 import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
 import { VertrauteGeraeteCard } from "@/components/einstellungen/vertraute-geraete-card";
 
-type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet" | "partner-form";
+type Tab = "integrationen" | "team" | "rollen" | "aktivitaet" | "partner" | "partner-rollen" | "partner-aktivitaet" | "partner-form" | "benachrichtigungen";
 type Portal = "firma" | "partner";
 
-const ALL_TABS: Tab[] = ["integrationen", "team", "rollen", "aktivitaet", "partner", "partner-rollen", "partner-aktivitaet", "partner-form"];
+const ALL_TABS: Tab[] = ["integrationen", "team", "rollen", "aktivitaet", "partner", "partner-rollen", "partner-aktivitaet", "partner-form", "benachrichtigungen"];
 
 // Welcher Haupt-Tab gehoert welcher Portal-Gruppe. Beim Wechsel des
 // Haupt-Tabs springen wir automatisch auf den ersten Sub-Tab dieser
@@ -34,6 +35,7 @@ const PORTAL_OF: Record<Tab, Portal> = {
   rollen: "firma",
   aktivitaet: "firma",
   integrationen: "firma",
+  benachrichtigungen: "firma",
   partner: "partner",
   "partner-rollen": "partner",
   "partner-aktivitaet": "partner",
@@ -84,8 +86,9 @@ export default function EinstellungenPage() {
       const admin = profile?.role === "admin";
       setIsAdmin(admin);
       // Non-Admin auf einem Admin-only-Tab → auf integrationen umlenken,
-      // sonst sieht er einen leeren Tab.
-      if (!admin && tab !== "integrationen") {
+      // sonst sieht er einen leeren Tab. Benachrichtigungen sind fuer
+      // alle freigeschaltet — nicht umlenken wenn der Tab schon dort ist.
+      if (!admin && tab !== "integrationen" && tab !== "benachrichtigungen") {
         selectTab("integrationen");
       }
     })();
@@ -99,6 +102,7 @@ export default function EinstellungenPage() {
       { key: "rollen" as Tab, label: "Rollen", icon: <Shield className="h-4 w-4" /> },
       { key: "aktivitaet" as Tab, label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
     ] : []),
+    { key: "benachrichtigungen", label: "Benachrichtigungen", icon: <Bell className="h-4 w-4" /> },
     { key: "integrationen", label: "Integrationen", icon: <Plug className="h-4 w-4" /> },
   ];
 
@@ -193,6 +197,8 @@ export default function EinstellungenPage() {
       {tab === "aktivitaet" && isAdmin && <AktivitaetTab scope="firma" />}
 
       {tab === "partner-aktivitaet" && isAdmin && <AktivitaetTab scope="partner" />}
+
+      {tab === "benachrichtigungen" && <BenachrichtigungenTab />}
     </div>
   );
 }

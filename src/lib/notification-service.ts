@@ -48,6 +48,39 @@ interface NotificationRow {
   resource_id: string | null;
 }
 
+/** Filtert Empfaenger gegen ihre user_notification_settings.channels.
+ *  Default wenn nichts gespeichert: in_app=true (= aktuelles Verhalten).
+ *
+ *  Lookup ist ein einziger Query mit IN — pro Notify-Call ein DB-Hit. */
+async function filterByInAppSettings(
+  client: SupabaseClient,
+  recipients: string[],
+  type: NotificationType,
+): Promise<string[]> {
+  if (recipients.length === 0) return recipients;
+  const unique = Array.from(new Set(recipients.filter(Boolean)));
+  const { data, error } = await client
+    .from("user_notification_settings")
+    .select("user_id, channels")
+    .in("user_id", unique);
+  if (error) {
+    // Settings-Lookup-Failure soll Notifications nicht blockieren.
+    logError("notification-service.filterByInAppSettings", error);
+    return unique;
+  }
+  const byUser = new Map<string, Record<string, { in_app?: boolean; email?: boolean; push?: boolean }>>();
+  for (const row of data ?? []) {
+    byUser.set(row.user_id, (row.channels as Record<string, { in_app?: boolean; email?: boolean; push?: boolean }>) ?? {});
+  }
+  return unique.filter((uid) => {
+    const ch = byUser.get(uid);
+    if (!ch) return true; // Keine Settings = Default an
+    const evCh = ch[type];
+    if (!evCh) return true; // Kein Event-spezifischer Eintrag = Default an
+    return evCh.in_app !== false;
+  });
+}
+
 /** Low-level Insert. Funktionen unten bauen Rows und reichen sie hier
  *  durch. Insert ist best-effort: Fehler werden geloggt, nicht geworfen. */
 async function insertMany(client: SupabaseClient, rows: NotificationRow[]) {
@@ -56,6 +89,7 @@ async function insertMany(client: SupabaseClient, rows: NotificationRow[]) {
   if (error) logError("notification-service.insert", error, { count: rows.length });
 }
 
+/** Erzeugt eine Row pro Empfaenger mit gleichem Body. */
 function fanOut<T extends Omit<NotificationRow, "user_id">>(
   recipients: string[],
   base: T,
@@ -68,6 +102,18 @@ function fanOut<T extends Omit<NotificationRow, "user_id">>(
       return true;
     })
     .map((user_id) => ({ user_id, ...base }));
+}
+
+/** Helper: filtert Empfaenger nach Settings + macht den Insert.
+ *  Alle public Service-Funktionen nutzen das statt direkt insertMany. */
+async function deliver(
+  client: SupabaseClient,
+  recipients: string[],
+  type: NotificationType,
+  base: Omit<NotificationRow, "user_id" | "type">,
+) {
+  const allowed = await filterByInAppSettings(client, recipients, type);
+  await insertMany(client, fanOut(allowed, { type, ...base }));
 }
 
 // =============================================================
@@ -98,14 +144,13 @@ export async function notifyTicketNew(
   },
 ) {
   const label = TICKET_TYPE_LABEL[args.ticketType] ?? "Ticket";
-  await insertMany(client, fanOut(args.recipients, {
-    type: "ticket_new" as NotificationType,
+  await deliver(client, args.recipients, "ticket_new", {
     title: `Neues ${label}: ${args.ticketTitle}`,
     message: `${args.byName} hat T-${args.ticketNumber} eingereicht.`,
     link: `/tickets/${args.ticketId}`,
     resource_type: "ticket",
     resource_id: args.ticketId,
-  }));
+  });
 }
 
 export async function notifyTicketDone(
@@ -117,14 +162,13 @@ export async function notifyTicketDone(
     byName: string;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "ticket_done" as NotificationType,
+  await deliver(client, args.recipients, "ticket_done", {
     title: `Ticket erledigt: ${args.ticketTitle}`,
     message: `${args.byName} hat T-${args.ticketNumber} geschlossen.`,
     link: `/tickets/${args.ticketId}`,
     resource_type: "ticket",
     resource_id: args.ticketId,
-  }));
+  });
 }
 
 export async function notifyTicketRejected(
@@ -137,14 +181,13 @@ export async function notifyTicketRejected(
     byName: string;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "ticket_rejected" as NotificationType,
+  await deliver(client, args.recipients, "ticket_rejected", {
     title: `Ticket abgelehnt: ${args.ticketTitle}`,
     message: `${args.byName} hat T-${args.ticketNumber} abgelehnt: ${args.reason}`,
     link: `/tickets/${args.ticketId}`,
     resource_type: "ticket",
     resource_id: args.ticketId,
-  }));
+  });
 }
 
 // --- JOBS ----------------------------------------------------
@@ -158,14 +201,13 @@ export async function notifyJobAssigned(
     byName: string;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "job_assigned" as NotificationType,
+  await deliver(client, args.recipients, "job_assigned", {
     title: `Auftrag zugewiesen: ${args.jobTitle}`,
     message: `${args.byName} hat dich INT-${args.jobNumber} zugewiesen.`,
     link: `/auftraege/${args.jobId}`,
     resource_type: "job",
     resource_id: args.jobId,
-  }));
+  });
 }
 
 // --- APPOINTMENTS --------------------------------------------
@@ -184,14 +226,13 @@ export async function notifyAppointmentNew(
   const when = new Date(args.startTime).toLocaleString("de-CH", {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
-  await insertMany(client, fanOut(args.recipients, {
-    type: "appointment_new" as NotificationType,
+  await deliver(client, args.recipients, "appointment_new", {
     title: `Neuer Termin: ${args.appointmentTitle}`,
     message: `${when} - INT-${args.jobNumber}. Eingetragen von ${args.byName}.`,
     link: `/auftraege/${args.jobId}`,
     resource_type: "appointment",
     resource_id: args.appointmentId,
-  }));
+  });
 }
 
 // --- TODOS ---------------------------------------------------
@@ -205,14 +246,13 @@ export async function notifyTodoAssigned(
     urgent?: boolean;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "todo_assigned" as NotificationType,
+  await deliver(client, args.recipients, "todo_assigned", {
     title: `${args.urgent ? "Dringend: " : ""}${args.todoTitle}`,
     message: `${args.byName} hat dir ein Todo zugewiesen.`,
     link: `/todos`,
     resource_type: "todo",
     resource_id: args.todoId,
-  }));
+  });
 }
 
 // --- STEMPEL-REMINDER (CRON) ---------------------------------
@@ -223,14 +263,13 @@ export async function notifyStempelReminder(
     sinceMin: number;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "stempel_reminder" as NotificationType,
+  await deliver(client, args.recipients, "stempel_reminder", {
     title: "Stempel laeuft noch",
     message: `Du bist seit ${args.sinceMin} Min eingestempelt — vergessen auszustempeln?`,
     link: "/stempelzeiten",
     resource_type: null,
     resource_id: null,
-  }));
+  });
 }
 
 // --- SYSTEM (fallback) ---------------------------------------
@@ -243,12 +282,11 @@ export async function notifySystem(
     link?: string | null;
   },
 ) {
-  await insertMany(client, fanOut(args.recipients, {
-    type: "system" as NotificationType,
+  await deliver(client, args.recipients, "system", {
     title: args.title,
     message: args.message ?? null,
     link: args.link ?? null,
     resource_type: null,
     resource_id: null,
-  }));
+  });
 }
