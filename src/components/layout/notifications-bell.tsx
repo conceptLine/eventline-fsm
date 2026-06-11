@@ -474,7 +474,7 @@ export function NotificationsBell() {
               hinaus hatte. */}
           <div className="px-5 py-3 border-t border-border bg-card/40 shrink-0 flex items-center justify-end">
             <Link
-              href="/einstellungen?tab=benachrichtigungen"
+              href="/mein-konto?tab=benachrichtigungen"
               onClick={() => setOpen(false)}
               className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
