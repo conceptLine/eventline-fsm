@@ -18,7 +18,8 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Bell, Mail, Smartphone, Clock } from "lucide-react";
+import { Bell, Mail, Smartphone, Clock, Volume2 } from "lucide-react";
+import { isSoundEnabled, setSoundEnabled, playNotificationSound } from "@/lib/notification-sound";
 import type { NotificationType } from "@/types";
 
 interface ChannelSet {
@@ -168,7 +169,8 @@ export function BenachrichtigungenTab() {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      {/* Push-Setup */}
+      {/* Sound + Push */}
+      <SoundToggleCard />
       <PushSubscriptionCard />
 
       {/* Intro */}
@@ -267,6 +269,35 @@ export function BenachrichtigungenTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** Sound-Toggle: kurzer Ding-Sound bei eingehenden Notifications.
+ *  Einstellung ist Geraete-lokal (localStorage), nicht servergespeichert. */
+function SoundToggleCard() {
+  const [enabled, setEnabledState] = useState(true);
+  useEffect(() => { setEnabledState(isSoundEnabled()); }, []);
+  function toggle() {
+    const next = !enabled;
+    setEnabledState(next);
+    setSoundEnabled(next);
+    if (next) playNotificationSound();
+  }
+  return (
+    <Card className="bg-card">
+      <CardContent className="p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-blue-500/15 text-blue-600 dark:text-blue-400">
+            <Volume2 className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Sound bei neuer Benachrichtigung</p>
+            <p className="text-xs text-muted-foreground">Kurzer Hinweiston wenn die App geoeffnet ist. Pro Geraet einstellbar.</p>
+          </div>
+        </div>
+        <Toggle value={enabled} onChange={toggle} />
+      </CardContent>
+    </Card>
   );
 }
 

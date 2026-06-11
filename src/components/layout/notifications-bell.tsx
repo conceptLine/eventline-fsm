@@ -29,6 +29,7 @@ import {
 import type { Notification, NotificationType } from "@/types";
 import { usePermissions } from "@/lib/use-permissions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { playNotificationSound } from "@/lib/notification-sound";
 
 // Notif-Types die typischerweise eine User-Reaktion brauchen.
 // Andere (job_assigned, ticket_done, system) sind FYI-Updates.
@@ -122,9 +123,10 @@ export function NotificationsBell() {
             } : undefined,
           });
         }
-        // Glocke pulsiert 2s als visueller Hint
+        // Glocke pulsiert 2s als visueller Hint + Sound (opt-in)
         setPulse(true);
         window.setTimeout(() => setPulse(false), 2000);
+        playNotificationSound();
       }
     };
     window.addEventListener("realtime:notifications", handler as EventListener);
