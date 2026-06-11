@@ -67,7 +67,16 @@ export function NotificationsBell() {
   const isLocked = role === "techniker";
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<"alle" | "ungelesen">("alle");
+  // Default 'ungelesen': beim Oeffnen sieht man sofort was zu tun ist,
+  // nicht die Erledigt-Sektion. User kann manuell auf 'Alle' wechseln —
+  // wird beim erneuten Oeffnen aber wieder auf 'ungelesen' zurueckgesetzt
+  // (siehe useEffect unten).
+  const [filter, setFilter] = useState<"alle" | "ungelesen">("ungelesen");
+  // Bei jedem Open Filter auf 'ungelesen' zuruecksetzen damit nicht ein
+  // manueller 'Alle'-Wechsel zwischen den Sessions haengen bleibt.
+  useEffect(() => {
+    if (open) setFilter("ungelesen");
+  }, [open]);
   const [unread, setUnread] = useState(0);
   const [pulse, setPulse] = useState(false);
   // Ref auf seen-IDs damit Realtime-Inserts genau ein Mal Toast triggern
