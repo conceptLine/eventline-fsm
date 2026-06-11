@@ -191,26 +191,30 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
         <NotificationsBell />
       </div>
 
-      {/* User */}
-      <div className="p-4 mx-3 mb-3 rounded-xl bg-sidebar-foreground/[0.04] border border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-red-500/20">
+      {/* User — Card komplett klickbar fuer /mein-konto.
+          Logout-Button bleibt rechts daneben separat. */}
+      <div className="p-1 mx-3 mb-3 rounded-xl bg-sidebar-foreground/[0.04] border border-sidebar-border flex items-center gap-1">
+        <Link
+          href="/mein-konto"
+          className="flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg hover:bg-sidebar-accent/60 transition-all"
+        >
+          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-red-500/20 shrink-0">
             {profile.full_name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-sidebar-foreground truncate">
               {profile.full_name}
             </p>
-            <p className="text-[11px] text-sidebar-foreground/50 capitalize">{profile.role}</p>
+            <p className="text-[11px] text-sidebar-foreground/50 capitalize">Mein Konto</p>
           </div>
-          <button
-            onClick={onSignOut}
-            className="p-2 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-200"
-            data-tooltip="Abmelden"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
+        </Link>
+        <button
+          onClick={onSignOut}
+          className="p-2 mr-2 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-200 shrink-0"
+          data-tooltip="Abmelden"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </aside>
   );

@@ -86,8 +86,10 @@ export const PARTNER_PERMISSION_MODULES: PermissionModule[] = [
   { slug: "partner-belegungsplan", label: "Belegungsplan", paths: ["/partner/belegungsplan"], actions: ["view"] },
 ];
 
-/** Pfade die fuer alle eingeloggten User erreichbar sind, unabhaengig von der Rolle. */
-const ALWAYS_ALLOWED_PREFIXES = ["/dashboard"];
+/** Pfade die fuer alle eingeloggten User erreichbar sind, unabhaengig von der Rolle.
+ *  - /dashboard: Startseite, jeder soll dort landen koennen
+ *  - /mein-konto: User-Self-Service (Profil, Benachrichtigungen, Geraete, Kalender) */
+const ALWAYS_ALLOWED_PREFIXES = ["/dashboard", "/mein-konto"];
 
 /** Pfade die immer erreichbar sind, auch ohne Modul-View-Permission, weil
  *  sie via Verknuepfung aus einem anderen Modul aufgerufen werden (z.B.
