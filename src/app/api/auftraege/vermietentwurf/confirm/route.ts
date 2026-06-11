@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { notifySystem } from "@/lib/notification-service";
 
 // HINWEIS: Diese Route bleibt absichtlich auf dem deutschen Pfad
 // /api/auftraege/vermietentwurf/confirm — sie wird in Mails an Kunden
@@ -124,18 +125,15 @@ export async function GET(request: NextRequest) {
 
   if (admins && admins.length > 0) {
     const title = type === "angebot"
-      ? `Angebot best&auml;tigt — Auftrag erstellt: ${customerName}`
-      : `Konditionen best&auml;tigt: ${customerName}`;
+      ? `Angebot bestaetigt — Auftrag erstellt: ${customerName}`
+      : `Konditionen bestaetigt: ${customerName}`;
     const link = type === "angebot" ? `/auftraege/${id}` : `/auftraege/vermietentwurf/${id}`;
-    // Bulk-Insert statt Schleife → ein Roundtrip statt N.
-    await supabase.from("notifications").insert(
-      admins.map((a) => ({
-        user_id: a.id,
-        title,
-        message: locationName,
-        link,
-      })),
-    );
+    await notifySystem(supabase, {
+      recipients: admins.map((a) => a.id),
+      title,
+      message: locationName,
+      link,
+    });
   }
 
   const successMsg = type === "angebot"

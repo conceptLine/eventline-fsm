@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import { requireUser } from "@/lib/api-auth";
 import { appUrl } from "@/lib/app-url";
 import { ADMIN_NOTIFICATION_EMAIL } from "@/lib/constants";
+import { notifySystem } from "@/lib/notification-service";
 
 export async function POST(request: Request) {
   const auth = await requireUser();
@@ -13,11 +14,12 @@ export async function POST(request: Request) {
   const resendKey = process.env.RESEND_API_KEY;
   const supabase = createAdminClient();
 
-  // In-App Notification an den primaeren Admin
+  // In-App Notification an den primaeren Admin (via Service =>
+  // user_notification_settings werden respektiert).
   const { data: admin } = await supabase.from("profiles").select("id").eq("email", ADMIN_NOTIFICATION_EMAIL).single();
   if (admin?.id) {
-    await supabase.from("notifications").insert({
-      user_id: admin.id,
+    await notifySystem(supabase, {
+      recipients: [admin.id],
       title: `Neuer Auftrag aus Vertrieb: INT-${jobNumber}`,
       message: `${firma} — ${title}${creatorName ? ` (erstellt von ${creatorName})` : ""}`,
       link: `/auftraege/${jobId}`,

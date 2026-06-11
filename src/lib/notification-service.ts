@@ -257,6 +257,31 @@ export async function notifyTodoAssigned(
 
 // --- STEMPEL-REMINDER (CRON) ---------------------------------
 
+/** Per-User-Reminder mit Job-Kontext. Wird vom Cron alle 30 Min
+ *  pro offenen time_entry erzeugt — Recipients ist ein einzelner User. */
+export async function notifyStempelReminderPerEntry(
+  client: SupabaseClient,
+  args: {
+    userId: string;
+    entryId: string;
+    jobLabel: string;
+    endIso: string;
+  },
+) {
+  const endStr = new Date(args.endIso).toLocaleString("de-CH", {
+    timeZone: "Europe/Zurich",
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+  await deliver(client, [args.userId], "stempel_reminder", {
+    title: `Stempeluhr laeuft noch: ${args.jobLabel}`,
+    message: `Termin endete ${endStr} — bitte ausstempeln falls die Arbeit fertig ist.`,
+    link: "/stempel",
+    resource_type: "time_entry",
+    resource_id: args.entryId,
+  });
+}
+
+/** Generischer Stempel-Reminder ohne Job-Kontext. */
 export async function notifyStempelReminder(
   client: SupabaseClient,
   args: BaseArgs & {

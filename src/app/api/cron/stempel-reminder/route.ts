@@ -19,6 +19,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { logError } from "@/lib/log";
+import { notifyStempelReminderPerEntry } from "@/lib/notification-service";
 
 export const dynamic = "force-dynamic";
 
@@ -56,29 +57,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, sent: 0 });
   }
 
-  // Bulk-INSERT — ein Roundtrip statt einer pro Eintrag.
-  const rows = candidates.map((c) => {
+  // Pro Kandidat ein notify-Call — der Service holt User-Settings und
+  // filtert Empfaenger raus die stempel_reminder.in_app=false haben.
+  // Parallel ausfuehren damit der Cron schnell bleibt.
+  await Promise.all(candidates.map((c) => {
     const jobLabel = c.job_number ? `INT-${c.job_number}` : (c.job_title ?? "Auftrag");
-    const endStr = new Date(c.latest_end).toLocaleString("de-CH", {
-      timeZone: "Europe/Zurich",
-      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    return notifyStempelReminderPerEntry(supabase, {
+      userId: c.user_id,
+      entryId: c.entry_id,
+      jobLabel,
+      endIso: c.latest_end,
     });
-    return {
-      user_id: c.user_id,
-      type: "stempel_reminder" as const,
-      title: `Stempeluhr läuft noch: ${jobLabel}`,
-      message: `Termin endete ${endStr} — bitte ausstempeln falls die Arbeit fertig ist.`,
-      link: "/stempel",
-      resource_type: "time_entry",
-      resource_id: c.entry_id,
-    };
-  });
+  }));
 
-  const { error: insertErr } = await supabase.from("notifications").insert(rows);
-  if (insertErr) {
-    logError("cron.stempel-reminder.insert", insertErr, { count: rows.length });
-    return NextResponse.json({ error: "Bulk-Insert fehlgeschlagen" }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true, sent: rows.length });
+  return NextResponse.json({ success: true, sent: candidates.length });
 }
