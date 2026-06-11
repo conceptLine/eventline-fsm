@@ -57,11 +57,12 @@ export function MobileNav({ onMenuOpen, permissions, role }: MobileNavProps) {
                   active ? "text-red-500" : "text-sidebar-foreground/60 active:text-sidebar-foreground"
                 )}
               >
-                {/* Badge oben rechts vom Icon — dezent (kleiner Dot mit
-                    Zahl statt knallrotem Alarm-Style). */}
+                {/* Badge oben rechts vom Icon — rot pulsierend fuer
+                    Aufmerksamkeit. */}
                 {badge > 0 && (
-                  <span className="absolute top-0.5 right-2 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 text-[9px] font-medium rounded-full bg-foreground/15 text-foreground/70 tabular-nums leading-none">
-                    {badge > 99 ? "99+" : badge}
+                  <span className="absolute top-0.5 right-2 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 text-[9px] font-bold rounded-full bg-red-500 text-white tabular-nums leading-none shadow-sm shadow-red-500/30">
+                    <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-40" />
+                    <span className="relative">{badge > 99 ? "99+" : badge}</span>
                   </span>
                 )}
                 {Icon && <Icon className={cn("h-5 w-5", active && "scale-110")} />}
