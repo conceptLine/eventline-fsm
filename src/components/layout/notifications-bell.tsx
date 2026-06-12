@@ -570,18 +570,22 @@ export function NotificationsBell() {
         </SheetContent>
       </Sheet>
 
-      {/* Prominentes Popup oben rechts — slide-in animation, max 3
-          gleichzeitig. Auto-dismiss nach 7s, click oeffnet Link. */}
+      {/* Prominentes Popup zentriert auf dem Screen — scale-in animation,
+          max 3 gleichzeitig (vertikal gestapelt um den Mittelpunkt). Auto-
+          dismiss nach 7s, click oeffnet Link. Dimmt den Hintergrund leicht
+          ab damit das Popup im Fokus steht. */}
       {typeof window !== "undefined" && popups.length > 0 && createPortal(
-        <div className="fixed top-4 right-4 z-[1500] flex flex-col gap-2 max-w-sm w-[calc(100%-2rem)] sm:w-96 pointer-events-none">
-          {popups.map((n) => (
-            <NotificationPopupCard
-              key={n.id}
-              notif={n}
-              onOpen={() => openFromPopup(n)}
-              onDismiss={() => dismissPopup(n.id)}
-            />
-          ))}
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col gap-2 w-full max-w-md">
+            {popups.map((n) => (
+              <NotificationPopupCard
+                key={n.id}
+                notif={n}
+                onOpen={() => openFromPopup(n)}
+                onDismiss={() => dismissPopup(n.id)}
+              />
+            ))}
+          </div>
         </div>,
         document.body,
       )}
@@ -604,7 +608,7 @@ function NotificationPopupCard({
     return () => window.clearTimeout(t);
   }, [onDismiss]);
   return (
-    <div className="pointer-events-auto relative animate-[slide-in-right_220ms_ease-out] rounded-xl bg-card border border-border shadow-2xl overflow-hidden">
+    <div className="pointer-events-auto relative animate-[popup-center-in_220ms_ease-out] rounded-xl bg-card border border-border shadow-2xl overflow-hidden">
       <button
         type="button"
         onClick={onOpen}
