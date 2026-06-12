@@ -16,8 +16,15 @@
 
 import { Fragment, useMemo } from "react";
 import Link from "next/link";
-import { Clock, User } from "lucide-react";
-import type { BvgPersonForecast, CalendarItem, CalendarShift } from "./types";
+import { Clock, User, Plane } from "lucide-react";
+import type { BvgPersonForecast, CalendarItem, CalendarShift, CalendarTimeOff } from "./types";
+
+const TIME_OFF_LABEL: Record<CalendarTimeOff["type"], string> = {
+  ferien: "Ferien",
+  krank: "Krank",
+  kompensation: "Komp-Tag",
+  frei: "Frei",
+};
 
 interface Props {
   weekDays: Date[];
@@ -30,6 +37,9 @@ interface Props {
    *  Pille neben dem Namen gerendert. Nur Personen mit Forecast bekommen
    *  eine Pille (Stunden-Lohn nicht hinterlegt -> keine Pille). */
   bvgByPerson?: Map<string, BvgPersonForecast>;
+  /** Genehmigte Abwesenheiten — dezenter Marker (Plane-Icon) im
+   *  jeweiligen (Person, Tag)-Cell, tooltip mit Typ. */
+  timeOffs?: CalendarTimeOff[];
 }
 
 function keyOf(d: Date): string {
@@ -65,7 +75,23 @@ const SHIFT_STYLE_NEUTRAL = {
   text: "text-foreground/80",
 };
 
-export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgByPerson }: Props) {
+export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgByPerson, timeOffs }: Props) {
+  // Lookup-Map (personId-dateKey -> TimeOff-Typ) fuer schnelle pro-Cell-
+  // Pruefung. Built once pro Render-Cycle, NICHT pro Cell.
+  const timeOffByPersonDay = useMemo(() => {
+    const map = new Map<string, CalendarTimeOff>();
+    if (!timeOffs) return map;
+    const toKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    for (const t of timeOffs) {
+      const cursor = new Date(t.startDate);
+      const endTs = new Date(t.endDate.getFullYear(), t.endDate.getMonth(), t.endDate.getDate()).getTime();
+      while (cursor.getTime() <= endTs) {
+        map.set(`${t.userId}-${toKey(cursor)}`, t);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return map;
+  }, [timeOffs]);
   const todayKey = keyOf(new Date());
   const weekStartTs = new Date(weekDays[0].getFullYear(), weekDays[0].getMonth(), weekDays[0].getDate()).getTime();
   const weekEndTs = new Date(weekDays[6].getFullYear(), weekDays[6].getMonth(), weekDays[6].getDate()).getTime();
@@ -249,11 +275,24 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgB
                   const k = keyOf(d);
                   const dayShifts = g.shifts.filter((s) => keyOf(s.date) === k);
                   const isToday = k === todayKey;
+                  const off = g.id ? timeOffByPersonDay.get(`${g.id}-${k}`) : undefined;
+                  // Abwesenheit dezent: leichter Grau-Tint im Cell-Background
+                  // + Plane-Icon top-right mit Tooltip. Keine Text-Label
+                  // damit's keinen Platz frisst.
+                  const offBg = off ? "bg-foreground/[0.05] dark:bg-foreground/[0.08]" : "";
                   return (
                     <div
                       key={`${g.name}-${k}`}
-                      className={`p-1 space-y-1 min-h-[64px] ${isToday ? "bg-red-50/40 dark:bg-red-500/[0.06]" : "bg-card"}`}
+                      className={`relative p-1 space-y-1 min-h-[64px] ${isToday ? "bg-red-50/40 dark:bg-red-500/[0.06]" : offBg ? offBg : "bg-card"}`}
                     >
+                      {off && (
+                        <span
+                          className="absolute top-1 right-1 z-[1] text-muted-foreground/60 dark:text-muted-foreground/70"
+                          data-tooltip={`${TIME_OFF_LABEL[off.type]} — ${g.name}`}
+                        >
+                          <Plane className="h-3 w-3" />
+                        </span>
+                      )}
                       {dayShifts.map((s) => {
                         const sty = s.jobType ? ITEM_STYLE[s.jobType] : SHIFT_STYLE_NEUTRAL;
                         const startStr = fmtTime(s.date);

@@ -52,4 +52,16 @@ export interface BvgPersonForecast {
   status: "ok" | "warn" | "crit";
 }
 
+/** Genehmigte Abwesenheit (time_off) — wird in beiden Views dezent als
+ *  kleiner Marker pro Tag/Person gerendert. RLS scoped Non-Admins eh auf
+ *  eigene, Admins sehen alle. */
+export interface CalendarTimeOff {
+  id: string;
+  userId: string;
+  userName: string;
+  type: "ferien" | "krank" | "kompensation" | "frei";
+  startDate: Date;
+  endDate: Date;
+}
+
 export type CalendarView = "monat" | "woche";

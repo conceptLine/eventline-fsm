@@ -21,8 +21,15 @@
 
 import Link from "next/link";
 import { useMemo, Fragment } from "react";
-import { MapPin, ExternalLink, Clock, User } from "lucide-react";
-import type { CalendarItem, CalendarShift } from "./types";
+import { MapPin, ExternalLink, Clock, User, Plane } from "lucide-react";
+import type { CalendarItem, CalendarShift, CalendarTimeOff } from "./types";
+
+const TIME_OFF_LABEL: Record<CalendarTimeOff["type"], string> = {
+  ferien: "Ferien",
+  krank: "Krank",
+  kompensation: "Komp-Tag",
+  frei: "Frei",
+};
 
 const MAX_LANES_PER_WEEK = 6;
 const LANE_HEIGHT_PX = 22;
@@ -33,6 +40,10 @@ interface Props {
   month: number;
   items: CalendarItem[];
   shifts: CalendarShift[];
+  /** Genehmigte Abwesenheiten — pro Tag werden die abwesenden Personen
+   *  als dezenter Plane-Icon + Count am unteren Rand der Cell gerendert.
+   *  Im Side-Panel taucht eine "Abwesend (N)"-Sektion auf. */
+  timeOffs?: CalendarTimeOff[];
   selectedDay: number | null;
   onSelectDay: (day: number | null) => void;
   /** Klick auf einen Tag des Vor-/Folge-Monats: Parent springt zu diesem
@@ -101,7 +112,24 @@ function fmtShiftTime(d: Date): string {
   return d.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay, onNavigate, onStandaloneShiftClick }: Props) {
+export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, onSelectDay, onNavigate, onStandaloneShiftClick }: Props) {
+  // Pro-Tag-Lookup: welche Personen sind heute abwesend? Built einmal pro
+  // Render-Cycle.
+  const timeOffByDay = useMemo(() => {
+    const map = new Map<string, CalendarTimeOff[]>();
+    if (!timeOffs) return map;
+    for (const t of timeOffs) {
+      const cursor = new Date(t.startDate);
+      const endTs = new Date(t.endDate.getFullYear(), t.endDate.getMonth(), t.endDate.getDate()).getTime();
+      while (cursor.getTime() <= endTs) {
+        const k = keyOf(cursor);
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(t);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return map;
+  }, [timeOffs]);
   // Cells: 42 (6 Wochen × 7) — Prev/Next-Monat-Tage zur Kontext-Anzeige.
   const cells = useMemo<Cell[]>(() => {
     const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // 0=Mo
@@ -235,6 +263,11 @@ export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [shifts, selectedDate]);
 
+  const selectedTimeOffs = useMemo(() => {
+    if (!selectedDate) return [];
+    return timeOffByDay.get(keyOf(selectedDate)) ?? [];
+  }, [timeOffByDay, selectedDate]);
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div>
@@ -338,6 +371,23 @@ export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay
                           +{overflow[col]} weitere
                         </span>
                       )}
+                      {/* Abwesenheits-Marker — dezent bottom-right: kleines
+                          Plane-Icon + Count. Tooltip listet Personen+Typ.
+                          Nur in-month, sonst zu unruhig im aussen-Strip. */}
+                      {cell.inMonth && (() => {
+                        const offs = timeOffByDay.get(cellKey);
+                        if (!offs || offs.length === 0) return null;
+                        const tip = offs.map((o) => `${o.userName} (${TIME_OFF_LABEL[o.type]})`).join(", ");
+                        return (
+                          <span
+                            className="absolute bottom-1.5 right-2 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70"
+                            data-tooltip={tip}
+                          >
+                            <Plane className="h-2.5 w-2.5" />
+                            {offs.length}
+                          </span>
+                        );
+                      })()}
                     </button>
                   );
                 })}
@@ -455,7 +505,7 @@ export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay
                 Schliessen
               </button>
             </header>
-            {selectedItems.length === 0 && selectedShifts.length === 0 ? (
+            {selectedItems.length === 0 && selectedShifts.length === 0 && selectedTimeOffs.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Keine Einträge</p>
             ) : (() => {
               // Termine zu ihrem Auftrag gruppieren — Leo's Wunsch: nicht
@@ -594,6 +644,25 @@ export function MonthView({ year, month, items, shifts, selectedDay, onSelectDay
                       </h3>
                       <div className="space-y-1.5">
                         {orphanShifts.map((sh) => renderShift(sh, true))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Abwesend — dezent: kleine Liste, kein farb-buntes
+                      Heading. Nur Name + Typ in muted-Farben. */}
+                  {selectedTimeOffs.length > 0 && (
+                    <div>
+                      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                        <Plane className="h-3 w-3" />
+                        Abwesend ({selectedTimeOffs.length})
+                      </h3>
+                      <div className="space-y-0.5">
+                        {selectedTimeOffs.map((t) => (
+                          <div key={t.id} className="flex items-center justify-between text-xs px-2 py-1 rounded bg-muted/40">
+                            <span className="truncate">{t.userName}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{TIME_OFF_LABEL[t.type]}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

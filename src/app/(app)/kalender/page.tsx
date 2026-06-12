@@ -31,7 +31,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { logError } from "@/lib/log";
-import type { BvgPersonForecast, CalendarItem, CalendarShift, CalendarView, ItemType } from "@/components/kalender/types";
+import type { BvgPersonForecast, CalendarItem, CalendarShift, CalendarTimeOff, CalendarView, ItemType } from "@/components/kalender/types";
 import { calculateForecast, monthRange, forecastStatus } from "@/lib/bvg-forecast";
 import { MonthView } from "@/components/kalender/month-view";
 import { WeekView } from "@/components/kalender/week-view";
@@ -69,6 +69,15 @@ interface RawShift {
   job: { id: string; title: string; status: string; job_number: number | null; was_anfrage: boolean | null } | null;
 }
 
+interface RawTimeOff {
+  id: string;
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  type: "ferien" | "krank" | "kompensation" | "frei";
+  user: { full_name: string } | null;
+}
+
 export default function KalenderPage() {
   const supabase = createClient();
   // Auf Mobile starten wir mit der Wochen-Ansicht — das Monats-Grid (7×6)
@@ -81,6 +90,7 @@ export default function KalenderPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
+  const [timeOffs, setTimeOffs] = useState<CalendarTimeOff[]>([]);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNeuerTermin, setShowNeuerTermin] = useState(false);
@@ -119,9 +129,13 @@ export default function KalenderPage() {
     setLoading(true);
     const rangeStart = new Date(year, month - 1, 1).toISOString();
     const rangeEnd = new Date(year, month + 2, 0, 23, 59, 59).toISOString();
+    // time_off arbeitet auf Date-Only — separate Range-Strings.
+    const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const rangeStartDate = toDateStr(new Date(year, month - 1, 1));
+    const rangeEndDate = toDateStr(new Date(year, month + 2, 0));
 
     try {
-      const [jobsRes, shiftsRes] = await Promise.all([
+      const [jobsRes, shiftsRes, timeOffRes] = await Promise.all([
         supabase
           .from("jobs")
           .select("id, title, status, job_number, start_date, end_date, is_deleted, cancelled_as_anfrage, was_anfrage, guest_count, customer:customers(name), location:locations(name), room:rooms(name)")
@@ -135,6 +149,12 @@ export default function KalenderPage() {
           .not("start_time", "is", null)
           .gte("start_time", rangeStart)
           .lte("start_time", rangeEnd),
+        supabase
+          .from("time_off")
+          .select("id, user_id, start_date, end_date, type, user:profiles!user_id(full_name)")
+          .eq("status", "genehmigt")
+          .gte("end_date", rangeStartDate)
+          .lte("start_date", rangeEndDate),
       ]);
 
       const calItems: CalendarItem[] = [];
@@ -209,8 +229,24 @@ export default function KalenderPage() {
         });
       }
 
+      const calTimeOffs: CalendarTimeOff[] = [];
+      for (const r of (timeOffRes.data ?? []) as unknown as RawTimeOff[]) {
+        if (!r.user_id) continue;
+        const [sy, sm, sd] = r.start_date.split("-").map(Number);
+        const [ey, em, ed] = r.end_date.split("-").map(Number);
+        calTimeOffs.push({
+          id: r.id,
+          userId: r.user_id,
+          userName: r.user?.full_name ?? "Unbekannt",
+          type: r.type,
+          startDate: new Date(sy, sm - 1, sd),
+          endDate: new Date(ey, em - 1, ed),
+        });
+      }
+
       setItems(calItems);
       setShifts(calShifts);
+      setTimeOffs(calTimeOffs);
     } catch (e) {
       logError("kalender.load", e);
     } finally {
@@ -384,6 +420,7 @@ export default function KalenderPage() {
               month={month}
               items={items}
               shifts={shifts}
+              timeOffs={timeOffs}
               selectedDay={selectedDay}
               onSelectDay={setSelectedDay}
               onNavigate={navigateToDate}
@@ -399,6 +436,7 @@ export default function KalenderPage() {
                   weekDays={weekDays}
                   items={items}
                   shifts={shifts}
+                  timeOffs={timeOffs}
                   onStandaloneShiftClick={setEditTerminId}
                   bvgByPerson={bvgByPerson}
                 />
