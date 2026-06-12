@@ -90,6 +90,10 @@ export function NotificationsBell() {
   // Cursor fuer den Polling-Fallback (siehe useEffect): max created_at
   // der gesehenen Notifs. Alles juenger gilt als 'neu seit letztem Poll'.
   const lastSeenRef = useRef<string | null>(null);
+  // Erste load()-Runde nach Login: zeigt ungelesene Notifs die waehrend
+  // der Offline-Zeit reingekommen sind, als Popup -- damit der User die
+  // direkt beim Reinkommen sieht statt erst die Glocke klicken zu muessen.
+  const initialLoadDoneRef = useRef(false);
 
   async function load() {
     const nowIso = new Date().toISOString();
@@ -107,13 +111,32 @@ export function NotificationsBell() {
         .or(`snoozed_until.is.null,snoozed_until.lt.${nowIso}`),
     ]);
     if (data) {
-      setNotifications(data as Notification[]);
+      const rows = data as Notification[];
+      setNotifications(rows);
+      // Beim Initial-Load: ungelesene Notifs der letzten 24h als Popups
+      // raushauen — die sind waehrend Offline-Zeit reingekommen und der
+      // User soll sie direkt sehen. Aelter als 24h waere zu spammig.
+      // WICHTIG: vor dem seenIds-Fuellen pruefen, sonst werden sie als
+      // "schon gesehen" gefiltert.
+      if (!initialLoadDoneRef.current) {
+        initialLoadDoneRef.current = true;
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+        const pendingPopups = rows
+          .filter((n) => !n.is_read && n.created_at > dayAgo)
+          .slice(0, 3);
+        if (pendingPopups.length > 0) {
+          setPopups(pendingPopups);
+          setPulse(true);
+          window.setTimeout(() => setPulse(false), 2000);
+          playNotificationSound();
+        }
+      }
       // seen-Set fuer Initial-Load fuellen damit der erste Toast nur fuer
       // echte Live-Inserts kommt, nicht fuer History-Items.
-      for (const n of data as Notification[]) seenIdsRef.current.add(n.id);
+      for (const n of rows) seenIdsRef.current.add(n.id);
       // Polling-Cursor: juengste Notif. Naechster Poll sucht > diesen Wert.
-      if (data.length > 0) {
-        const newest = (data[0] as Notification).created_at;
+      if (rows.length > 0) {
+        const newest = rows[0].created_at;
         if (!lastSeenRef.current || newest > lastSeenRef.current) {
           lastSeenRef.current = newest;
         }
@@ -575,7 +598,7 @@ export function NotificationsBell() {
           dismiss nach 7s, click oeffnet Link. Dimmt den Hintergrund leicht
           ab damit das Popup im Fokus steht. */}
       {typeof window !== "undefined" && popups.length > 0 && createPortal(
-        <div className="fixed inset-0 z-[1500] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm pointer-events-none">
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md pointer-events-none">
           <div className="flex flex-col gap-2 w-full max-w-md">
             {popups.map((n) => (
               <NotificationPopupCard
