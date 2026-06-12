@@ -17,7 +17,7 @@
 import { Fragment, useMemo } from "react";
 import Link from "next/link";
 import { Clock, User } from "lucide-react";
-import type { CalendarItem, CalendarShift } from "./types";
+import type { BvgPersonForecast, CalendarItem, CalendarShift } from "./types";
 
 interface Props {
   weekDays: Date[];
@@ -26,6 +26,10 @@ interface Props {
   /** Klick auf einen Termin ohne Job-Bezug (kein href). Optional —
    *  wenn nicht gesetzt, bleibt der Termin static. */
   onStandaloneShiftClick?: (shiftId: string) => void;
+  /** BVG-Forecast pro Profile-ID fuer den sichtbaren Monat — wird als
+   *  Pille neben dem Namen gerendert. Nur Personen mit Forecast bekommen
+   *  eine Pille (Stunden-Lohn nicht hinterlegt -> keine Pille). */
+  bvgByPerson?: Map<string, BvgPersonForecast>;
 }
 
 function keyOf(d: Date): string {
@@ -61,7 +65,7 @@ const SHIFT_STYLE_NEUTRAL = {
   text: "text-foreground/80",
 };
 
-export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick }: Props) {
+export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgByPerson }: Props) {
   const todayKey = keyOf(new Date());
   const weekStartTs = new Date(weekDays[0].getFullYear(), weekDays[0].getMonth(), weekDays[0].getDate()).getTime();
   const weekEndTs = new Date(weekDays[6].getFullYear(), weekDays[6].getMonth(), weekDays[6].getDate()).getTime();
@@ -90,14 +94,17 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick }: Pr
 
   // Mitarbeiter-Gruppen — pro Person die Termine der Woche, chronologisch.
   // Sortierung: alphabetisch nach Name; "Unzugewiesen" ans Ende.
+  // Key = assigneeId (UUID) damit Namens-Dubletten getrennt bleiben + Lookup
+  // gegen bvgByPerson direkt moeglich ist.
   const personRows = useMemo(() => {
-    const map = new Map<string, { name: string; isUnassigned: boolean; shifts: CalendarShift[] }>();
+    const map = new Map<string, { id: string | null; name: string; isUnassigned: boolean; shifts: CalendarShift[] }>();
     for (const s of shifts) {
-      const key = s.assigneeName ?? "__unassigned";
+      const key = s.assigneeId ?? "__unassigned";
       if (!map.has(key)) {
         map.set(key, {
+          id: s.assigneeId,
           name: s.assigneeName ?? "Ohne Zuweisung",
-          isUnassigned: !s.assigneeName,
+          isUnassigned: !s.assigneeId,
           shifts: [],
         });
       }
@@ -217,10 +224,26 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick }: Pr
             })}
 
             {/* Person-Zeilen */}
-            {personRows.map((g) => (
-              <Fragment key={g.name}>
-                <div className={`bg-card px-3 py-2 text-sm font-medium truncate flex items-center ${g.isUnassigned ? "text-muted-foreground italic" : ""}`}>
-                  {g.name}
+            {personRows.map((g) => {
+              const bvg = g.id ? bvgByPerson?.get(g.id) : undefined;
+              const bvgPct = bvg ? Math.min(100, Math.round((bvg.chf / bvg.threshold) * 100)) : 0;
+              const bvgStyle = bvg
+                ? bvg.status === "crit" ? "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40"
+                : bvg.status === "warn" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30"
+                : "";
+              return (
+              <Fragment key={g.id ?? `noname-${g.name}`}>
+                <div className={`bg-card px-3 py-2 text-sm font-medium truncate flex items-center justify-between gap-2 ${g.isUnassigned ? "text-muted-foreground italic" : ""}`}>
+                  <span className="truncate">{g.name}</span>
+                  {bvg && (
+                    <span
+                      className={`shrink-0 text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${bvgStyle}`}
+                      data-tooltip={`BVG-Forecast: ${Math.round(bvg.chf).toLocaleString("de-CH")} / ${Math.round(bvg.threshold).toLocaleString("de-CH")} CHF (${bvgPct}%)`}
+                    >
+                      {bvgPct}%
+                    </span>
+                  )}
                 </div>
                 {weekDays.map((d) => {
                   const k = keyOf(d);
@@ -282,7 +305,8 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick }: Pr
                   );
                 })}
               </Fragment>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

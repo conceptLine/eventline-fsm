@@ -31,7 +31,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { logError } from "@/lib/log";
-import type { CalendarItem, CalendarShift, CalendarView, ItemType } from "@/components/kalender/types";
+import type { BvgPersonForecast, CalendarItem, CalendarShift, CalendarView, ItemType } from "@/components/kalender/types";
+import { calculateForecast, monthRange, forecastStatus } from "@/lib/bvg-forecast";
 import { MonthView } from "@/components/kalender/month-view";
 import { WeekView } from "@/components/kalender/week-view";
 import { NeuerTerminModal } from "@/components/kalender/neuer-termin-modal";
@@ -63,6 +64,7 @@ interface RawShift {
   start_time: string;
   end_time: string | null;
   job_id: string | null;
+  assigned_to: string | null;
   assignee: { full_name: string } | null;
   job: { id: string; title: string; status: string; job_number: number | null; was_anfrage: boolean | null } | null;
 }
@@ -86,6 +88,10 @@ export default function KalenderPage() {
   // Edit/Delete-Modal. Auftrag-bezogene Termine fuehren weiter zur
   // Auftrag-Detail-Page (existing Link-behaviour in WeekView).
   const [editTerminId, setEditTerminId] = useState<string | null>(null);
+  // BVG-Forecast pro Person fuer den aktuell sichtbaren Monat — wird in der
+  // Wochenansicht als Pille neben dem Namen gerendert. Nur in der Woche
+  // relevant (im Monat sieht man keine Person-Zeilen).
+  const [bvgByPerson, setBvgByPerson] = useState<Map<string, BvgPersonForecast>>(new Map());
   const { can } = usePermissions();
 
   const year = currentDate.getFullYear();
@@ -125,7 +131,7 @@ export default function KalenderPage() {
           .lte("start_date", rangeEnd),
         supabase
           .from("job_appointments")
-          .select("id, title, start_time, end_time, job_id, assignee:profiles!assigned_to(full_name), job:jobs(id, title, status, job_number, was_anfrage)")
+          .select("id, title, start_time, end_time, job_id, assigned_to, assignee:profiles!assigned_to(full_name), job:jobs(id, title, status, job_number, was_anfrage)")
           .not("start_time", "is", null)
           .gte("start_time", rangeStart)
           .lte("start_time", rangeEnd),
@@ -192,6 +198,7 @@ export default function KalenderPage() {
           endDate: end,
           title: a.title,
           assigneeName: a.assignee?.full_name ?? null,
+          assigneeId: a.assigned_to ?? null,
           // Routing: Vermietentwuerfe (status=anfrage) haben eine andere
           // Detail-Page als normale Auftraege/Entwuerfe.
           href: a.job_id
@@ -212,6 +219,51 @@ export default function KalenderPage() {
   }, [supabase, year, month]);
 
   useEffect(() => { load(); }, [load]);
+
+  // BVG-Forecast pro Person fuer den Monat der aktuell sichtbaren Wochen-
+  // Ansicht (Pille im Schichtplan). Eigener Loader weil wir den GANZEN Monat
+  // brauchen — nicht nur die Sicht-Woche — sonst stimmt der Forecast nicht.
+  useEffect(() => {
+    if (view !== "woche") return;
+    let cancelled = false;
+    const m = monthRange(weekDays[3].getFullYear(), weekDays[3].getMonth() + 1);
+    (async () => {
+      const [settingsRes, compRes, apptsRes] = await Promise.all([
+        supabase.from("app_settings").select("bvg_threshold_chf").eq("id", 1).maybeSingle(),
+        supabase.from("employee_compensation").select("profile_id, hourly_wage_chf, effective_from, effective_to"),
+        supabase.from("job_appointments")
+          .select("assigned_to, start_time, end_time")
+          .gte("start_time", `${m.start}T00:00:00Z`)
+          .lt("start_time", `${m.end}T23:59:59Z`)
+          .not("assigned_to", "is", null),
+      ]);
+      if (cancelled) return;
+      const threshold = Number(settingsRes.data?.bvg_threshold_chf ?? 1890);
+      const today = new Date().toISOString().slice(0, 10);
+      type Comp = { profile_id: string; hourly_wage_chf: number; effective_from: string; effective_to: string | null };
+      const wagePerProfile = new Map<string, number>();
+      for (const c of (compRes.data ?? []) as Comp[]) {
+        if (c.effective_from <= today && (!c.effective_to || c.effective_to >= today)) {
+          wagePerProfile.set(c.profile_id, Number(c.hourly_wage_chf));
+        }
+      }
+      type Ex = { assigned_to: string; start_time: string; end_time: string | null };
+      const apptsByPerson = new Map<string, { start_time: string; end_time: string | null }[]>();
+      for (const a of (apptsRes.data ?? []) as Ex[]) {
+        if (!apptsByPerson.has(a.assigned_to)) apptsByPerson.set(a.assigned_to, []);
+        apptsByPerson.get(a.assigned_to)!.push({ start_time: a.start_time, end_time: a.end_time });
+      }
+      const result = new Map<string, BvgPersonForecast>();
+      for (const [personId, appts] of apptsByPerson) {
+        const wage = wagePerProfile.get(personId);
+        if (!wage) continue;
+        const chf = calculateForecast(appts, wage, m.start, m.end).total_chf;
+        result.set(personId, { chf, threshold, status: forecastStatus(chf, threshold) });
+      }
+      setBvgByPerson(result);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, view, weekDays]);
 
   // Navigation: in Wochenansicht +-7 Tage, in Monatsansicht +-1 Monat.
   function nav(direction: -1 | 1) {
@@ -348,6 +400,7 @@ export default function KalenderPage() {
                   items={items}
                   shifts={shifts}
                   onStandaloneShiftClick={setEditTerminId}
+                  bvgByPerson={bvgByPerson}
                 />
               </div>
             </div>

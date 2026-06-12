@@ -23,6 +23,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import type { JobAppointment, Profile, TimeOffType } from "@/types";
 import { useTimeOffConflicts, buildConflictMap } from "@/lib/use-time-off-conflicts";
 import { toLocalIsoString, todayLocalDateString } from "@/lib/format";
+import { calculateForecast, monthRange, forecastStatus } from "@/lib/bvg-forecast";
 
 interface Props {
   jobId: string;
@@ -72,6 +73,13 @@ export function AppointmentsSection({
   const [assigningBusy, setAssigningBusy] = useState(false);
   // Doppel-Klick-Schutz fuer 'Termin erstellen'-Submit.
   const [addingAppt, setAddingAppt] = useState(false);
+  // BVG-Vorwarnung: zeigt Confirm-Modal mit pro-Person-Aufschluesselung
+  // wenn Forecast nach Insert >= 95% der Schwelle erreicht.
+  const [bvgWarn, setBvgWarn] = useState<null | {
+    threshold: number;
+    rows: { name: string; current: number; after: number; status: "ok" | "warn" | "crit" }[];
+    pending: { startTime: string; endTime: string; assignees: string[]; userId: string | null };
+  }>(null);
 
   function openAssign(apptId: string, currentAssignee: string | null) {
     setAssigningId(apptId);
@@ -110,6 +118,62 @@ export function AppointmentsSection({
     const { data: { user } } = await supabase.auth.getUser();
     const assignees = apptForm.assigned_to.length > 0 ? apptForm.assigned_to : [user?.id || ""];
 
+    // BVG-Vorabpruefung: berechne Forecast pro Assignee fuer den Monat
+    // in dem der neue Termin liegt. Wenn jemand >= 95% reisst -> Modal.
+    const apptDate = apptForm.date;
+    const apptYear = Number(apptDate.slice(0, 4));
+    const apptMonth = Number(apptDate.slice(5, 7));
+    const m = monthRange(apptYear, apptMonth);
+    const [settingsRes, compRes, existingRes] = await Promise.all([
+      supabase.from("app_settings").select("bvg_threshold_chf").eq("id", 1).maybeSingle(),
+      supabase.from("employee_compensation")
+        .select("profile_id, hourly_wage_chf, effective_from, effective_to")
+        .in("profile_id", assignees.filter(Boolean)),
+      supabase.from("job_appointments")
+        .select("assigned_to, start_time, end_time")
+        .in("assigned_to", assignees.filter(Boolean))
+        .gte("start_time", `${m.start}T00:00:00Z`)
+        .lt("start_time", `${m.end}T23:59:59Z`),
+    ]);
+    const threshold = Number(settingsRes.data?.bvg_threshold_chf ?? 1890);
+    const today = new Date().toISOString().slice(0, 10);
+    type Comp = { profile_id: string; hourly_wage_chf: number; effective_from: string; effective_to: string | null };
+    const wagePerProfile = new Map<string, number>();
+    for (const c of (compRes.data ?? []) as Comp[]) {
+      if (c.effective_from <= today && (!c.effective_to || c.effective_to >= today)) {
+        const existing = wagePerProfile.get(c.profile_id);
+        if (!existing || (c.effective_from > today)) wagePerProfile.set(c.profile_id, Number(c.hourly_wage_chf));
+      }
+    }
+    type Ex = { assigned_to: string; start_time: string; end_time: string | null };
+    const warnRows: { name: string; current: number; after: number; status: "ok" | "warn" | "crit" }[] = [];
+    for (const personId of assignees) {
+      if (!personId) continue;
+      const wage = wagePerProfile.get(personId);
+      if (!wage) continue;
+      const existing = ((existingRes.data ?? []) as Ex[]).filter((r) => r.assigned_to === personId).map((r) => ({ start_time: r.start_time, end_time: r.end_time }));
+      const current = calculateForecast(existing, wage, m.start, m.end).total_chf;
+      const after = calculateForecast([...existing, { start_time: startTime, end_time: endTime }], wage, m.start, m.end).total_chf;
+      const status = forecastStatus(after, threshold);
+      if (status !== "ok") {
+        const p = profiles.find((x) => x.id === personId);
+        warnRows.push({ name: p?.full_name || "Unbekannt", current, after, status });
+      }
+    }
+    if (warnRows.length > 0) {
+      setAddingAppt(false);
+      setBvgWarn({ threshold, rows: warnRows, pending: { startTime, endTime, assignees, userId: user?.id ?? null } });
+      return;
+    }
+
+    await persistAppointment(startTime, endTime, assignees, user?.id ?? null);
+    return;
+    } finally {
+      setAddingAppt(false);
+    }
+  }
+
+  async function persistAppointment(startTime: string, endTime: string, assignees: string[], userId: string | null) {
     const rows = assignees.map((personId) => ({
       job_id: jobId,
       title: apptForm.title,
@@ -121,9 +185,9 @@ export function AppointmentsSection({
     await supabase.from("job_appointments").insert(rows);
 
     // E-Mail an zugewiesene Personen (ausser self)
-    const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", user?.id).single();
+    const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", userId ?? "").maybeSingle();
     for (const personId of assignees) {
-      if (personId && personId !== user?.id) {
+      if (personId && personId !== userId) {
         try {
           await fetch("/api/appointments/assign-notify", {
             method: "POST",
@@ -155,6 +219,15 @@ export function AppointmentsSection({
     setShowApptForm(false);
     onReload();
     toast.success(`Termin für ${assignees.length} Person${assignees.length > 1 ? "en" : ""} erstellt`);
+  }
+
+  async function confirmBvgAndProceed() {
+    if (!bvgWarn) return;
+    const { pending } = bvgWarn;
+    setAddingAppt(true);
+    try {
+      await persistAppointment(pending.startTime, pending.endTime, pending.assignees, pending.userId);
+      setBvgWarn(null);
     } finally {
       setAddingAppt(false);
     }
@@ -551,6 +624,45 @@ export function AppointmentsSection({
       </Card>
 
       {ConfirmModalElement}
+
+      <Modal
+        open={bvgWarn !== null}
+        onClose={() => setBvgWarn(null)}
+        title="BVG-Eintrittsschwelle erreicht"
+        icon={<AlertTriangle className="h-5 w-5 text-red-500" />}
+        size="md"
+      >
+        {bvgWarn && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Mit diesem Termin verdienen folgende Personen brutto mehr als die hinterlegte BVG-Schwelle von <strong>{bvgWarn.threshold.toLocaleString("de-CH", { maximumFractionDigits: 0 })} CHF</strong> pro Monat. Sie würden damit BVG-pflichtig.
+            </p>
+            <div className="space-y-1">
+              {bvgWarn.rows.map((r) => (
+                <div key={r.name} className={`p-2 rounded-lg border text-xs ${r.status === "crit" ? "bg-red-500/10 border-red-500/40" : "bg-amber-500/10 border-amber-500/40"}`}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-semibold">{r.name}</span>
+                    <span className="tabular-nums font-bold">
+                      {Math.round(r.current).toLocaleString("de-CH")} → {Math.round(r.after).toLocaleString("de-CH")} CHF
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5">
+                    {r.status === "crit" ? "Über der Schwelle." : "Knapp unter der Schwelle (Warnzone)."}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button type="button" onClick={() => setBvgWarn(null)} className="kasten kasten-muted">
+                Abbrechen
+              </button>
+              <button type="button" onClick={confirmBvgAndProceed} disabled={addingAppt} className="kasten kasten-red">
+                {addingAppt ? "Erstellt…" : "Trotzdem erstellen"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

@@ -38,9 +38,18 @@ export interface CalendarShift {
   endDate?: Date;
   title: string;
   assigneeName: string | null;
+  /** Profile-ID des Zugewiesenen — fuer Lookup BVG-Forecast pro Person. */
+  assigneeId: string | null;
   /** Falls dem Termin ein Job zugeordnet ist, fuehrt der Klick auf den
    *  Termin zur Auftrag-Detail-Page; ohne Job nicht klickbar. */
   href: string | null;
+}
+
+/** BVG-Forecast pro Person fuer den aktuell sichtbaren Monat (Schichtplan). */
+export interface BvgPersonForecast {
+  chf: number;
+  threshold: number;
+  status: "ok" | "warn" | "crit";
 }
 
 export type CalendarView = "monat" | "woche";
