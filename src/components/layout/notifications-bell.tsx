@@ -114,25 +114,39 @@ export function NotificationsBell() {
 
   useEffect(() => {
     load();
-    // Realtime: Payload analysieren. Bei echtem INSERT → Popup + Pulse + Sound.
-    // Bei UPDATE/DELETE → nur load() (Drawer aktualisiert sich).
+    // Realtime: Payload analysieren. Popup-Trigger:
+    //   1. INSERT einer neuen Notif (id noch nicht gesehen)
+    //   2. UPDATE wo bundle_count erhoeht wurde — die Server-seitige
+    //      Buendelungs-Logik (siehe notification-service.insertMany)
+    //      schickt das 2.+ Notif vom gleichen (user, type) innerhalb von
+    //      5min als UPDATE statt INSERT. Ohne diesen Branch wuerden alle
+    //      nachfolgenden Erinnerungen/Mitteilungen still durchrauschen.
     //
-    // WICHTIG: Check fuer 'isNew' VOR load() ausfuehren — sonst koennte
+    // WICHTIG: Check VOR load() ausfuehren — sonst koennte
     // ein parallel laufendes load() die ID schon in seenIdsRef stecken
     // bevor der Check rennt.
     const handler = (event: Event) => {
-      const ev = event as CustomEvent<{ eventType?: string; new?: Notification }>;
+      const ev = event as CustomEvent<{ eventType?: string; new?: Notification; old?: Notification }>;
       const detail = ev.detail;
       const isNewInsert =
         detail?.eventType === "INSERT" &&
         !!detail.new &&
         !seenIdsRef.current.has(detail.new.id);
-      if (isNewInsert && detail.new) {
-        seenIdsRef.current.add(detail.new.id);
+      const isBundleBump =
+        detail?.eventType === "UPDATE" &&
+        !!detail.new &&
+        !!detail.old &&
+        (detail.new.bundle_count ?? 1) > (detail.old.bundle_count ?? 1);
+      if ((isNewInsert || isBundleBump) && detail.new) {
+        if (isNewInsert) seenIdsRef.current.add(detail.new.id);
         // Prominentes Popup oben rechts — nur wenn Drawer zu (sonst
-        // doppelte Info).
+        // doppelte Info). Bei Bundle-Bump die bestehende Popup-Card
+        // durch die aktualisierte ersetzen (gleiche id, neuer Title).
         if (!open) {
-          setPopups((prev) => [detail.new!, ...prev].slice(0, 3));
+          setPopups((prev) => {
+            const without = prev.filter((p) => p.id !== detail.new!.id);
+            return [detail.new!, ...without].slice(0, 3);
+          });
         }
         // Glocke pulsiert 2s + Sound (opt-in)
         setPulse(true);

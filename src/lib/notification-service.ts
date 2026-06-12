@@ -71,11 +71,22 @@ const BUNDLE_WINDOW_MIN = 5;
  *  existiert -> UPDATE bundle_count statt INSERT. Best-effort. */
 async function insertMany(client: SupabaseClient, rows: NotificationRow[]) {
   if (rows.length === 0) return;
+  // type='system' wird NICHT gebuendelt — jede Mitteilung/Erinnerung hat
+  // unique Title+Message, "5x Mitteilung: <einer von fuenf>" verschluckt
+  // die anderen vier. Event-Typen (ticket_new, todo_assigned, ...) buendeln
+  // weiter, weil dort die Titel-Vorlage identisch ist.
+  const bundlableRows = rows.filter((r) => r.type !== "system");
+  const standaloneRows = rows.filter((r) => r.type === "system");
+  if (standaloneRows.length > 0) {
+    const { error } = await client.from("notifications").insert(standaloneRows);
+    if (error) logError("notification-service.insert.standalone", error, { count: standaloneRows.length });
+  }
+  if (bundlableRows.length === 0) return;
   const cutoff = new Date(Date.now() - BUNDLE_WINDOW_MIN * 60_000).toISOString();
   // Pro Row erst Bundle-Lookup. Wir laden alle Kandidaten in EINEM Query
   // (IN/OR) und bauen dann lokal die Entscheidung.
-  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
-  const types = Array.from(new Set(rows.map((r) => r.type)));
+  const userIds = Array.from(new Set(bundlableRows.map((r) => r.user_id)));
+  const types = Array.from(new Set(bundlableRows.map((r) => r.type)));
   const { data: existing } = await client
     .from("notifications")
     .select("id, user_id, type, bundle_count, title, message")
@@ -89,7 +100,7 @@ async function insertMany(client: SupabaseClient, rows: NotificationRow[]) {
   }
   const toInsert: NotificationRow[] = [];
   const toBumpById = new Map<string, { count: number; title: string; latest: NotificationRow }>();
-  for (const r of rows) {
+  for (const r of bundlableRows) {
     const key = `${r.user_id}::${r.type}`;
     const existing = bundleMap.get(key);
     if (existing) {
