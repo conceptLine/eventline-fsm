@@ -102,6 +102,15 @@ interface PlacedShift {
   lane: number;
 }
 
+interface PlacedTimeOff {
+  off: CalendarTimeOff;
+  startCol: number;
+  endCol: number;
+  lane: number;
+  openLeft: boolean;
+  openRight: boolean;
+}
+
 // Shift-Style fuer "ohne Job" — neutral grau wie in der Wochenansicht.
 const SHIFT_NEUTRAL = {
   bg: "border bg-foreground/[0.04] dark:bg-foreground/[0.08] border-foreground/15 dark:border-foreground/20",
@@ -158,7 +167,7 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
   // (= Y-Position) und Spalten-Range. Laengster Span zuerst → niedrigste
   // Lane → Multi-Day-Bars stehen oben, Single-Day-Items darunter.
   const weekLayouts = useMemo(() => {
-    const layouts: Array<{ bars: PlacedBar[]; placedShifts: PlacedShift[]; usedLanes: number }> = [];
+    const layouts: Array<{ bars: PlacedBar[]; placedTimeOffs: PlacedTimeOff[]; placedShifts: PlacedShift[]; usedLanes: number }> = [];
     const dayMs = 86400000;
 
     const weekCount = cells.length / 7;
@@ -210,7 +219,45 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
         placed.push({ item: r.item, startCol, endCol, lane, openLeft, openRight });
       }
 
-      // 2. Termine danach — single-col, sortiert nach Start-Zeit pro Tag.
+      // 2. Time-off Stripes — gleicher Lane-Packer wie Jobs, eigener
+      //    Style (muted gray). Werden NACH Job-Bars gepackt, kriegen
+      //    also untere Lanes -> visuell unter den farbigen Bars.
+      const relevantOffs: Array<{ off: CalendarTimeOff; sMs: number; eMs: number }> = [];
+      if (timeOffs) {
+        for (const off of timeOffs) {
+          const s = new Date(off.startDate.getFullYear(), off.startDate.getMonth(), off.startDate.getDate()).getTime();
+          const e = new Date(off.endDate.getFullYear(), off.endDate.getMonth(), off.endDate.getDate()).getTime();
+          if (e < ws || s > we) continue;
+          relevantOffs.push({ off, sMs: s, eMs: e });
+        }
+      }
+      relevantOffs.sort((a, b) => {
+        const aSpan = a.eMs - a.sMs;
+        const bSpan = b.eMs - b.sMs;
+        if (aSpan !== bSpan) return bSpan - aSpan;
+        return a.sMs - b.sMs;
+      });
+      const placedTimeOffs: PlacedTimeOff[] = [];
+      for (const r of relevantOffs) {
+        const openLeft = r.sMs < ws;
+        const openRight = r.eMs > we;
+        const startCol = openLeft ? 0 : Math.round((r.sMs - ws) / dayMs);
+        const endCol = openRight ? 6 : Math.round((r.eMs - ws) / dayMs);
+        let lane = 0;
+        while (true) {
+          if (!lanes[lane]) lanes[lane] = new Array(7).fill(false);
+          let free = true;
+          for (let c = startCol; c <= endCol; c++) {
+            if (lanes[lane][c]) { free = false; break; }
+          }
+          if (free) break;
+          lane++;
+        }
+        for (let c = startCol; c <= endCol; c++) lanes[lane][c] = true;
+        placedTimeOffs.push({ off: r.off, startCol, endCol, lane, openLeft, openRight });
+      }
+
+      // 3. Termine danach — single-col, sortiert nach Start-Zeit pro Tag.
       const relevantShifts: Array<{ shift: CalendarShift; col: number; sMs: number }> = [];
       for (const sh of shifts) {
         const day = new Date(sh.date.getFullYear(), sh.date.getMonth(), sh.date.getDate()).getTime();
@@ -232,10 +279,10 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
         placedShifts.push({ shift: rs.shift, col: rs.col, lane });
       }
 
-      layouts.push({ bars: placed, placedShifts, usedLanes: lanes.length });
+      layouts.push({ bars: placed, placedTimeOffs, placedShifts, usedLanes: lanes.length });
     }
     return layouts;
-  }, [cells, items, shifts]);
+  }, [cells, items, shifts, timeOffs]);
 
   const todayKey = keyOf(new Date());
 
@@ -289,13 +336,19 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
             const week = cells.slice(wi * 7, wi * 7 + 7);
             const visibleLanes = Math.min(MAX_LANES_PER_WEEK, wl.usedLanes);
             const visibleBars = wl.bars.filter((b) => b.lane < visibleLanes);
+            const visibleTimeOffs = wl.placedTimeOffs.filter((t) => t.lane < visibleLanes);
             const visibleShifts = wl.placedShifts.filter((s) => s.lane < visibleLanes);
 
-            // Overflow pro Spalte: belegte Lanes (Bars + Shifts) ueber MAX
+            // Overflow pro Spalte: belegte Lanes (Bars + TimeOffs + Shifts) ueber MAX
             const overflow = new Array<number>(7).fill(0);
             for (const b of wl.bars) {
               if (b.lane >= visibleLanes) {
                 for (let c = b.startCol; c <= b.endCol; c++) overflow[c]++;
+              }
+            }
+            for (const t of wl.placedTimeOffs) {
+              if (t.lane >= visibleLanes) {
+                for (let c = t.startCol; c <= t.endCol; c++) overflow[c]++;
               }
             }
             for (const s of wl.placedShifts) {
@@ -357,33 +410,14 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
                           : "hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06]"
                       }`}
                     >
-                      <span className="absolute top-1.5 left-2 inline-flex items-center gap-1">
-                        <span
-                          className={`inline-flex items-center justify-center text-[12px] font-semibold tabular-nums ${
-                            !cell.inMonth ? "text-muted-foreground/50" :
-                            isToday ? "w-6 h-6 rounded-full bg-red-500 text-white" :
-                            "text-foreground/85"
-                          }`}
-                        >
-                          {cell.date.getDate()}
-                        </span>
-                        {/* Abwesenheits-Marker direkt neben dem Datum:
-                            Plane-Icon + Count, muted. Tooltip listet
-                            Personen+Typ. Nur in-month. */}
-                        {cell.inMonth && (() => {
-                          const offs = timeOffByDay.get(cellKey);
-                          if (!offs || offs.length === 0) return null;
-                          const tip = offs.map((o) => `${o.userName} (${TIME_OFF_LABEL[o.type]})`).join(", ");
-                          return (
-                            <span
-                              className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70"
-                              data-tooltip={tip}
-                            >
-                              <Plane className="h-2.5 w-2.5" />
-                              {offs.length}
-                            </span>
-                          );
-                        })()}
+                      <span
+                        className={`absolute top-1.5 left-2 inline-flex items-center justify-center text-[12px] font-semibold tabular-nums ${
+                          !cell.inMonth ? "text-muted-foreground/50" :
+                          isToday ? "w-6 h-6 rounded-full bg-red-500 text-white" :
+                          "text-foreground/85"
+                        }`}
+                      >
+                        {cell.date.getDate()}
                       </span>
                       {overflow[col] > 0 && cell.inMonth && (
                         <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-muted-foreground">
@@ -443,6 +477,49 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
                       data-tooltip={[b.item.title, b.item.customerName, b.item.locationName].filter(Boolean).join(" · ")}
                     >
                       {b.item.title}
+                    </button>
+                  );
+                })}
+
+                {/* Time-off Stripes — dezent grau, klein. Spannt mehrere
+                    Tage analog zu Job-Bars, gleiche Open-Left/Right-Mechanik.
+                    Text: Name (klein) + Typ-Suffix wenn Platz. */}
+                {visibleTimeOffs.map((t) => {
+                  let round = "rounded";
+                  if (t.openLeft && !t.openRight) round = "rounded-r rounded-l-none";
+                  else if (!t.openLeft && t.openRight) round = "rounded-l rounded-r-none";
+                  else if (t.openLeft && t.openRight) round = "rounded-none";
+                  const borderL = t.openLeft ? "!border-l-0" : "";
+                  const borderR = t.openRight ? "!border-r-0" : "";
+                  const ml = t.openLeft ? "" : "ml-1";
+                  const mr = t.openRight ? "" : "mr-1";
+                  const span = t.endCol - t.startCol + 1;
+                  return (
+                    <button
+                      key={`off-${t.off.id}-${wi}`}
+                      type="button"
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                        const colInBar = Math.min(span - 1, Math.max(0, Math.floor(ratio * span)));
+                        const cellDate = week[t.startCol + colInBar].date;
+                        if (cellDate.getFullYear() === year && cellDate.getMonth() === month) {
+                          onSelectDay(cellDate.getDate());
+                        } else {
+                          onNavigate(cellDate);
+                        }
+                      }}
+                      style={{
+                        gridColumn: `${t.startCol + 1} / ${t.endCol + 2}`,
+                        gridRow: t.lane + 2,
+                      }}
+                      className={`relative z-10 self-center h-5 px-2 text-[10px] leading-[18px] truncate cursor-pointer text-left border bg-foreground/[0.04] dark:bg-foreground/[0.08] border-foreground/15 dark:border-foreground/20 text-muted-foreground ${borderL} ${borderR} ${round} ${ml} ${mr} transition-all`}
+                      data-tooltip={`${t.off.userName} — ${TIME_OFF_LABEL[t.off.type]}`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <Plane className="h-2.5 w-2.5 shrink-0 opacity-60" />
+                        <span className="truncate">{t.off.userName}</span>
+                      </span>
                     </button>
                   );
                 })}
