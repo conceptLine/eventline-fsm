@@ -74,7 +74,7 @@ interface RawTimeOff {
   user_id: string;
   start_date: string;
   end_date: string;
-  type: "ferien" | "krank" | "kompensation" | "frei";
+  type: "ferien" | "krank" | "kompensation" | "frei" | "militaer";
   user: { full_name: string } | null;
 }
 

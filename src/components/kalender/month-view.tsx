@@ -29,6 +29,7 @@ const TIME_OFF_LABEL: Record<CalendarTimeOff["type"], string> = {
   krank: "Krank",
   kompensation: "Komp-Tag",
   frei: "Frei",
+  militaer: "Militär",
 };
 
 const MAX_LANES_PER_WEEK = 6;

@@ -13,7 +13,7 @@ interface Body {
   note?: unknown;
 }
 
-const ALLOWED_TYPES = new Set(["ferien", "krank", "kompensation", "frei"]);
+const ALLOWED_TYPES = new Set(["ferien", "krank", "kompensation", "frei", "militaer"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function POST(request: NextRequest) {

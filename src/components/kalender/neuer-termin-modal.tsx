@@ -157,6 +157,7 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
     krank: "Krank",
     kompensation: "Kompensation",
     frei: "Frei",
+    militaer: "Militär",
   };
 
   function formatDateShort(iso: string): string {

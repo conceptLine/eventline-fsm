@@ -100,6 +100,7 @@ export function AppointmentsSection({
     krank: "Krank",
     kompensation: "Kompensation",
     frei: "Frei",
+    militaer: "Militär",
   };
 
   function formatDateShort(iso: string): string {

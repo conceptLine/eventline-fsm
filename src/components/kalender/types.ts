@@ -59,7 +59,7 @@ export interface CalendarTimeOff {
   id: string;
   userId: string;
   userName: string;
-  type: "ferien" | "krank" | "kompensation" | "frei";
+  type: "ferien" | "krank" | "kompensation" | "frei" | "militaer";
   startDate: Date;
   endDate: Date;
 }

@@ -24,6 +24,7 @@ const TIME_OFF_LABEL: Record<CalendarTimeOff["type"], string> = {
   krank: "Krank",
   kompensation: "Komp-Tag",
   frei: "Frei",
+  militaer: "Militär",
 };
 
 interface Props {

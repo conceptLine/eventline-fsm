@@ -13,7 +13,7 @@ export type CustomerType = "company" | "individual" | "organization";
 
 export type ReportStatus = "entwurf" | "abgeschlossen";
 
-export type TimeOffType = "ferien" | "krank" | "kompensation" | "frei";
+export type TimeOffType = "ferien" | "krank" | "kompensation" | "frei" | "militaer";
 export type TimeOffStatus = "beantragt" | "genehmigt" | "abgelehnt";
 
 export interface TimeOff {

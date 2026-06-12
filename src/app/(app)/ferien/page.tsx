@@ -18,7 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Loading } from "@/components/ui/spinner";
-import { Plane, ThermometerSun, Repeat, Coffee, Plus, Check, X, Trash2, Calendar, AlertCircle } from "lucide-react";
+import { Plane, ThermometerSun, Repeat, Coffee, Shield, Plus, Check, X, Trash2, Calendar, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
@@ -34,6 +34,7 @@ const TYPE_META: Record<TimeOffType, { label: string; icon: React.ComponentType<
   krank:         { label: "Krank",          icon: ThermometerSun,  color: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300" },
   kompensation:  { label: "Kompensation",   icon: Repeat,          color: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
   frei:          { label: "Frei",           icon: Coffee,          color: "bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300" },
+  militaer:      { label: "Militär",        icon: Shield,          color: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" },
 };
 
 const STATUS_META: Record<TimeOffStatus, { label: string; color: string }> = {
