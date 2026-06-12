@@ -24,11 +24,10 @@ import { LohndokumenteAdmin } from "@/components/hr/lohndokumente-admin";
 import { MonatsstundenTable } from "@/components/hr/monatsstunden-table";
 import { BvgMonitor } from "@/components/hr/bvg-monitor";
 import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
-import { Shield } from "lucide-react";
 
 const TAB_BTN_CLASS = "flex items-center gap-2 px-3 py-2.5 -mb-px text-sm font-medium border-b-2 transition-colors";
 
-type Tab = "operativ" | "loehne" | "bvg";
+type Tab = "operativ" | "loehne";
 
 interface HRSection {
   href: string;
@@ -48,9 +47,7 @@ export default function HRPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTab = searchParams.get("tab") as Tab | null;
-  const [tab, setTab] = useState<Tab>(
-    urlTab === "loehne" ? "loehne" : urlTab === "bvg" ? "bvg" : "operativ",
-  );
+  const [tab, setTab] = useState<Tab>(urlTab === "loehne" ? "loehne" : "operativ");
   const { role } = usePermissions();
   // Lohnabrechnung ist strikt admin-only — auch User mit lohn:manage
   // Permission sollen die Querschnitts-Tabelle nicht sehen.
@@ -67,16 +64,14 @@ export default function HRPage() {
   }
 
   useEffect(() => {
-    const next: Tab = urlTab === "loehne" ? "loehne" : urlTab === "bvg" ? "bvg" : "operativ";
+    const next: Tab = urlTab === "loehne" ? "loehne" : "operativ";
     setTab(next);
   }, [urlTab]);
 
-  const allTabs: { key: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "operativ", label: "Operativ", icon: <Briefcase className="h-4 w-4" /> },
     { key: "loehne",   label: "Löhne",    icon: <Wallet className="h-4 w-4" /> },
-    { key: "bvg",      label: "BVG-Monitor", icon: <Shield className="h-4 w-4" />, adminOnly: true },
   ];
-  const tabs = allTabs.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div className="space-y-6">
@@ -133,18 +128,17 @@ export default function HRPage() {
           {isAdmin && (
             <TrustedDeviceGate>
               <div className="space-y-6">
+                {/* BVG-Monitor zuerst — vorausschauend (was kommt?), damit
+                    bei Plotting/Lohnabrechnung sofort sichtbar wird wer
+                    sich auf die BVG-Schwelle zubewegt. Erst danach die
+                    abgelaufenen Monate fuer die Lohnabrechnung. */}
+                <BvgMonitor />
                 <MonatsstundenTable />
                 <LohndokumenteAdmin />
               </div>
             </TrustedDeviceGate>
           )}
         </div>
-      )}
-
-      {tab === "bvg" && isAdmin && (
-        <TrustedDeviceGate>
-          <BvgMonitor />
-        </TrustedDeviceGate>
       )}
     </div>
   );
