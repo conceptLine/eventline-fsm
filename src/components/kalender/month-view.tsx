@@ -357,37 +357,39 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
                           : "hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06]"
                       }`}
                     >
-                      <span
-                        className={`absolute top-1.5 left-2 inline-flex items-center justify-center text-[12px] font-semibold tabular-nums ${
-                          !cell.inMonth ? "text-muted-foreground/50" :
-                          isToday ? "w-6 h-6 rounded-full bg-red-500 text-white" :
-                          "text-foreground/85"
-                        }`}
-                      >
-                        {cell.date.getDate()}
+                      <span className="absolute top-1.5 left-2 inline-flex items-center gap-1">
+                        <span
+                          className={`inline-flex items-center justify-center text-[12px] font-semibold tabular-nums ${
+                            !cell.inMonth ? "text-muted-foreground/50" :
+                            isToday ? "w-6 h-6 rounded-full bg-red-500 text-white" :
+                            "text-foreground/85"
+                          }`}
+                        >
+                          {cell.date.getDate()}
+                        </span>
+                        {/* Abwesenheits-Marker direkt neben dem Datum:
+                            Plane-Icon + Count, muted. Tooltip listet
+                            Personen+Typ. Nur in-month. */}
+                        {cell.inMonth && (() => {
+                          const offs = timeOffByDay.get(cellKey);
+                          if (!offs || offs.length === 0) return null;
+                          const tip = offs.map((o) => `${o.userName} (${TIME_OFF_LABEL[o.type]})`).join(", ");
+                          return (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70"
+                              data-tooltip={tip}
+                            >
+                              <Plane className="h-2.5 w-2.5" />
+                              {offs.length}
+                            </span>
+                          );
+                        })()}
                       </span>
                       {overflow[col] > 0 && cell.inMonth && (
                         <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-muted-foreground">
                           +{overflow[col]} weitere
                         </span>
                       )}
-                      {/* Abwesenheits-Marker — dezent bottom-right: kleines
-                          Plane-Icon + Count. Tooltip listet Personen+Typ.
-                          Nur in-month, sonst zu unruhig im aussen-Strip. */}
-                      {cell.inMonth && (() => {
-                        const offs = timeOffByDay.get(cellKey);
-                        if (!offs || offs.length === 0) return null;
-                        const tip = offs.map((o) => `${o.userName} (${TIME_OFF_LABEL[o.type]})`).join(", ");
-                        return (
-                          <span
-                            className="absolute bottom-1.5 right-2 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70"
-                            data-tooltip={tip}
-                          >
-                            <Plane className="h-2.5 w-2.5" />
-                            {offs.length}
-                          </span>
-                        );
-                      })()}
                     </button>
                   );
                 })}
