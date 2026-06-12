@@ -47,6 +47,9 @@ export default function RaumDetailPage() {
   const [deleteCode, setDeleteCode] = useState("");
   const [deleteError, setDeleteError] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Doppel-Klick-Guards
+  const [addingContact, setAddingContact] = useState(false);
+  const [addingPrice, setAddingPrice] = useState(false);
 
   // Tech details edit
   const [editingTech, setEditingTech] = useState(false);
@@ -92,11 +95,17 @@ export default function RaumDetailPage() {
   // Contacts
   async function addContact(e: React.FormEvent) {
     e.preventDefault();
-    await supabase.from("room_contacts").insert({ room_id: id, name: contactForm.name, role: contactForm.role || null, email: contactForm.email || null, phone: contactForm.phone || null });
-    setContactForm({ name: "", role: "", email: "", phone: "" });
-    setShowContactForm(false);
-    loadAll();
-    toast.success("Kontaktperson hinzugefügt");
+    if (addingContact) return;
+    setAddingContact(true);
+    try {
+      await supabase.from("room_contacts").insert({ room_id: id, name: contactForm.name, role: contactForm.role || null, email: contactForm.email || null, phone: contactForm.phone || null });
+      setContactForm({ name: "", role: "", email: "", phone: "" });
+      setShowContactForm(false);
+      loadAll();
+      toast.success("Kontaktperson hinzugefügt");
+    } finally {
+      setAddingContact(false);
+    }
   }
 
   async function deleteContact(contactId: string) {
@@ -107,11 +116,17 @@ export default function RaumDetailPage() {
   // Prices
   async function addPrice(e: React.FormEvent) {
     e.preventDefault();
-    await supabase.from("room_prices").insert({ room_id: id, label: priceForm.label, amount: parseFloat(priceForm.amount), notes: priceForm.notes || null });
-    setPriceForm({ label: "", amount: "", notes: "" });
-    setShowPriceForm(false);
-    loadAll();
-    toast.success("Preis hinzugefügt");
+    if (addingPrice) return;
+    setAddingPrice(true);
+    try {
+      await supabase.from("room_prices").insert({ room_id: id, label: priceForm.label, amount: parseFloat(priceForm.amount), notes: priceForm.notes || null });
+      setPriceForm({ label: "", amount: "", notes: "" });
+      setShowPriceForm(false);
+      loadAll();
+      toast.success("Preis hinzugefügt");
+    } finally {
+      setAddingPrice(false);
+    }
   }
 
   async function deletePrice(priceId: string) {
@@ -258,8 +273,8 @@ export default function RaumDetailPage() {
               </div>
               <Input placeholder="Bemerkung (optional)" value={priceForm.notes} onChange={(e) => setPriceForm({ ...priceForm, notes: e.target.value })} />
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowPriceForm(false)} className="kasten kasten-muted">Abbrechen</button>
-                <button type="submit" className="kasten kasten-red">Speichern</button>
+                <button type="button" onClick={() => setShowPriceForm(false)} disabled={addingPrice} className="kasten kasten-muted">Abbrechen</button>
+                <button type="submit" disabled={addingPrice} className="kasten kasten-red">{addingPrice ? "Speichere…" : "Speichern"}</button>
               </div>
             </form>
           )}
@@ -300,8 +315,8 @@ export default function RaumDetailPage() {
                 <Input placeholder="Telefon" value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} />
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowContactForm(false)} className="kasten kasten-muted">Abbrechen</button>
-                <button type="submit" className="kasten kasten-red">Speichern</button>
+                <button type="button" onClick={() => setShowContactForm(false)} disabled={addingContact} className="kasten kasten-muted">Abbrechen</button>
+                <button type="submit" disabled={addingContact} className="kasten kasten-red">{addingContact ? "Speichere…" : "Speichern"}</button>
               </div>
             </form>
           )}

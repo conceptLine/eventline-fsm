@@ -70,6 +70,8 @@ export function AppointmentsSection({
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [assigningSelection, setAssigningSelection] = useState<string[]>([]);
   const [assigningBusy, setAssigningBusy] = useState(false);
+  // Doppel-Klick-Schutz fuer 'Termin erstellen'-Submit.
+  const [addingAppt, setAddingAppt] = useState(false);
 
   function openAssign(apptId: string, currentAssignee: string | null) {
     setAssigningId(apptId);
@@ -99,6 +101,9 @@ export function AppointmentsSection({
 
   async function addAppointment(e: React.FormEvent) {
     e.preventDefault();
+    if (addingAppt) return; // Doppel-Klick-Schutz
+    setAddingAppt(true);
+    try {
     const startTime = toLocalIsoString(apptForm.date, apptForm.time || "00:00");
     const endTime = toLocalIsoString(apptForm.date, apptForm.end_time || "17:00");
 
@@ -150,6 +155,9 @@ export function AppointmentsSection({
     setShowApptForm(false);
     onReload();
     toast.success(`Termin für ${assignees.length} Person${assignees.length > 1 ? "en" : ""} erstellt`);
+    } finally {
+      setAddingAppt(false);
+    }
   }
 
   // useConfirm-Pattern statt vorherigem hardcoded Code "5225"-Modal —
@@ -364,7 +372,7 @@ export function AppointmentsSection({
               <textarea placeholder="Beschreibung..." value={apptForm.description} onChange={(e) => setApptForm({ ...apptForm, description: e.target.value })} className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card resize-none focus:outline-none focus:ring-2 focus:ring-ring/40" rows={2} style={{ fieldSizing: "content" } as React.CSSProperties} />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setShowApptForm(false)} className="kasten kasten-muted">Abbrechen</button>
-                <button type="submit" className="kasten kasten-red">Termin erstellen</button>
+                <button type="submit" disabled={addingAppt} className="kasten kasten-red">{addingAppt ? "Speichere…" : "Termin erstellen"}</button>
               </div>
             </form>
           )}

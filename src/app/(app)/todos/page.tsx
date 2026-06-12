@@ -64,6 +64,10 @@ export default function TodosPage() {
   );
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", urgent: false, due_date: "", assigned_to: "" });
+  // Submitting-Guard: blockt Doppel-Klick auf 'Todo erstellen' — Insert
+  // dauert manchmal eine Sekunde, ohne Guard wuerden doppelte Eintraege
+  // entstehen.
+  const [submitting, setSubmitting] = useState(false);
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
   const [attachments, setAttachments] = useState<TodoAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -156,6 +160,7 @@ export default function TodosPage() {
 
   async function addTodo(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return; // Doppel-Klick-Schutz
     // Frist + Zuweisung sind Pflicht — sonst gibt's ungetracked Todos
     // ohne Ownership oder Deadline. Im Form sind die Inputs required +
     // submit-disabled wenn leer; dieser Check ist die Belt-and-Suspenders.
@@ -163,6 +168,8 @@ export default function TodosPage() {
       TOAST.createError("Titel, Frist und Zuweisung sind Pflicht");
       return;
     }
+    setSubmitting(true);
+    try {
     const { data: { user } } = await supabase.auth.getUser();
     const priority: JobPriority = form.urgent ? "dringend" : "normal";
     const { error: insertErr } = await supabase.from("todos").insert({
@@ -213,6 +220,9 @@ export default function TodosPage() {
     setForm({ title: "", description: "", urgent: false, due_date: "", assigned_to: "" });
     setShowForm(false);
     await Promise.all([loadTodos(), refreshCounts()]);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function toggleTodo(id: string, currentStatus: string) {
@@ -494,8 +504,8 @@ export default function TodosPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowForm(false)} className="kasten kasten-muted">Abbrechen</button>
-                <button type="submit" disabled={!form.title.trim() || !form.due_date || !form.assigned_to} className="kasten kasten-red">Todo erstellen</button>
+                <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="kasten kasten-muted">Abbrechen</button>
+                <button type="submit" disabled={submitting || !form.title.trim() || !form.due_date || !form.assigned_to} className="kasten kasten-red">{submitting ? "Speichere…" : "Todo erstellen"}</button>
               </div>
             </form>
           </CardContent>
