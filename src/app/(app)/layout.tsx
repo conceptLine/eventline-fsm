@@ -117,7 +117,19 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         .on("postgres_changes", { event: "*", schema: "public", table: "vertrieb_contacts" }, dispatch("vertrieb_contacts"))
         .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, dispatch("tickets"))
         .on("postgres_changes", { event: "*", schema: "public", table: "service_reports" }, dispatch("service_reports"))
-        .subscribe();
+        .subscribe((status, err) => {
+          // Realtime-Subscription-Status sichtbar machen — vorher 'silent fail'
+          // wenn z.B. WSS vom Netzwerk geblockt wurde oder Auth-Token abgelaufen.
+          // Bei Fehler wird ein Window-Event gefeuert das die Bell zum Polling-
+          // Fallback umschaltet.
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            // eslint-disable-next-line no-console
+            console.warn("[realtime] subscription degraded:", status, err);
+            window.dispatchEvent(new CustomEvent("realtime:status", { detail: { ok: false, status } }));
+          } else if (status === "SUBSCRIBED") {
+            window.dispatchEvent(new CustomEvent("realtime:status", { detail: { ok: true, status } }));
+          }
+        });
     })();
 
     return () => {

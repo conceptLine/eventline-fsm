@@ -87,6 +87,9 @@ export function NotificationsBell() {
   // Ref auf seen-IDs damit Realtime-Inserts genau ein Mal Toast triggern
   // (sonst dispatches mehrfach pro Insert in Edge-Faellen).
   const seenIdsRef = useRef<Set<string>>(new Set());
+  // Cursor fuer den Polling-Fallback (siehe useEffect): max created_at
+  // der gesehenen Notifs. Alles juenger gilt als 'neu seit letztem Poll'.
+  const lastSeenRef = useRef<string | null>(null);
 
   async function load() {
     const nowIso = new Date().toISOString();
@@ -108,6 +111,13 @@ export function NotificationsBell() {
       // seen-Set fuer Initial-Load fuellen damit der erste Toast nur fuer
       // echte Live-Inserts kommt, nicht fuer History-Items.
       for (const n of data as Notification[]) seenIdsRef.current.add(n.id);
+      // Polling-Cursor: juengste Notif. Naechster Poll sucht > diesen Wert.
+      if (data.length > 0) {
+        const newest = (data[0] as Notification).created_at;
+        if (!lastSeenRef.current || newest > lastSeenRef.current) {
+          lastSeenRef.current = newest;
+        }
+      }
     }
     setUnread(count ?? 0);
   }
@@ -156,7 +166,57 @@ export function NotificationsBell() {
       load();
     };
     window.addEventListener("realtime:notifications", handler as EventListener);
-    return () => window.removeEventListener("realtime:notifications", handler as EventListener);
+
+    // Polling-Fallback: alle 20s pruefen ob neue Notifs reingekommen sind die
+    // ueber Realtime nicht durchgekommen sind (WSS geblockt, Auth abgelaufen,
+    // Subscription stillschweigend gefailt). Last-Seen-Cursor = max created_at
+    // aus seenIdsRef -- alles juenger ist neu.
+    const poll = async () => {
+      try {
+        const nowIso = new Date().toISOString();
+        // Falls nichts gesehen wurde: nimm jetzt minus 1 Stunde damit Initial-
+        // Setup nicht alle Notifs der letzten Woche als Popup raushaut.
+        const cursor = lastSeenRef.current ?? new Date(Date.now() - 60 * 60_000).toISOString();
+        const { data } = await supabase
+          .from("notifications")
+          .select("*")
+          .gt("created_at", cursor)
+          .or(`snoozed_until.is.null,snoozed_until.lt.${nowIso}`)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (!data || data.length === 0) return;
+        const newOnes = (data as Notification[]).filter((n) => !seenIdsRef.current.has(n.id));
+        if (newOnes.length === 0) {
+          // Cursor trotzdem updaten damit wir nicht ewig den gleichen
+          // bereits-gesehenen Bereich abfragen.
+          lastSeenRef.current = (data[0] as Notification).created_at;
+          return;
+        }
+        // Neue Notifs als Popup behandeln — exakt gleiche Logik wie Realtime.
+        for (const n of newOnes.reverse()) {
+          seenIdsRef.current.add(n.id);
+          if (!open) {
+            setPopups((prev) => {
+              const without = prev.filter((p) => p.id !== n.id);
+              return [n, ...without].slice(0, 3);
+            });
+          }
+        }
+        setPulse(true);
+        window.setTimeout(() => setPulse(false), 2000);
+        playNotificationSound();
+        lastSeenRef.current = (data[0] as Notification).created_at;
+        load();
+      } catch {
+        // best-effort, kein Logging-Spam
+      }
+    };
+    const pollTimer = window.setInterval(poll, 20_000);
+
+    return () => {
+      window.removeEventListener("realtime:notifications", handler as EventListener);
+      window.clearInterval(pollTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
