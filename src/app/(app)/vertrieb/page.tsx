@@ -40,8 +40,8 @@ import { useConfirm } from "@/components/ui/use-confirm";
 
 type Counts = {
   total: number; offen: number; kontaktiert: number; gespraech: number;
-  gewonnen: number; abgesagt: number; step_1: number; step_2: number;
-  step_3: number; step_4: number;
+  gewonnen: number; abgesagt: number; verworfen: number;
+  step_1: number; step_2: number; step_3: number; step_4: number;
 };
 
 type MobileTab = "all" | "mine" | "detail";
@@ -163,7 +163,7 @@ export default function VertriebPage() {
 
   const statusCounts: Record<string, number> = counts ? {
     offen: counts.offen, kontaktiert: counts.kontaktiert, gespraech: counts.gespraech,
-    gewonnen: counts.gewonnen, abgesagt: counts.abgesagt,
+    gewonnen: counts.gewonnen, abgesagt: counts.abgesagt, verworfen: counts.verworfen,
   } : {};
 
   // Page hat eine fixe Hoehe damit nicht die ganze Seite scrollt —
@@ -181,7 +181,7 @@ export default function VertriebPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Vertrieb</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {(counts?.total ?? 0) - (statusCounts.abgesagt || 0)} aktiv · {statusCounts.gewonnen || 0} gewonnen · {statusCounts.offen || 0} offen
+            {(counts?.total ?? 0) - (statusCounts.abgesagt || 0) - (statusCounts.verworfen || 0)} aktiv · {statusCounts.gewonnen || 0} gewonnen · {statusCounts.offen || 0} offen
           </p>
         </div>
         <div className="flex items-center gap-2">

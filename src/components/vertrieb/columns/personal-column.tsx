@@ -50,7 +50,7 @@ export function PersonalColumn({
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return contacts
-      .filter((c) => c.assigned_to === viewedUserId && c.status !== "gewonnen" && c.status !== "abgesagt")
+      .filter((c) => c.assigned_to === viewedUserId && c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen")
       .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
       .sort((a, b) => {
         const ad = daysSinceLastTouch(a, nowMs);

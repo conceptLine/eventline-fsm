@@ -44,7 +44,7 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
       // er aus dieser Liste. Admins koennen via Personal-Column-Switcher
       // fremde Zuweisungen anschauen.
       .filter((c) => !c.assigned_to)
-      .filter((c) => c.status !== "gewonnen" && c.status !== "abgesagt")
+      .filter((c) => c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen")
       .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
       .filter((c) => !filterHot || c.prioritaet === "top")
       .filter((c) => !filterStale || detectLeadAnomaly(c, nowMs).stale)

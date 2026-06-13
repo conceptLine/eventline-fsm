@@ -16,11 +16,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { BackButton } from "@/components/ui/back-button";
-import { ArrowLeft, Search, Check, X } from "lucide-react";
+import { ArrowLeft, Search, Check, X, Trash2 } from "lucide-react";
 import { LeadEditor } from "@/components/vertrieb/lead-editor";
 import type { VertriebContact } from "@/types";
 
-type StatusFilter = "all" | "gewonnen" | "abgesagt";
+type StatusFilter = "all" | "gewonnen" | "abgesagt" | "verworfen";
 
 export default function VertriebArchivPage() {
   const supabase = createClient();
@@ -35,7 +35,7 @@ export default function VertriebArchivPage() {
     const { data } = await supabase
       .from("vertrieb_contacts")
       .select("*")
-      .in("status", ["gewonnen", "abgesagt"])
+      .in("status", ["gewonnen", "abgesagt", "verworfen"])
       .order("updated_at", { ascending: false })
       .limit(2000);
     if (data) setContacts(data as VertriebContact[]);
@@ -65,12 +65,13 @@ export default function VertriebArchivPage() {
   }, [contacts, search, statusFilter]);
 
   const counts = useMemo(() => {
-    let g = 0, a = 0;
+    let g = 0, a = 0, v = 0;
     for (const c of contacts) {
       if (c.status === "gewonnen") g++;
       else if (c.status === "abgesagt") a++;
+      else if (c.status === "verworfen") v++;
     }
-    return { gewonnen: g, abgesagt: a, total: g + a };
+    return { gewonnen: g, abgesagt: a, verworfen: v, total: g + a + v };
   }, [contacts]);
 
   return (
@@ -82,7 +83,7 @@ export default function VertriebArchivPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Vertrieb-Archiv</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {counts.total} archiviert · {counts.gewonnen} gewonnen · {counts.abgesagt} abgesagt
+              {counts.total} archiviert · {counts.gewonnen} gewonnen · {counts.abgesagt} abgesagt · {counts.verworfen} verworfen
             </p>
           </div>
         </div>
@@ -121,6 +122,11 @@ export default function VertriebArchivPage() {
                 label="Abgesagt" icon={<X className="h-2.5 w-2.5" />}
                 active={statusFilter === "abgesagt"} tone="red"
                 onClick={() => setStatusFilter("abgesagt")}
+              />
+              <StatusChip
+                label="Verworfen" icon={<Trash2 className="h-2.5 w-2.5" />}
+                active={statusFilter === "verworfen"} tone="muted"
+                onClick={() => setStatusFilter("verworfen")}
               />
             </div>
           </div>
@@ -162,7 +168,7 @@ export default function VertriebArchivPage() {
 
 function StatusChip({ label, icon, active, onClick, tone }: {
   label: string; icon?: React.ReactNode; active: boolean; onClick: () => void;
-  tone?: "green" | "red";
+  tone?: "green" | "red" | "muted";
 }) {
   const activeClass = !active
     ? "bg-foreground/[0.06] dark:bg-foreground/[0.1] text-foreground hover:bg-foreground/[0.1] dark:hover:bg-foreground/[0.15]"
@@ -170,7 +176,9 @@ function StatusChip({ label, icon, active, onClick, tone }: {
       ? "bg-green-500 text-white"
       : tone === "red"
         ? "bg-red-500 text-white"
-        : "bg-foreground text-background";
+        : tone === "muted"
+          ? "bg-muted-foreground text-background"
+          : "bg-foreground text-background";
   return (
     <button
       type="button"
@@ -187,7 +195,23 @@ function ArchivRow({ contact: c, selected, onClick }: {
   contact: VertriebContact; selected: boolean; onClick: () => void;
 }) {
   // Im Archiv: kein Drag, kein Anomalien-Layer, Status-Pill prominent.
-  const isWon = c.status === "gewonnen";
+  // Drei Endzustaende: gewonnen (gruen), abgesagt (rot), verworfen (grau).
+  const tone =
+    c.status === "gewonnen" ? "green" :
+    c.status === "verworfen" ? "muted" :
+    "red";
+  const label =
+    c.status === "gewonnen" ? "Gewonnen" :
+    c.status === "verworfen" ? "Verworfen" :
+    "Abgesagt";
+  const stripeColor =
+    tone === "green" ? "bg-green-500" :
+    tone === "muted" ? "bg-muted-foreground/50" :
+    "bg-red-500";
+  const pillClass =
+    tone === "green" ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30" :
+    tone === "muted" ? "bg-muted text-muted-foreground border-border" :
+    "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30";
   return (
     <Card
       onClick={onClick}
@@ -198,7 +222,7 @@ function ArchivRow({ contact: c, selected, onClick }: {
       }`}
     >
       <div className="flex items-start gap-2 min-w-0">
-        <div className={`w-1 self-stretch rounded-full shrink-0 ${isWon ? "bg-green-500" : "bg-red-500"}`} />
+        <div className={`w-1 self-stretch rounded-full shrink-0 ${stripeColor}`} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-[9px] font-mono text-muted-foreground bg-foreground/[0.06] dark:bg-foreground/[0.1] px-1 py-0 rounded shrink-0">
@@ -207,12 +231,8 @@ function ArchivRow({ contact: c, selected, onClick }: {
             <p className="text-xs font-semibold truncate">{c.firma}</p>
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap text-[10px]">
-            <span className={`px-1 py-0 rounded text-[9px] font-medium border ${
-              isWon
-                ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30"
-                : "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30"
-            }`}>
-              {isWon ? "Gewonnen" : "Abgesagt"}
+            <span className={`px-1 py-0 rounded text-[9px] font-medium border ${pillClass}`}>
+              {label}
             </span>
             {c.updated_at && (
               <span className="text-muted-foreground tabular-nums">

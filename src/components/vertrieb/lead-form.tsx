@@ -31,6 +31,10 @@ interface Props {
   onAdvanceStep: () => void | Promise<void>;
   onMarkRecontacted: () => void | Promise<void>;
   onOpenLost: (id: string) => void;
+  /** Lead verwerfen (nur sichtbar wenn status='offen'): setzt status auf
+   *  'verworfen' und schickt ins Archiv. Fuer Leads die nie kontaktiert
+   *  wurden und nicht weiter verfolgt werden. */
+  onDiscard: (id: string) => void | Promise<void>;
   onOpenBuchhaltung: () => void;
   onOpenVerbesserung: () => void;
   onOpenTermin: (type: "kunde" | "telefon") => void;
@@ -65,6 +69,7 @@ export function LeadForm({
   onAdvanceStep,
   onMarkRecontacted,
   onOpenLost,
+  onDiscard,
   onOpenBuchhaltung,
   onOpenVerbesserung,
   onOpenTermin,
@@ -132,6 +137,13 @@ export function LeadForm({
                 {form.status !== "gewonnen" && (
                   <Button type="button" size="sm" variant="outline" onClick={() => onOpenLost(editingId)} className="text-red-600 border-red-200 hover:bg-red-50">
                     <AlertTriangle className="h-4 w-4 mr-1" />Auftrag verloren
+                  </Button>
+                )}
+                {/* Verwerfen — nur fuer offene, nie kontaktierte Leads.
+                    Verschiebt ins Archiv mit Status 'verworfen'. */}
+                {form.status === "offen" && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => onDiscard(editingId)} className="text-muted-foreground border-border hover:bg-muted/50">
+                    <Trash2 className="h-4 w-4 mr-1" />Verwerfen
                   </Button>
                 )}
               </div>

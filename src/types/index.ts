@@ -351,7 +351,7 @@ export interface Todo {
   job?: Job;
 }
 
-export type VertriebStatus = "offen" | "kontaktiert" | "gespraech" | "gewonnen" | "abgesagt";
+export type VertriebStatus = "offen" | "kontaktiert" | "gespraech" | "gewonnen" | "abgesagt" | "verworfen";
 export type VertriebPriority = "top" | "gut" | "mittel";
 export type VertriebKategorie = "verwaltung" | "veranstaltung";
 

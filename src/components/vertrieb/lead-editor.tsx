@@ -247,6 +247,26 @@ export function LeadEditor({ contactId, onClose }: Props) {
     onClose();
   }
 
+  /** Lead verwerfen: Status 'verworfen' setzen -> Lead verschwindet aus
+   *  der aktiven Liste und taucht im /vertrieb/archiv unter "Verworfen"
+   *  auf. Nur fuer Leads im Status 'offen' (nie kontaktiert) gedacht. */
+  async function discardLead() {
+    if (!contact) return;
+    const ok = await confirm({
+      title: "Lead verwerfen?",
+      message: `${contact.firma} wird ins Archiv verschoben. Du findest ihn jederzeit unter Vertrieb-Archiv -> Verworfen.`,
+      confirmLabel: "Verwerfen",
+      variant: "red",
+    });
+    if (!ok) return;
+    const { error } = await supabase.from("vertrieb_contacts").update({
+      status: "verworfen",
+    }).eq("id", contact.id);
+    if (error) { toast.error("Konnte nicht verwerfen: " + error.message); return; }
+    toast.success("Lead verworfen — im Archiv");
+    onClose();
+  }
+
   async function sendBuchhaltungsBenachrichtigung() {
     const c = currentContactWithDetails();
     if (!c) return;
@@ -546,6 +566,7 @@ export function LeadEditor({ contactId, onClose }: Props) {
         onAdvanceStep={advanceStep}
         onMarkRecontacted={markRecontacted}
         onOpenLost={openLostModal}
+        onDiscard={discardLead}
         onOpenBuchhaltung={() => setShowBuchhaltung(true)}
         onOpenVerbesserung={() => setShowVerbesserung(true)}
         onOpenTermin={openTerminModal}
