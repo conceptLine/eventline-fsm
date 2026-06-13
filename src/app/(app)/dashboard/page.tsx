@@ -24,7 +24,6 @@ import Link from "next/link";
 import { Calendar, CheckSquare, Ticket, ArrowRight, AlertCircle, Clock, Briefcase, CheckCircle2 } from "lucide-react";
 import { usePermissions } from "@/lib/use-permissions";
 import { OfficeAttendanceCard } from "@/components/dashboard/office-attendance-card";
-import { Users as UsersIcon } from "lucide-react";
 
 function greetingForHour(h: number): string {
   if (h < 12) return "Guten Morgen";
@@ -85,9 +84,8 @@ function formatHoursShort(h: number): string {
 
 export default function HeutePage() {
   const supabase = createClient();
-  const { profile, can, role } = usePermissions();
+  const { profile, can } = usePermissions();
   void profile; // profile fuer kuenftige Erweiterungen — Name wird via own-fetch geholt
-  const isAdmin = role === "admin";
   const [userName, setUserName] = useState("");
   const [todos, setTodos] = useState<OpenTodo[]>([]);
   const [tickets, setTickets] = useState<OpenTicket[]>([]);
@@ -270,31 +268,19 @@ export default function HeutePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {greeting}{userName ? ` ${userName}` : ""}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {new Date().toLocaleDateString("de-CH", {
-              timeZone: "Europe/Zurich",
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </p>
-        </div>
-        {/* Admin-only Link zum geteilten Notiz-Block. Bewusst dezent (kasten-
-            muted) damit's nicht von den Dashboard-KPIs ablenkt — taucht NICHT
-            in der Sidebar auf, nur hier als Eingang. */}
-        {isAdmin && (
-          <Link href="/admin-space" className="kasten kasten-muted text-xs shrink-0">
-            <UsersIcon className="h-3.5 w-3.5" />
-            Admin-Space
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        )}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {greeting}{userName ? ` ${userName}` : ""}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {new Date().toLocaleDateString("de-CH", {
+            timeZone: "Europe/Zurich",
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        </p>
       </div>
 
       {/* Office-Anwesenheit — Wochen-Grid wer wann im Büro ist. Nur

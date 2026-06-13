@@ -91,6 +91,11 @@ export const PARTNER_PERMISSION_MODULES: PermissionModule[] = [
  *  - /mein-konto: User-Self-Service (Profil, Benachrichtigungen, Geraete, Kalender) */
 const ALWAYS_ALLOWED_PREFIXES = ["/dashboard", "/mein-konto"];
 
+/** Pfade die strikt nur fuer role='admin' sind — Sidebar blendet sie fuer
+ *  alle anderen aus, isPathAllowed liefert false (-> /dashboard-Redirect
+ *  im (app)/layout). RLS sperrt die Daten zusaetzlich auf der DB-Seite. */
+const ADMIN_ONLY_PREFIXES = ["/admin-space"];
+
 /** Pfade die immer erreichbar sind, auch ohne Modul-View-Permission, weil
  *  sie via Verknuepfung aus einem anderen Modul aufgerufen werden (z.B.
  *  /kunden/[uuid] aus einem Auftrag heraus, ohne dass der User die ganze
@@ -111,6 +116,11 @@ function canSeeModule(slug: string, permissions: string[], role: string): boolea
 }
 
 export function isPathAllowed(pathname: string, permissions: string[], role: string): boolean {
+  // Admin-only-Pfade: explizit pruefen damit die Sidebar sie fuer Nicht-
+  // Admins ausblendet (auch wenn role==admin sowieso true zurueckgibt).
+  if (ADMIN_ONLY_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+    return role === "admin";
+  }
   if (role === "admin") return true;
   if (ALWAYS_ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
   // Detail-Pages (/kunden/[uuid] etc.) sind ohne Modul-Permission erreichbar
