@@ -18,7 +18,7 @@ import { requireTrustedDevice } from "@/lib/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { localDateIso, localHour, localTimeHM, weekdayForDateIso } from "@/lib/swiss-time";
-import { loadDefaultEmployerCosts, resolveEmployerCosts } from "@/lib/employer-costs";
+import { loadLohnDefaults, resolveEmployerCosts, resolvePct } from "@/lib/employer-costs";
 
 // Schweiz TZ-Offset im Sommer/Winter — für korrekte Local-Date/Hour
 // Timezone-/Date-Helper zentralisiert in @/lib/swiss-time.
@@ -189,22 +189,23 @@ export async function GET(req: Request) {
     success: true,
     profile: { ...profile, role: profile.role },
     year,
-    compensation: comp ? {
-      hourly_wage_chf: Number(comp.hourly_wage_chf),
-      // Effektiver Wert (Override oder Firmen-Standard, Migration 152).
-      employer_costs_chf_per_hour: resolveEmployerCosts(
-        comp.employer_costs_chf_per_hour,
-        await loadDefaultEmployerCosts(admin),
-      ),
-      effective_from: comp.effective_from,
-      notes: comp.notes,
-      ahv_iv_eo_pct: Number(comp.ahv_iv_eo_pct),
-      alv_pct: Number(comp.alv_pct),
-      nbu_pct: Number(comp.nbu_pct),
-      bvg_pct: Number(comp.bvg_pct),
-      ktg_pct: Number(comp.ktg_pct),
-      quellensteuer_pct: Number(comp.quellensteuer_pct),
-    } : null,
+    compensation: await (async () => {
+      if (!comp) return null;
+      // Alle effektiven Werte (Override -> Standard) auf einmal aufloesen.
+      const defs = await loadLohnDefaults(admin);
+      return {
+        hourly_wage_chf: Number(comp.hourly_wage_chf),
+        employer_costs_chf_per_hour: resolveEmployerCosts(comp.employer_costs_chf_per_hour, defs.employerCostsChfPerHour),
+        effective_from: comp.effective_from,
+        notes: comp.notes,
+        ahv_iv_eo_pct: resolvePct(comp.ahv_iv_eo_pct, defs.ahvIvEoPct),
+        alv_pct: resolvePct(comp.alv_pct, defs.alvPct),
+        nbu_pct: resolvePct(comp.nbu_pct, defs.nbuPct),
+        bvg_pct: resolvePct(comp.bvg_pct, defs.bvgPct),
+        ktg_pct: resolvePct(comp.ktg_pct, defs.ktgPct),
+        quellensteuer_pct: resolvePct(comp.quellensteuer_pct, defs.quellensteuerPct),
+      };
+    })(),
     hours: {
       stempel_minutes,
       geplant_minutes,

@@ -22,7 +22,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loadDefaultEmployerCosts, resolveEmployerCosts } from "@/lib/employer-costs";
+import { loadLohnDefaults, resolveEmployerCosts, resolvePct } from "@/lib/employer-costs";
 import { jsPDF } from "jspdf";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { localDateIso, localHour, weekdayForDateIso } from "@/lib/swiss-time";
@@ -92,9 +92,17 @@ export async function POST(req: Request) {
     }, { status: 409 });
   }
 
+  // Effektive Lohn-Defaults + Pcts via Helper (Override -> Standard).
+  const lohnDefaults = await loadLohnDefaults(admin);
+  const effAhv = resolvePct(comp.ahv_iv_eo_pct, lohnDefaults.ahvIvEoPct);
+  const effAlv = resolvePct(comp.alv_pct, lohnDefaults.alvPct);
+  const effNbu = resolvePct(comp.nbu_pct, lohnDefaults.nbuPct);
+  const effBvg = resolvePct(comp.bvg_pct, lohnDefaults.bvgPct);
+  const effKtg = resolvePct(comp.ktg_pct, lohnDefaults.ktgPct);
+  const effQst = resolvePct(comp.quellensteuer_pct, lohnDefaults.quellensteuerPct);
+
   // Total-Deduction-Sanity-Check (>=100% wuerde negativen Netto erzeugen)
-  const totalDeductionPct = Number(comp.ahv_iv_eo_pct) + Number(comp.alv_pct) + Number(comp.nbu_pct)
-    + Number(comp.bvg_pct) + Number(comp.ktg_pct) + Number(comp.quellensteuer_pct);
+  const totalDeductionPct = effAhv + effAlv + effNbu + effBvg + effKtg + effQst;
   if (totalDeductionPct >= 100) {
     return NextResponse.json({
       success: false,
@@ -174,8 +182,7 @@ export async function POST(req: Request) {
 
   const wage = Number(comp.hourly_wage_chf);
   // Override hat Vorrang vor Firmen-Standard (siehe Migration 152).
-  const defaultEmployer = await loadDefaultEmployerCosts(admin);
-  const employer = resolveEmployerCosts(comp.employer_costs_chf_per_hour, defaultEmployer);
+  const employer = resolveEmployerCosts(comp.employer_costs_chf_per_hour, lohnDefaults.employerCostsChfPerHour);
   const effectiveMin = rapportMin > 0 ? rapportMin : stempelMin;
   // 0-Stunden-Block — verhindert sinnlose CHF-0.00-PDFs in Mitarbeiter-Feed
   if (effectiveMin === 0) {
@@ -191,12 +198,12 @@ export async function POST(req: Request) {
   const totalSurcharge = nightSurcharge + sunholSurcharge;
   const brutto = baseLohn + totalSurcharge;
   const deductions = {
-    AHV_IV_EO: { pct: Number(comp.ahv_iv_eo_pct), amount: brutto * Number(comp.ahv_iv_eo_pct) / 100 },
-    ALV: { pct: Number(comp.alv_pct), amount: brutto * Number(comp.alv_pct) / 100 },
-    NBU: { pct: Number(comp.nbu_pct), amount: brutto * Number(comp.nbu_pct) / 100 },
-    BVG: { pct: Number(comp.bvg_pct), amount: brutto * Number(comp.bvg_pct) / 100 },
-    KTG: { pct: Number(comp.ktg_pct), amount: brutto * Number(comp.ktg_pct) / 100 },
-    Quellensteuer: { pct: Number(comp.quellensteuer_pct), amount: brutto * Number(comp.quellensteuer_pct) / 100 },
+    AHV_IV_EO: { pct: effAhv, amount: brutto * effAhv / 100 },
+    ALV: { pct: effAlv, amount: brutto * effAlv / 100 },
+    NBU: { pct: effNbu, amount: brutto * effNbu / 100 },
+    BVG: { pct: effBvg, amount: brutto * effBvg / 100 },
+    KTG: { pct: effKtg, amount: brutto * effKtg / 100 },
+    Quellensteuer: { pct: effQst, amount: brutto * effQst / 100 },
   };
   const totalDeductionAmount = Object.values(deductions).reduce((s, d) => s + d.amount, 0);
   const netto = brutto - totalDeductionAmount;

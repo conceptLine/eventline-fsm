@@ -14,7 +14,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTrustedDevice } from "@/lib/api-auth";
-import { loadDefaultEmployerCosts } from "@/lib/employer-costs";
+import { loadLohnDefaults } from "@/lib/employer-costs";
+
+// Konvertiert Spalten-Wert (string|number|null) zu number|null.
+// null bleibt null (= Standard verwenden), sonst Number-Cast.
+function toNullableNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 export async function GET() {
   const auth = await requireTrustedDevice("lohn:manage");
@@ -23,12 +31,12 @@ export async function GET() {
   const admin = createAdminClient();
 
   // Aktive Profiles (alle ausser Partner — Partner haben kein Lohnverhaeltnis bei uns).
-  const [profilesRes, compsRes, defaultEmployer] = await Promise.all([
+  const [profilesRes, compsRes, defaults] = await Promise.all([
     admin.from("profiles").select("id, full_name, role, email").neq("role", "partner").order("full_name"),
     admin.from("employee_compensation")
       .select("id, profile_id, hourly_wage_chf, employer_costs_chf_per_hour, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct")
       .is("effective_to", null),
-    loadDefaultEmployerCosts(admin),
+    loadLohnDefaults(admin),
   ]);
   if (profilesRes.error) return NextResponse.json({ success: false, error: profilesRes.error.message }, { status: 500 });
   if (compsRes.error) return NextResponse.json({ success: false, error: compsRes.error.message }, { status: 500 });
@@ -50,15 +58,15 @@ export async function GET() {
             // null = nutzt Standard, ansonsten der explizite Override-Wert.
             // Frontend entscheidet anhand von null vs. Number ob die Checkbox
             // 'Standard verwenden' an oder aus ist.
-            employer_costs_chf_per_hour: c.employer_costs_chf_per_hour == null ? null : Number(c.employer_costs_chf_per_hour),
+            employer_costs_chf_per_hour: toNullableNumber(c.employer_costs_chf_per_hour),
             effective_from: c.effective_from,
             notes: c.notes,
-            ahv_iv_eo_pct: Number(c.ahv_iv_eo_pct ?? 5.3),
-            alv_pct: Number(c.alv_pct ?? 1.1),
-            nbu_pct: Number(c.nbu_pct ?? 1.4),
-            bvg_pct: Number(c.bvg_pct ?? 0),
-            ktg_pct: Number(c.ktg_pct ?? 0),
-            quellensteuer_pct: Number(c.quellensteuer_pct ?? 0),
+            ahv_iv_eo_pct: toNullableNumber(c.ahv_iv_eo_pct),
+            alv_pct: toNullableNumber(c.alv_pct),
+            nbu_pct: toNullableNumber(c.nbu_pct),
+            bvg_pct: toNullableNumber(c.bvg_pct),
+            ktg_pct: toNullableNumber(c.ktg_pct),
+            quellensteuer_pct: toNullableNumber(c.quellensteuer_pct),
           }
         : null,
     };
@@ -67,7 +75,15 @@ export async function GET() {
   return NextResponse.json({
     success: true,
     employees: rows,
-    defaults: { employer_costs_chf_per_hour: defaultEmployer },
+    defaults: {
+      employer_costs_chf_per_hour: defaults.employerCostsChfPerHour,
+      ahv_iv_eo_pct: defaults.ahvIvEoPct,
+      alv_pct: defaults.alvPct,
+      nbu_pct: defaults.nbuPct,
+      bvg_pct: defaults.bvgPct,
+      ktg_pct: defaults.ktgPct,
+      quellensteuer_pct: defaults.quellensteuerPct,
+    },
   });
 }
 
@@ -94,33 +110,42 @@ export async function POST(request: Request) {
   const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
 
-  // Abzuege (% vom Brutto). Wenn Feld fehlt → Default. Wenn Feld da aber
-  // out-of-range → 400 statt silent fallback (sonst speichert man invalid
-  // Werte ohne Feedback).
+  // Abzuege (% vom Brutto). null = nutze Standard, number = expliziter
+  // Override. Out-of-range -> 400 statt silent fallback.
   let validationError: string | null = null;
-  function pct(key: string, fallback: number): number {
+  function pctNullable(key: string): number | null {
     const v = body[key];
-    if (v == null) return fallback;
+    if (v == null) return null;
     const n = typeof v === "number" ? v : Number(v);
     if (!Number.isFinite(n) || n < 0 || n > 100) {
       validationError ??= `${key} ungültig (erwartet 0-100, war ${v})`;
-      return fallback;
+      return null;
     }
     return n;
   }
-  const ahv_iv_eo_pct = pct("ahv_iv_eo_pct", 5.3);
-  const alv_pct = pct("alv_pct", 1.1);
-  const nbu_pct = pct("nbu_pct", 1.4);
-  const bvg_pct = pct("bvg_pct", 0);
-  const ktg_pct = pct("ktg_pct", 0);
-  const quellensteuer_pct = pct("quellensteuer_pct", 0);
+  const ahv_iv_eo_pct = pctNullable("ahv_iv_eo_pct");
+  const alv_pct = pctNullable("alv_pct");
+  const nbu_pct = pctNullable("nbu_pct");
+  const bvg_pct = pctNullable("bvg_pct");
+  const ktg_pct = pctNullable("ktg_pct");
+  const quellensteuer_pct = pctNullable("quellensteuer_pct");
   if (validationError) return NextResponse.json({ success: false, error: validationError }, { status: 400 });
-  // Sanity-Check: Summe der Abzuege darf nicht >= 100% sein (Netto waere negativ).
-  const totalDeductionPct = ahv_iv_eo_pct + alv_pct + nbu_pct + bvg_pct + ktg_pct + quellensteuer_pct;
+  // Sanity-Check: Summe darf nicht >= 100% sein. Fuer NULL-Werte
+  // ziehen wir die Defaults aus app_settings damit der Check sinnvoll
+  // bleibt (sonst koennte jemand alle als Standard markieren und der
+  // gespeicherte Standard die Summe ueberschreiten lassen).
+  const defaults = await loadLohnDefaults(createAdminClient());
+  const totalDeductionPct =
+      (ahv_iv_eo_pct ?? defaults.ahvIvEoPct)
+    + (alv_pct ?? defaults.alvPct)
+    + (nbu_pct ?? defaults.nbuPct)
+    + (bvg_pct ?? defaults.bvgPct)
+    + (ktg_pct ?? defaults.ktgPct)
+    + (quellensteuer_pct ?? defaults.quellensteuerPct);
   if (totalDeductionPct >= 100) {
     return NextResponse.json({
       success: false,
-      error: `Summe der Abzuege ist ${totalDeductionPct.toFixed(2)}% — muss < 100% sein (Netto waere negativ).`,
+      error: `Summe der Abzuege (inkl. Standards) ist ${totalDeductionPct.toFixed(2)}% — muss < 100% sein.`,
     }, { status: 400 });
   }
 

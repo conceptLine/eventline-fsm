@@ -25,7 +25,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { bucketizeMinutes, weekdayForDateIso, type MinuteBucket } from "@/lib/swiss-time";
-import { loadDefaultEmployerCosts, resolveEmployerCosts } from "@/lib/employer-costs";
+import { loadLohnDefaults, resolveEmployerCosts, resolvePct } from "@/lib/employer-costs";
 
 interface RpcRow {
   profile_id: string;
@@ -205,9 +205,10 @@ export async function GET(req: Request) {
     };
   }
 
-  // Firmen-Standard fuer Arbeitgeber-Kosten — wird genutzt wenn der
-  // per-Mitarbeiter-Override null ist (Migration 152).
-  const defaultEmployer = await loadDefaultEmployerCosts(adminClient);
+  // Firmen-Standards fuer Arbeitgeber-Kosten + Abzuege — werden genutzt
+  // wenn der per-Mitarbeiter-Override null ist (Migrationen 152 + 153).
+  const defaults = await loadLohnDefaults(adminClient);
+  const defaultEmployer = defaults.employerCostsChfPerHour;
 
   // BVG-Eintrittsschwelle — fuer Inline-Warnung pro Zeile.
   // Default 1890 falls noch nie gesetzt (gleicher Default wie Migration 148).
@@ -242,12 +243,15 @@ export async function GET(req: Request) {
     const vollkosten = wage != null
       ? hours * (wage + employer) + surcharges.total_surcharge_chf
       : null;
-    const totalDeductionPct = Number(r.ahv_iv_eo_pct ?? 0)
-      + Number(r.alv_pct ?? 0)
-      + Number(r.nbu_pct ?? 0)
-      + Number(r.bvg_pct ?? 0)
-      + Number(r.ktg_pct ?? 0)
-      + Number(r.quellensteuer_pct ?? 0);
+    // Effective Pcts via helper — null in der RPC-Row = Mitarbeiter
+    // hat keinen Override, nutze den Firmen-Default.
+    const totalDeductionPct =
+        resolvePct(r.ahv_iv_eo_pct, defaults.ahvIvEoPct)
+      + resolvePct(r.alv_pct, defaults.alvPct)
+      + resolvePct(r.nbu_pct, defaults.nbuPct)
+      + resolvePct(r.bvg_pct, defaults.bvgPct)
+      + resolvePct(r.ktg_pct, defaults.ktgPct)
+      + resolvePct(r.quellensteuer_pct, defaults.quellensteuerPct);
     const nettolohn = lohnkostenWithSurcharge != null
       ? lohnkostenWithSurcharge * (1 - totalDeductionPct / 100)
       : null;
