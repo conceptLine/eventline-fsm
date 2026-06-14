@@ -209,6 +209,15 @@ export async function GET(req: Request) {
   // per-Mitarbeiter-Override null ist (Migration 152).
   const defaultEmployer = await loadDefaultEmployerCosts(adminClient);
 
+  // BVG-Eintrittsschwelle — fuer Inline-Warnung pro Zeile.
+  // Default 1890 falls noch nie gesetzt (gleicher Default wie Migration 148).
+  const { data: appSettings } = await adminClient
+    .from("app_settings")
+    .select("bvg_threshold_chf")
+    .eq("id", 1)
+    .maybeSingle();
+  const bvgThresholdChf = Number(appSettings?.bvg_threshold_chf ?? 1890);
+
   const employees = (data as RpcRow[]).map((r) => {
     // RPC liefert stempel_minutes als UTC-Delta-Summe — DST-broken. Wir
     // ueberschreiben mit der per-Minute-DST-safe-Berechnung.
@@ -266,5 +275,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ success: true, month, employees });
+  return NextResponse.json({ success: true, month, employees, bvgThresholdChf });
 }
