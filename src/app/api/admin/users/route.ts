@@ -41,6 +41,16 @@ export async function POST(request: Request) {
     ? body.birthdate
     : null;
 
+  // Optional: Brutto-Stundenlohn. Wenn gesetzt, wird beim User-Create
+  // auch eine employee_compensation-Zeile mit uses_standard_lohn=true
+  // angelegt. So ist der MA sofort vollstaendig konfiguriert.
+  const hourly_wage_chf: number | null = (() => {
+    const v = body.hourly_wage_chf;
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) && n >= 0 && n < 10000 ? n : null;
+  })();
+
   if (!email || !full_name) {
     return NextResponse.json({ success: false, error: "Email und Name sind Pflicht" }, { status: 400 });
   }
@@ -80,6 +90,26 @@ export async function POST(request: Request) {
       { success: false, error: created.error, debug: created.debug },
       { status: 400 },
     );
+  }
+
+  // Optional: Comp-Zeile mit uses_standard_lohn=true anlegen wenn Brutto
+  // angegeben wurde -- so ist der MA sofort vollstaendig konfiguriert.
+  if (hourly_wage_chf != null) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: compErr } = await admin
+      .from("employee_compensation")
+      .insert({
+        profile_id: created.userId,
+        hourly_wage_chf,
+        uses_standard_lohn: true,
+        effective_from: today,
+        created_by: auth.user.id,
+      });
+    if (compErr) {
+      // Kein Fail — User ist bereits angelegt, Comp-Row kann via UI nach-
+      // gepflegt werden. Nur loggen.
+      logError("admin.users.create.comp", compErr, { userId: created.userId });
+    }
   }
 
   // Setup-Mail mit Reset-Link via Resend — Supabase's Default-Mailer

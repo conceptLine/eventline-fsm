@@ -1,31 +1,36 @@
 "use client";
 
 /**
- * HR-Hub — zwei Tabs:
+ * HR-Hub — zwei Top-Tabs:
  *   • Operativ — Karten fuer Stempelzeiten, Tickets, Ferien
- *   • Löhne    — Lohnausweise (eigene) + Monats-Stundenuebersicht
- *                fuer die Lohnabrechnung (admin-only, Trust-gated).
+ *   • Löhne    — Lohn-Hub mit Sub-Tabs (admin-only, Trust-gated):
+ *                  - Abrechnung: Monats-Stundenuebersicht inkl. BVG-Vorausschau
+ *                  - Lohnabrechnungen: PDF generieren + manuelle Uploads
+ *                  - Mitarbeiter-Lohn: Brutto-Stundenlohn + Overrides pro MA
+ *                  - Standardwerte: firmenweite Default-Abzuege
  *
- * Lohn-WERTE pro Mitarbeiter (Brutto-Stundenlohn, Arbeitgeber-Anteil)
- * werden NICHT mehr hier verwaltet — das laeuft seit dem Lohntabelle-
- * Removal direkt im User-Edit-Modal unter Einstellungen → Team. Dieser
- * Tab zeigt nur die aggregierte Auswertung pro Monat.
+ * Eigene Lohndokumente (fuer alle Rollen) leben unter /mein-konto → Dokumente.
+ * Stammdaten der MA (Name, Email, Rolle, Geburtsdatum) leben unter
+ * /einstellungen → Team.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TypePickerCard, type TypePickerTone } from "@/components/ui/type-picker-card";
-import { Clock, Ticket, Plane, Briefcase, Wallet } from "lucide-react";
+import { Clock, Ticket, Plane, Briefcase, Wallet, Table, FileText, Users, Settings as SettingsIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { usePermissions } from "@/lib/use-permissions";
 import { cn } from "@/lib/utils";
 import { LohndokumenteAdmin } from "@/components/hr/lohndokumente-admin";
 import { MonatsstundenTable } from "@/components/hr/monatsstunden-table";
+import { LohnStandardwerteCard } from "@/components/hr/loehne/lohn-standardwerte-card";
+import { MitarbeiterLohnTab } from "@/components/hr/loehne/mitarbeiter-lohn-tab";
 import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
 
 const TAB_BTN_CLASS = "flex items-center gap-2 px-3 py-2.5 -mb-px text-sm font-medium border-b-2 transition-colors";
 
 type Tab = "operativ" | "loehne";
+type LoehneSubTab = "abrechnung" | "lohnabrechnungen" | "mitarbeiter" | "standardwerte";
 
 interface HRSection {
   href: string;
@@ -45,18 +50,31 @@ export default function HRPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTab = searchParams.get("tab") as Tab | null;
+  const urlSub = searchParams.get("subtab") as LoehneSubTab | null;
   const [tab, setTab] = useState<Tab>(urlTab === "loehne" ? "loehne" : "operativ");
+  const [subTab, setSubTab] = useState<LoehneSubTab>(urlSub ?? "abrechnung");
   const { role } = usePermissions();
-  // Lohnabrechnung ist strikt admin-only — auch User mit lohn:manage
-  // Permission sollen die Querschnitts-Tabelle nicht sehen.
   const isAdmin = role === "admin";
 
   function selectTab(t: Tab) {
     setTab(t);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (t === "operativ") url.searchParams.delete("tab");
-      else url.searchParams.set("tab", t);
+      if (t === "operativ") {
+        url.searchParams.delete("tab");
+        url.searchParams.delete("subtab");
+      } else {
+        url.searchParams.set("tab", t);
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+  }
+
+  function selectSubTab(s: LoehneSubTab) {
+    setSubTab(s);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("subtab", s);
       window.history.replaceState({}, "", url.toString());
     }
   }
@@ -66,9 +84,20 @@ export default function HRPage() {
     setTab(next);
   }, [urlTab]);
 
+  useEffect(() => {
+    if (urlSub) setSubTab(urlSub);
+  }, [urlSub]);
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "operativ", label: "Operativ", icon: <Briefcase className="h-4 w-4" /> },
     { key: "loehne",   label: "Löhne",    icon: <Wallet className="h-4 w-4" /> },
+  ];
+
+  const loehneSubTabs: { key: LoehneSubTab; label: string; icon: React.ReactNode }[] = [
+    { key: "abrechnung",       label: "Abrechnung",       icon: <Table className="h-4 w-4" /> },
+    { key: "lohnabrechnungen", label: "Lohnabrechnungen", icon: <FileText className="h-4 w-4" /> },
+    { key: "mitarbeiter",      label: "Mitarbeiter-Lohn", icon: <Users className="h-4 w-4" /> },
+    { key: "standardwerte",    label: "Standardwerte",    icon: <SettingsIcon className="h-4 w-4" /> },
   ];
 
   return (
@@ -116,26 +145,46 @@ export default function HRPage() {
       )}
 
       {tab === "loehne" && (
-        <div className="space-y-6">
-          {/* Admin-only: Monats-Stunden-Tabelle + Lohndokumente-Verwaltung.
-              Trust-gated. Strikt role='admin', auch User mit lohn:manage-
-              Permission sehen sie nicht.
-              Eigene Lohndokumente (fuer alle Rollen) leben jetzt unter
-              /mein-konto -> Dokumente, nicht mehr hier. */}
-          {isAdmin ? (
-            <TrustedDeviceGate>
-              <div className="space-y-6">
-                <MonatsstundenTable />
-                <LohndokumenteAdmin />
-              </div>
-            </TrustedDeviceGate>
-          ) : (
+        <div className="space-y-4">
+          {!isAdmin ? (
             <div className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center text-sm text-muted-foreground">
               Deine eigenen Lohnabrechnungen findest du unter{" "}
               <a href="/mein-konto?tab=dokumente" className="underline hover:text-foreground">
                 Mein Konto → Dokumente
               </a>.
             </div>
+          ) : (
+            <TrustedDeviceGate>
+              {/* Sub-Nav fuer den Lohn-Hub */}
+              <nav className="flex gap-1 flex-wrap text-xs">
+                {loehneSubTabs.map((s) => {
+                  const active = subTab === s.key;
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => selectSubTab(s.key)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors",
+                        active
+                          ? "border-red-500 bg-red-500/10 text-red-700 dark:text-red-300"
+                          : "border-border bg-card hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]",
+                      )}
+                    >
+                      {s.icon}
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="pt-2">
+                {subTab === "abrechnung" && <MonatsstundenTable />}
+                {subTab === "lohnabrechnungen" && <LohndokumenteAdmin />}
+                {subTab === "mitarbeiter" && <MitarbeiterLohnTab />}
+                {subTab === "standardwerte" && <LohnStandardwerteCard />}
+              </div>
+            </TrustedDeviceGate>
           )}
         </div>
       )}
