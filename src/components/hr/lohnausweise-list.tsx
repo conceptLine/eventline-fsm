@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
-import { FileText, Download, ShieldCheck, Mail } from "lucide-react";
+import { FileText, Download, ShieldCheck, Mail, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Loading } from "@/components/ui/spinner";
 
@@ -26,6 +26,7 @@ interface WageDoc {
   period_month: number | null;
   file_size: number | null;
   uploaded_at: string;
+  received_confirmed_at: string | null;
 }
 
 const MONTH_NAMES = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -78,11 +79,20 @@ export function LohnausweiseList() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
+  async function confirmReceipt(id: string) {
+    const res = await fetch(`/api/hr/wage-documents/${id}/confirm-receipt`, { method: "POST" });
+    const j = await res.json();
+    if (!j.success) { toast.error(j.error || "Bestaetigen fehlgeschlagen"); return; }
+    setDocs((prev) => prev.map((d) => d.id === id ? { ...d, received_confirmed_at: j.received_confirmed_at } : d));
+    toast.success("Empfang bestätigt");
+  }
+
   const byYear = docs.reduce<Record<number, WageDoc[]>>((acc, d) => {
     (acc[d.year] ??= []).push(d);
     return acc;
   }, {});
   const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+  const lohnausweise = docs.filter((d) => d.doc_type === "lohnausweis").sort((a, b) => b.year - a.year);
 
   return (
     <div className="space-y-3">
@@ -92,6 +102,10 @@ export function LohnausweiseList() {
           Monatliche Lohnabrechnungen + jährlicher Lohnausweis (für die Steuererklärung).
         </p>
       </div>
+
+      {!loading && !consentNeeded && (
+        <ReceiptConfirmationCard items={lohnausweise} onConfirm={confirmReceipt} />
+      )}
 
       {loading ? (
         <Card className="bg-card"><CardContent><Loading /></CardContent></Card>
@@ -152,6 +166,81 @@ function DocRow({ doc, onDownload }: { doc: WageDoc; onDownload: () => void }) {
         <Download className="h-3.5 w-3.5" /> PDF
       </button>
     </div>
+  );
+}
+
+function ReceiptConfirmationCard({ items, onConfirm }: { items: WageDoc[]; onConfirm: (id: string) => Promise<void> }) {
+  const [pending, setPending] = useState<string | null>(null);
+
+  async function handleConfirm(id: string) {
+    setPending(id);
+    try { await onConfirm(id); } finally { setPending(null); }
+  }
+
+  return (
+    <Card className="bg-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Empfangsbestätigung Lohnausweise
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-[11px] text-muted-foreground">
+          Schweizer Steuerrecht verlangt einen Nachweis, dass du deinen jährlichen Lohnausweis erhalten hast.
+          Bitte bestätige den Empfang nachdem du die PDF heruntergeladen hast.
+        </p>
+
+        {items.length === 0 ? (
+          <div className="px-3 py-3 rounded-lg border border-dashed border-border text-center">
+            <p className="text-[11px] text-muted-foreground">
+              Sobald dein erster Lohnausweis verfügbar ist, kannst du den Empfang hier bestätigen.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {items.map((d) => {
+              const confirmed = d.received_confirmed_at;
+              return (
+                <div
+                  key={d.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-foreground/[0.02] dark:bg-foreground/[0.04]"
+                >
+                  <div className="min-w-0 flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">Lohnausweis {d.year}</p>
+                      {confirmed ? (
+                        <p className="text-[10px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                          <Check className="h-3 w-3" />
+                          Empfang bestätigt am {new Date(confirmed).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">Noch nicht bestätigt</p>
+                      )}
+                    </div>
+                  </div>
+                  {confirmed ? (
+                    <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+                      Bestätigt
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirm(d.id)}
+                      disabled={pending === d.id}
+                      className="kasten kasten-green shrink-0"
+                    >
+                      {pending === d.id ? "…" : <><Check className="h-3.5 w-3.5" /> Erhalt bestätigen</>}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
