@@ -379,9 +379,14 @@ export async function POST(req: Request) {
     footerLines.push(`HINWEIS: Geburtsdatum nicht hinterlegt — Ferienanteil mit ${ferienPct.toFixed(2)}% angenommen (Erwachsene). Pruefen ob MA <20 Jahre alt ist (dann 10.64% korrekt).`);
   }
   footerLines.push(`Generiert am ${new Date().toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })} um ${new Date().toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich" })}`);
+  // y muss um die ECHTE gerenderte Hoehe vorruecken — sonst ueberlappen
+  // umgebrochene Zeilen die nachfolgenden (HINWEIS-Zeile wird oft 2-3
+  // Zeilen lang). splitTextToSize liefert die tatsaechliche Zeilenzahl
+  // nach Wrap, ~3.5mm pro Zeile bei 8pt + winziger Absatz-Abstand.
   for (const line of footerLines) {
-    doc.text(line, left, y, { maxWidth: contentWidth });
-    y += 4;
+    const wrapped = doc.splitTextToSize(line, contentWidth);
+    doc.text(wrapped, left, y);
+    y += wrapped.length * 3.5 + 0.5;
   }
 
   // Upload + DB-Row
