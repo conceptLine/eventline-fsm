@@ -27,6 +27,8 @@ import { effectiveFerienanteil, splitBruttoFerien } from "@/lib/ferienanteil";
 import { jsPDF } from "jspdf";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { localDateIso, localHour, weekdayForDateIso } from "@/lib/swiss-time";
+import fs from "node:fs";
+import nodePath from "node:path";
 
 const BUCKET = "lohndokumente";
 
@@ -233,6 +235,18 @@ export async function POST(req: Request) {
   let y = 18;
   const left = 20, right = 190, contentWidth = right - left;
 
+  // Logo oben rechts (logo-gmbh-black ist 800x185 -> Aspect 4.32:1)
+  try {
+    const logoPath = nodePath.join(process.cwd(), "public", "logo-gmbh-black.png");
+    const logoBuf = await fs.promises.readFile(logoPath);
+    const logoBase64 = `data:image/png;base64,${logoBuf.toString("base64")}`;
+    const logoWidth = 45;
+    const logoHeight = logoWidth / (800 / 185);
+    doc.addImage(logoBase64, "PNG", right - logoWidth, y - 4, logoWidth, logoHeight);
+  } catch {
+    // Fail-soft — falls Logo nicht ladbar, ohne weiter
+  }
+
   // Header
   doc.setFontSize(18); doc.setFont("helvetica", "bold");
   doc.text("EVENTLINE GmbH", left, y);
@@ -316,13 +330,13 @@ export async function POST(req: Request) {
   for (const [k, d] of Object.entries(deductions)) {
     if (d.pct === 0) continue;
     doc.text(`${k} (${d.pct.toFixed(2)}%)`, left, y);
-    doc.text(`− CHF ${CHF(d.amount)}`, right, y, { align: "right" });
+    doc.text(`- CHF ${CHF(d.amount)}`, right, y, { align: "right" });
     y += 5;
   }
   if (totalDeductionPct === 0) { doc.text("Keine Abzüge konfiguriert", left, y); y += 5; }
   y += 2;
   doc.setFont("helvetica", "bold");
-  doc.text(`Total Abzüge (${totalDeductionPct.toFixed(2)}%)`, left, y); doc.text(`− CHF ${CHF(totalDeductionAmount)}`, right, y, { align: "right" });
+  doc.text(`Total Abzüge (${totalDeductionPct.toFixed(2)}%)`, left, y); doc.text(`- CHF ${CHF(totalDeductionAmount)}`, right, y, { align: "right" });
   y += 8;
   doc.setDrawColor(80); doc.line(left, y, right, y); y += 7;
 

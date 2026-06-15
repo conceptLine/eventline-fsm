@@ -20,6 +20,8 @@ import { bucketizeMinutes, weekdayForDateIso, type MinuteBucket } from "@/lib/sw
 import { loadLohnDefaults, effectivePcts, sumEmployeePct, sumEmployerPct, employerCostsPerHour } from "@/lib/employer-costs";
 import { effectiveFerienanteil, splitBruttoFerien } from "@/lib/ferienanteil";
 import ExcelJS from "exceljs";
+import fs from "node:fs";
+import path from "node:path";
 
 interface DayBucket {
   date: string;
@@ -203,7 +205,30 @@ export async function GET(req: Request) {
   // Excel-Workbook bauen
   const wb = new ExcelJS.Workbook();
   wb.creator = "EVENTLINE FSM";
-  wb.created = new Date(`${to}T12:00:00Z`); // deterministisch — kein Math/Date.now-Call wuerde Workflow brechen
+  wb.created = new Date(`${to}T12:00:00Z`); // deterministisch
+
+  // Logo einmalig in's Workbook laden — wir nutzen die ImageId in jedem Sheet.
+  let logoImageId: number | null = null;
+  try {
+    const logoPath = path.join(process.cwd(), "public", "logo-gmbh-black.png");
+    const logoBuf = await fs.promises.readFile(logoPath);
+    // exceljs erwartet Uint8Array/ArrayBuffer — Cast vom Node-Buffer.
+    logoImageId = wb.addImage({ buffer: new Uint8Array(logoBuf).buffer, extension: "png" });
+  } catch {
+    // Fail-soft
+  }
+
+  // Logo als floatendes Bild oben rechts pro Sheet — sheet.columns +
+  // direkter Overlay funktioniert in Excel sauber (Bild ist eine separate
+  // Object-Schicht, ueberlappt die Cells nicht logisch).
+  function placeLogo(sheet: ExcelJS.Worksheet, rightColIdx: number) {
+    if (logoImageId == null) return;
+    sheet.addImage(logoImageId, {
+      tl: { col: rightColIdx - 2, row: 0 },
+      ext: { width: 130, height: 30 },
+    });
+    sheet.getRow(1).height = 24;
+  }
 
   const summarySheet = wb.addWorksheet("Übersicht");
   summarySheet.columns = [
@@ -220,6 +245,7 @@ export async function GET(req: Request) {
   ];
   summarySheet.getRow(1).font = { bold: true };
   summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEEEEE" } };
+  placeLogo(summarySheet, 10);
 
   for (const p of profiles) {
     const days = Array.from(perProfileDays.get(p.id)?.values() ?? []).sort((a, b) => a.date.localeCompare(b.date));
@@ -249,6 +275,7 @@ export async function GET(req: Request) {
     ];
     sheet.getRow(1).font = { bold: true };
     sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEEEEE" } };
+    placeLogo(sheet, 9);
 
     // Alle Datums-Keys (Stempel + Geplant + Rapport union) damit der Sheet
     // auch Tage zeigt die nur geplant aber nicht gestempelt waren.
