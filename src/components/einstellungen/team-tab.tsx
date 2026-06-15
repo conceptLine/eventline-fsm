@@ -29,18 +29,25 @@ import { TOAST } from "@/lib/messages";
 type EditState = { id: string; full_name: string; role: string } | null;
 interface CompOriginal {
   hourly_wage_chf: number;
-  /** null = nutzt Firmen-Standard, number = expliziter Override. */
-  /** Arbeitgeber-Anteil als % vom Brutto (Migration 154). */
-  employer_pct: number | null;
+  /** All-or-Nothing: true = alle Pcts kommen aus dem Firmen-Standard,
+   *  false = die expliziten Pct-Felder gelten. (Migration 156) */
+  uses_standard_lohn: boolean;
   effective_from: string;
   notes: string | null;
-  // null = nutzt Firmen-Standard, number = expliziter Override.
+  // Mitarbeiter-Abzuege (% vom Brutto). NULL bei standard-row, sonst Number.
   ahv_iv_eo_pct: number | null;
   alv_pct: number | null;
   nbu_pct: number | null;
   bvg_pct: number | null;
   ktg_pct: number | null;
   quellensteuer_pct: number | null;
+  // Arbeitgeber-Anteil (% vom Brutto). Gleiche NULL-Logik.
+  employer_ahv_pct: number | null;
+  employer_alv_pct: number | null;
+  employer_fak_pct: number | null;
+  employer_bu_pct: number | null;
+  employer_bvg_pct: number | null;
+  employer_verwaltung_pct: number | null;
 }
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 interface RoleOption { slug: string; label: string }
@@ -60,46 +67,36 @@ export function TeamTab() {
   // Sektion ist standardmaessig zugeklappt damit das Modal nicht ueberfordert.
   const [lohnOpen, setLohnOpen] = useState(false);
   const [editWage, setEditWage] = useState("");
-  const [editEmployer, setEditEmployer] = useState("");
-  // Checkbox 'Standard verwenden' im Edit-Modal. Wenn true wird der Override
-  // im POST als null gesendet -> Backend nutzt app_settings.default_*.
-  const [editEmployerUseDefault, setEditEmployerUseDefault] = useState(true);
-  // Firmen-Standards — geladen via /api/hr/lohn-defaults. Werden im
-  // oben gerenderten Standardwerte-Block editiert + im Edit-Modal als
-  // Placeholder/Default-Anzeige verwendet wenn 'Standard' aktiv ist.
-  interface DefaultsState {
-    employer: number;
-    ahv: number;
-    alv: number;
-    nbu: number;
-    bvg: number;
-    ktg: number;
-    qst: number;
-  }
-  const [lohnDefaults, setLohnDefaults] = useState<DefaultsState>({
-    employer: 0, ahv: 5.3, alv: 1.1, nbu: 1.4, bvg: 0, ktg: 0, qst: 0,
-  });
-  // Drafts — eines pro Feld damit man unabhaengig speichern kann.
-  const [defaultDrafts, setDefaultDrafts] = useState<Record<keyof DefaultsState, string>>({
-    employer: "0", ahv: "5.3", alv: "1.1", nbu: "1.4", bvg: "0", ktg: "0", qst: "0",
-  });
-  const [savingDefault, setSavingDefault] = useState(false);
+  // All-or-Nothing-Toggle im Edit-Modal: true = alle Pcts kommen aus
+  // dem Firmen-Standard, false = die expliziten Inputs greifen.
+  const [editUsesStandard, setEditUsesStandard] = useState(true);
   const [editFrom, setEditFrom] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editAhv, setEditAhv] = useState("5.3");
-  const [editAlv, setEditAlv] = useState("1.1");
-  const [editNbu, setEditNbu] = useState("1.4");
-  const [editBvg, setEditBvg] = useState("0");
-  const [editKtg, setEditKtg] = useState("0");
-  const [editQst, setEditQst] = useState("0");
-  // 'Standard verwenden' Toggles pro Abzug. Wenn true wird im POST null
-  // gesendet -> Backend nimmt den Firmen-Standard.
-  const [editUseDefAhv, setEditUseDefAhv] = useState(true);
-  const [editUseDefAlv, setEditUseDefAlv] = useState(true);
-  const [editUseDefNbu, setEditUseDefNbu] = useState(true);
-  const [editUseDefBvg, setEditUseDefBvg] = useState(true);
-  const [editUseDefKtg, setEditUseDefKtg] = useState(true);
-  const [editUseDefQst, setEditUseDefQst] = useState(true);
+  // Alle 12 Pcts pro Mitarbeiter als Strings (UI-Inputs). Bei
+  // uses_standard_lohn=true werden sie nicht persistiert sondern beim
+  // Speichern als NULL gesendet (sauberes DB-State).
+  const PCT_KEYS = [
+    "ahv_iv_eo_pct", "alv_pct", "nbu_pct", "bvg_pct", "ktg_pct", "quellensteuer_pct",
+    "employer_ahv_pct", "employer_alv_pct", "employer_fak_pct", "employer_bu_pct", "employer_bvg_pct", "employer_verwaltung_pct",
+  ] as const;
+  type PctKey = typeof PCT_KEYS[number];
+  type PctMap = Record<PctKey, string>;
+  const PCT_EMPTY: PctMap = {
+    ahv_iv_eo_pct: "", alv_pct: "", nbu_pct: "", bvg_pct: "", ktg_pct: "", quellensteuer_pct: "",
+    employer_ahv_pct: "", employer_alv_pct: "", employer_fak_pct: "", employer_bu_pct: "", employer_bvg_pct: "", employer_verwaltung_pct: "",
+  };
+  const [editPcts, setEditPcts] = useState<PctMap>(PCT_EMPTY);
+  // Firmen-Standards — alle 12 Pcts. Geladen via /api/hr/lohn-defaults.
+  // Editierbar im oben gerenderten Standardwerte-Block, gleichzeitig als
+  // Read-Only-Anzeige im Edit-Modal wenn Standard aktiv ist.
+  type DefaultsState = PctMap;
+  const DEFAULTS_FALLBACK: DefaultsState = {
+    ahv_iv_eo_pct: "5.3", alv_pct: "1.1", nbu_pct: "1.4", bvg_pct: "0", ktg_pct: "0", quellensteuer_pct: "0",
+    employer_ahv_pct: "5.3", employer_alv_pct: "1.1", employer_fak_pct: "1.5", employer_bu_pct: "0.5", employer_bvg_pct: "3.0", employer_verwaltung_pct: "0.5",
+  };
+  const [lohnDefaults, setLohnDefaults] = useState<DefaultsState>(DEFAULTS_FALLBACK);
+  const [defaultDrafts, setDefaultDrafts] = useState<DefaultsState>(DEFAULTS_FALLBACK);
+  const [savingDefault, setSavingDefault] = useState(false);
   const [editCompOriginal, setEditCompOriginal] = useState<CompOriginal | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const { confirm, ConfirmModalElement } = useConfirm();
@@ -130,29 +127,30 @@ export function TeamTab() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Firmen-Lohn-Standards laden — fuer Anzeige in Standardwerte-Block
-  // + als Placeholder/Default im Edit-Modal. Fail silent wenn das Geraet
-  // nicht vertraut ist (Endpoint ist trust-gated).
-  function applyDefaults(d: { employerPct: number; ahvIvEoPct: number; alvPct: number; nbuPct: number; bvgPct: number; ktgPct: number; quellensteuerPct: number }) {
+  // Firmen-Lohn-Standards laden. Backend liefert camelCase-LohnPctSet,
+  // wir mappen auf die snake_case-DB-Keys damit alles via PCT_KEYS lookup-bar
+  // ist. Fail silent wenn das Geraet nicht vertraut ist (trust-gated).
+  function applyDefaults(d: Record<string, unknown>) {
+    const mapToPctMap = (camelKey: string): number => {
+      const v = d[camelKey];
+      return v == null ? 0 : Number(v);
+    };
     const next: DefaultsState = {
-      employer: Number(d.employerPct ?? 12),
-      ahv: Number(d.ahvIvEoPct ?? 5.3),
-      alv: Number(d.alvPct ?? 1.1),
-      nbu: Number(d.nbuPct ?? 1.4),
-      bvg: Number(d.bvgPct ?? 0),
-      ktg: Number(d.ktgPct ?? 0),
-      qst: Number(d.quellensteuerPct ?? 0),
+      ahv_iv_eo_pct: String(mapToPctMap("ahvIvEoPct")),
+      alv_pct: String(mapToPctMap("alvPct")),
+      nbu_pct: String(mapToPctMap("nbuPct")),
+      bvg_pct: String(mapToPctMap("bvgPct")),
+      ktg_pct: String(mapToPctMap("ktgPct")),
+      quellensteuer_pct: String(mapToPctMap("quellensteuerPct")),
+      employer_ahv_pct: String(mapToPctMap("employerAhvPct")),
+      employer_alv_pct: String(mapToPctMap("employerAlvPct")),
+      employer_fak_pct: String(mapToPctMap("employerFakPct")),
+      employer_bu_pct: String(mapToPctMap("employerBuPct")),
+      employer_bvg_pct: String(mapToPctMap("employerBvgPct")),
+      employer_verwaltung_pct: String(mapToPctMap("employerVerwaltungPct")),
     };
     setLohnDefaults(next);
-    setDefaultDrafts({
-      employer: String(next.employer),
-      ahv: String(next.ahv),
-      alv: String(next.alv),
-      nbu: String(next.nbu),
-      bvg: String(next.bvg),
-      ktg: String(next.ktg),
-      qst: String(next.qst),
-    });
+    setDefaultDrafts(next);
   }
 
   useEffect(() => {
@@ -164,31 +162,21 @@ export function TeamTab() {
       .catch(() => { /* untrusted -> Defaults bleiben Fallback */ });
   }, []);
 
-  // Mappt UI-Keys auf die Backend-Spaltennamen.
-  const DEFAULT_COLUMN: Record<keyof DefaultsState, string> = {
-    employer: "default_employer_pct",
-    ahv: "default_ahv_iv_eo_pct",
-    alv: "default_alv_pct",
-    nbu: "default_nbu_pct",
-    bvg: "default_bvg_pct",
-    ktg: "default_ktg_pct",
-    qst: "default_quellensteuer_pct",
-  };
-
-  async function saveLohnDefault(key: keyof DefaultsState) {
-    const draft = defaultDrafts[key];
+  async function saveLohnDefault(key: string) {
+    const k = key as PctKey;
+    const draft = defaultDrafts[k];
     const v = parseFloat(draft.replace(",", "."));
-    if (!Number.isFinite(v) || v < 0) { toast.error("Ungueltiger Wert"); return; }
+    if (!Number.isFinite(v) || v < 0 || v > 100) { toast.error("Ungueltiger Wert (0-100)"); return; }
     setSavingDefault(true);
     const res = await fetch("/api/hr/lohn-defaults", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [DEFAULT_COLUMN[key]]: v }),
+      body: JSON.stringify({ [`default_${k}`]: v }),
     });
     setSavingDefault(false);
     const json = await res.json();
     if (!res.ok || !json.success) { TOAST.errorOr(json.error); return; }
-    setLohnDefaults((prev) => ({ ...prev, [key]: v }));
+    setLohnDefaults((prev) => ({ ...prev, [k]: String(v) }));
     toast.success("Standard gespeichert");
   }
 
@@ -221,60 +209,43 @@ export function TeamTab() {
     setLohnOpen(false);
     // Reset wage state, lazy-fetch (kann fehlschlagen wenn Geraet nicht
     // vertraut ist — dann bleiben Felder leer und der Trust-Gate im
-    // Modal zeigt die Vertrauen-Anfrage). Wenn schon Daten existieren,
-    // werden sie vorgefuellt.
-    setEditWage(""); setEditEmployer(""); setEditNotes("");
-    setEditEmployerUseDefault(true);
+    // Modal zeigt die Vertrauen-Anfrage).
+    setEditWage(""); setEditNotes("");
+    setEditUsesStandard(true);
+    setEditPcts(PCT_EMPTY);
     setEditFrom(new Date().toISOString().slice(0, 10));
-    setEditAhv("5.3"); setEditAlv("1.1"); setEditNbu("1.4");
-    setEditBvg("0"); setEditKtg("0"); setEditQst("0");
-    setEditUseDefAhv(true); setEditUseDefAlv(true); setEditUseDefNbu(true);
-    setEditUseDefBvg(true); setEditUseDefKtg(true); setEditUseDefQst(true);
     setEditCompOriginal(null);
     fetch("/api/hr/compensation")
       .then((r) => r.ok ? r.json() : null)
       .then((json) => {
         if (!json?.success) return;
-        if (json.defaults) {
-          // Defaults sind auch im /api/hr/compensation-Payload — wir
-          // syncen damit's stimmt selbst wenn das separate /lohn-defaults
-          // noch nicht durch ist.
-          applyDefaults({
-            employerPct: Number(json.defaults.employer_pct ?? 12),
-            ahvIvEoPct: Number(json.defaults.ahv_iv_eo_pct ?? 5.3),
-            alvPct: Number(json.defaults.alv_pct ?? 1.1),
-            nbuPct: Number(json.defaults.nbu_pct ?? 1.4),
-            bvgPct: Number(json.defaults.bvg_pct ?? 0),
-            ktgPct: Number(json.defaults.ktg_pct ?? 0),
-            quellensteuerPct: Number(json.defaults.quellensteuer_pct ?? 0),
-          });
-        }
+        if (json.defaults) applyDefaults(json.defaults);
         type Empl = { profile_id: string; compensation: CompOriginal | null };
         const empl = (json.employees as Empl[]).find((e) => e.profile_id === p.id);
         const c = empl?.compensation;
         if (c) {
           setEditWage(String(c.hourly_wage_chf));
-          // null = Standard verwenden, sonst Override
-          if (c.employer_pct == null) {
-            setEditEmployerUseDefault(true);
-            setEditEmployer("");
-          } else {
-            setEditEmployerUseDefault(false);
-            setEditEmployer(String(c.employer_pct));
-          }
+          setEditUsesStandard(c.uses_standard_lohn !== false);
           setEditFrom(c.effective_from);
           setEditNotes(c.notes ?? "");
-          // Pro Abzug: null = Standard, sonst Override
-          const applyPct = (v: number | null, setU: (b: boolean) => void, setV: (s: string) => void) => {
-            if (v == null) { setU(true); setV(""); }
-            else { setU(false); setV(String(v)); }
-          };
-          applyPct(c.ahv_iv_eo_pct, setEditUseDefAhv, setEditAhv);
-          applyPct(c.alv_pct, setEditUseDefAlv, setEditAlv);
-          applyPct(c.nbu_pct, setEditUseDefNbu, setEditNbu);
-          applyPct(c.bvg_pct, setEditUseDefBvg, setEditBvg);
-          applyPct(c.ktg_pct, setEditUseDefKtg, setEditKtg);
-          applyPct(c.quellensteuer_pct, setEditUseDefQst, setEditQst);
+          // Pcts in editPcts laden. Falls Override-Modus aber NULL gespeichert
+          // war (sollte nicht passieren), zeigen wir den aktuellen Standard
+          // als sinnvollen Pre-Fill an.
+          const fill = (v: number | null, fallback: string) => v == null ? fallback : String(v);
+          setEditPcts({
+            ahv_iv_eo_pct: fill(c.ahv_iv_eo_pct, ""),
+            alv_pct: fill(c.alv_pct, ""),
+            nbu_pct: fill(c.nbu_pct, ""),
+            bvg_pct: fill(c.bvg_pct, ""),
+            ktg_pct: fill(c.ktg_pct, ""),
+            quellensteuer_pct: fill(c.quellensteuer_pct, ""),
+            employer_ahv_pct: fill(c.employer_ahv_pct, ""),
+            employer_alv_pct: fill(c.employer_alv_pct, ""),
+            employer_fak_pct: fill(c.employer_fak_pct, ""),
+            employer_bu_pct: fill(c.employer_bu_pct, ""),
+            employer_bvg_pct: fill(c.employer_bvg_pct, ""),
+            employer_verwaltung_pct: fill(c.employer_verwaltung_pct, ""),
+          });
           setEditCompOriginal(c);
         }
       })
@@ -301,38 +272,27 @@ export function TeamTab() {
 
     // 2) Lohn-Zeile patchen wenn Werte gesetzt UND geaendert
     const wage = parseFloat(editWage.replace(",", "."));
-    // null = Standard verwenden, sonst der explizite Override (auch 0 erlaubt
-    // wenn 'Standard verwenden' aus ist und das Feld leer war -> 0).
-    // AG-Anteil: NULL = Standard, sonst der explizite Pct-Wert vom Brutto.
-    const employerPct: number | null = editEmployerUseDefault
-      ? null
-      : (parseFloat(editEmployer.replace(",", ".")) || 0);
-    // Pro Abzug: useDefault -> null, sonst parsed Wert (Fallback 0
-     // wenn das Feld leer/ungueltig).
-    const pctOrNull = (useDef: boolean, s: string): number | null => {
-      if (useDef) return null;
+    // Pcts pro Spalte: bei uses_standard wird das Feld eh als null
+    // gesendet (vom Backend), aber wir senden's hier schon zur Eindeutigkeit.
+    const pctOrNull = (s: string): number | null => {
       const n = parseFloat(s.replace(",", "."));
-      return Number.isFinite(n) && n >= 0 && n <= 100 ? n : 0;
+      return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
     };
-    const ahv = pctOrNull(editUseDefAhv, editAhv);
-    const alv = pctOrNull(editUseDefAlv, editAlv);
-    const nbu = pctOrNull(editUseDefNbu, editNbu);
-    const bvg = pctOrNull(editUseDefBvg, editBvg);
-    const ktg = pctOrNull(editUseDefKtg, editKtg);
-    const qst = pctOrNull(editUseDefQst, editQst);
+    const pctPayload: Record<string, number | null> = {};
+    for (const k of PCT_KEYS) {
+      pctPayload[k] = editUsesStandard ? null : pctOrNull(editPcts[k]);
+    }
     if (Number.isFinite(wage) && wage >= 0 && editFrom) {
-      const eq = (a: number | null, b: number | null) => (a ?? null) === (b ?? null);
+      // Change-Detection: wage/notes/from + uses_standard_lohn-Flag.
+      // Bei Override-Modus zusaetzlich: jeden einzelnen Pct vergleichen.
+      const eq = (a: number | null | undefined, b: number | null | undefined) => (a ?? null) === (b ?? null);
+      const pctsChanged = !editUsesStandard && editCompOriginal && PCT_KEYS.some((k) => !eq(editCompOriginal[k as keyof CompOriginal] as number | null, pctPayload[k]));
       const changed = !editCompOriginal
         || editCompOriginal.hourly_wage_chf !== wage
-        || (editCompOriginal.employer_pct ?? null) !== employerPct
+        || editCompOriginal.uses_standard_lohn !== editUsesStandard
         || editCompOriginal.effective_from !== editFrom
         || (editCompOriginal.notes ?? "") !== editNotes.trim()
-        || !eq(editCompOriginal.ahv_iv_eo_pct, ahv)
-        || !eq(editCompOriginal.alv_pct, alv)
-        || !eq(editCompOriginal.nbu_pct, nbu)
-        || !eq(editCompOriginal.bvg_pct, bvg)
-        || !eq(editCompOriginal.ktg_pct, ktg)
-        || !eq(editCompOriginal.quellensteuer_pct, qst);
+        || pctsChanged;
       if (changed) {
         const wageRes = await fetch("/api/hr/compensation", {
           method: "POST",
@@ -340,11 +300,10 @@ export function TeamTab() {
           body: JSON.stringify({
             profile_id: edit.id,
             hourly_wage_chf: wage,
-            employer_pct: employerPct,
+            uses_standard_lohn: editUsesStandard,
             effective_from: editFrom,
             notes: editNotes.trim() || null,
-            ahv_iv_eo_pct: ahv, alv_pct: alv, nbu_pct: nbu,
-            bvg_pct: bvg, ktg_pct: ktg, quellensteuer_pct: qst,
+            ...pctPayload,
           }),
         });
         const wageJson = await wageRes.json();
@@ -479,11 +438,11 @@ export function TeamTab() {
         </button>
       </div>
 
-      {/* Lohn-Standardwerte — firmenweit. Pro Mitarbeiter kann via Edit-
-          Modal ein eigener Override gesetzt werden, sonst greift dieser
-          Wert automatisch. */}
+      {/* Lohn-Standardwerte — firmenweit. Zwei Gruppen: Mitarbeiter-Abzuege
+          (vom Brutto abgezogen -> Netto) und Arbeitgeber-Anteil (zusaetzlich
+          zur Firma -> Vollkosten). Summe wird automatisch berechnet. */}
       <Card className="bg-card">
-        <CardContent className="p-3 space-y-3">
+        <CardContent className="p-3 space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <Wallet className="h-4 w-4" />
@@ -491,19 +450,48 @@ export function TeamTab() {
             <div>
               <p className="text-sm font-semibold leading-tight">Lohn-Standardwerte</p>
               <p className="text-[11px] text-muted-foreground">
-                Greifen bei jedem Mitarbeiter ohne expliziten Override. Pro Mitarbeiter via Edit-Modal anpassbar.
+                Greifen bei jedem Mitarbeiter mit Standard-Lohn. Pro Mitarbeiter via Edit-Modal komplett uebersteuerbar.
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-            <DefaultField label="Arbeitgeber-Anteil" suffix="%" draftKey="employer" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.employer} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="AHV/IV/EO" suffix="%" draftKey="ahv" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.ahv} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="ALV" suffix="%" draftKey="alv" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.alv} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="NBU" suffix="%" draftKey="nbu" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.nbu} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="BVG" suffix="%" draftKey="bvg" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.bvg} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="KTG" suffix="%" draftKey="ktg" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.ktg} onSave={saveLohnDefault} saving={savingDefault} />
-            <DefaultField label="Quellensteuer" suffix="%" draftKey="qst" drafts={defaultDrafts} setDrafts={setDefaultDrafts} current={lohnDefaults.qst} onSave={saveLohnDefault} saving={savingDefault} />
-          </div>
+
+          {/* Mitarbeiter-Abzuege (AN) */}
+          <DefaultsGroup
+            title="Mitarbeiter-Abzüge (% vom Brutto)"
+            subtitle="werden vom Brutto abgezogen → Netto-Auszahlung"
+            fields={[
+              { key: "ahv_iv_eo_pct", label: "AHV/IV/EO" },
+              { key: "alv_pct", label: "ALV" },
+              { key: "nbu_pct", label: "NBU" },
+              { key: "bvg_pct", label: "BVG" },
+              { key: "ktg_pct", label: "KTG" },
+              { key: "quellensteuer_pct", label: "Quellensteuer" },
+            ]}
+            drafts={defaultDrafts}
+            setDrafts={setDefaultDrafts}
+            current={lohnDefaults}
+            onSave={saveLohnDefault}
+            saving={savingDefault}
+          />
+
+          {/* Arbeitgeber-Anteil (AG) */}
+          <DefaultsGroup
+            title="Arbeitgeber-Anteil (% vom Brutto)"
+            subtitle="zusätzliche Firmenkosten → Vollkosten"
+            fields={[
+              { key: "employer_ahv_pct", label: "AHV/IV/EO" },
+              { key: "employer_alv_pct", label: "ALV" },
+              { key: "employer_fak_pct", label: "FAK" },
+              { key: "employer_bu_pct", label: "BU" },
+              { key: "employer_bvg_pct", label: "BVG" },
+              { key: "employer_verwaltung_pct", label: "Verwaltung" },
+            ]}
+            drafts={defaultDrafts}
+            setDrafts={setDefaultDrafts}
+            current={lohnDefaults}
+            onSave={saveLohnDefault}
+            saving={savingDefault}
+          />
         </CardContent>
       </Card>
 
@@ -667,75 +655,104 @@ export function TeamTab() {
                 <div className="mt-2">
                   <TrustedDeviceGate>
                     <div className="space-y-3">
-                      {/* Brutto + AG */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto / h (CHF)</p>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={editWage}
-                            onChange={(e) => setEditWage(e.target.value)}
-                            placeholder="z.B. 22.50"
+                      {/* Brutto — wage ist immer pro-Mitarbeiter (kein Standard). */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto / h (CHF)</p>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={editWage}
+                          onChange={(e) => setEditWage(e.target.value)}
+                          placeholder="z.B. 22.50"
+                        />
+                      </div>
+
+                      {/* All-or-Nothing-Toggle: Standard verwenden ODER alle
+                          12 Pcts selber setzen. Kein per-Feld-Override. */}
+                      <div className="flex items-center justify-between pt-2 border-t border-foreground/10">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Lohn-Abzüge &amp; AG-Anteil
+                        </p>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editUsesStandard}
+                            onChange={(e) => setEditUsesStandard(e.target.checked)}
+                            className="h-3.5 w-3.5"
+                          />
+                          <span>Firmen-Standard verwenden</span>
+                        </label>
+                      </div>
+
+                      {editUsesStandard ? (
+                        // Read-Only-Ansicht: zeigt die 12 Standard-Werte.
+                        <div className="space-y-3">
+                          <ReadonlyPctGroup
+                            title="Mitarbeiter-Abzüge"
+                            fields={[
+                              { key: "ahv_iv_eo_pct", label: "AHV/IV/EO" },
+                              { key: "alv_pct", label: "ALV" },
+                              { key: "nbu_pct", label: "NBU" },
+                              { key: "bvg_pct", label: "BVG" },
+                              { key: "ktg_pct", label: "KTG" },
+                              { key: "quellensteuer_pct", label: "QST" },
+                            ]}
+                            values={lohnDefaults}
+                          />
+                          <ReadonlyPctGroup
+                            title="Arbeitgeber-Anteil"
+                            fields={[
+                              { key: "employer_ahv_pct", label: "AHV/IV/EO" },
+                              { key: "employer_alv_pct", label: "ALV" },
+                              { key: "employer_fak_pct", label: "FAK" },
+                              { key: "employer_bu_pct", label: "BU" },
+                              { key: "employer_bvg_pct", label: "BVG" },
+                              { key: "employer_verwaltung_pct", label: "Verwaltung" },
+                            ]}
+                            values={lohnDefaults}
+                          />
+                          <p className="text-[10px] text-muted-foreground/70 italic">
+                            Die 12 Werte werden im Block oben (Lohn-Standardwerte) firmenweit gesetzt.
+                          </p>
+                        </div>
+                      ) : (
+                        // Override-Modus: 12 editierbare Inputs.
+                        <div className="space-y-3">
+                          <EditablePctGroup
+                            title="Mitarbeiter-Abzüge"
+                            fields={[
+                              { key: "ahv_iv_eo_pct", label: "AHV/IV/EO" },
+                              { key: "alv_pct", label: "ALV" },
+                              { key: "nbu_pct", label: "NBU" },
+                              { key: "bvg_pct", label: "BVG" },
+                              { key: "ktg_pct", label: "KTG" },
+                              { key: "quellensteuer_pct", label: "QST" },
+                            ]}
+                            values={editPcts}
+                            setValues={setEditPcts}
+                            defaults={lohnDefaults}
+                          />
+                          <EditablePctGroup
+                            title="Arbeitgeber-Anteil"
+                            fields={[
+                              { key: "employer_ahv_pct", label: "AHV/IV/EO" },
+                              { key: "employer_alv_pct", label: "ALV" },
+                              { key: "employer_fak_pct", label: "FAK" },
+                              { key: "employer_bu_pct", label: "BU" },
+                              { key: "employer_bvg_pct", label: "BVG" },
+                              { key: "employer_verwaltung_pct", label: "Verwaltung" },
+                            ]}
+                            values={editPcts}
+                            setValues={setEditPcts}
+                            defaults={lohnDefaults}
                           />
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between ml-1">
-                            <p className="text-[10px] text-muted-foreground/70">AG-Anteil (% Brutto)</p>
-                            <label className="flex items-center gap-1 text-[10px] text-muted-foreground/70 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={editEmployerUseDefault}
-                                onChange={(e) => setEditEmployerUseDefault(e.target.checked)}
-                                className="h-3 w-3"
-                              />
-                              Standard
-                            </label>
-                          </div>
-                          {editEmployerUseDefault ? (
-                            <div className="h-9 px-3 flex items-center text-sm rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground">
-                              {lohnDefaults.employer.toFixed(2)}% <span className="ml-1 text-[10px] opacity-70">(Firmen-Standard)</span>
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={editEmployer}
-                                onChange={(e) => setEditEmployer(e.target.value)}
-                                placeholder="z.B. 12"
-                                className="pr-7"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground/60 pointer-events-none">%</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      )}
 
-                      {/* Abzüge — pro Feld Override oder Firmen-Standard. */}
-                      <div className="pt-2 border-t border-foreground/10">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Abzüge Mitarbeiter (% vom Brutto)</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          <PctField label="AHV/IV/EO" value={editAhv} onChange={setEditAhv} useDefault={editUseDefAhv} setUseDefault={setEditUseDefAhv} defaultValue={lohnDefaults.ahv} />
-                          <PctField label="ALV" value={editAlv} onChange={setEditAlv} useDefault={editUseDefAlv} setUseDefault={setEditUseDefAlv} defaultValue={lohnDefaults.alv} />
-                          <PctField label="NBU" value={editNbu} onChange={setEditNbu} useDefault={editUseDefNbu} setUseDefault={setEditUseDefNbu} defaultValue={lohnDefaults.nbu} />
-                          <PctField label="BVG" value={editBvg} onChange={setEditBvg} useDefault={editUseDefBvg} setUseDefault={setEditUseDefBvg} defaultValue={lohnDefaults.bvg} />
-                          <PctField label="KTG" value={editKtg} onChange={setEditKtg} useDefault={editUseDefKtg} setUseDefault={setEditUseDefKtg} defaultValue={lohnDefaults.ktg} />
-                          <PctField label="Quellensteuer" value={editQst} onChange={setEditQst} useDefault={editUseDefQst} setUseDefault={setEditUseDefQst} defaultValue={lohnDefaults.qst} />
-                        </div>
-                      </div>
-
-                      {/* Netto / Vollkosten Preview — rechnet immer mit den
-                          effektiven Werten (Override oder Firmen-Standard). */}
+                      {/* Netto / Vollkosten Preview. */}
                       <LohnPreview
                         wage={editWage}
-                        employerPct={editEmployerUseDefault ? String(lohnDefaults.employer) : editEmployer}
-                        ahv={editUseDefAhv ? String(lohnDefaults.ahv) : editAhv}
-                        alv={editUseDefAlv ? String(lohnDefaults.alv) : editAlv}
-                        nbu={editUseDefNbu ? String(lohnDefaults.nbu) : editNbu}
-                        bvg={editUseDefBvg ? String(lohnDefaults.bvg) : editBvg}
-                        ktg={editUseDefKtg ? String(lohnDefaults.ktg) : editKtg}
-                        qst={editUseDefQst ? String(lohnDefaults.qst) : editQst}
+                        values={editUsesStandard ? lohnDefaults : editPcts}
                       />
 
                       <div className="space-y-1">
@@ -772,111 +789,144 @@ export function TeamTab() {
   );
 }
 
-function PctField({ label, value, onChange, useDefault, setUseDefault, defaultValue }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  useDefault: boolean;
-  setUseDefault: (b: boolean) => void;
-  defaultValue: number;
-}) {
-  return (
-    <div className="space-y-0.5">
-      <div className="flex items-center justify-between gap-1">
-        <label className="text-[10px] text-muted-foreground/70 truncate">{label}</label>
-        <label className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70 cursor-pointer shrink-0">
-          <input
-            type="checkbox"
-            checked={useDefault}
-            onChange={(e) => setUseDefault(e.target.checked)}
-            className="h-3 w-3"
-          />
-          Std
-        </label>
-      </div>
-      {useDefault ? (
-        <div className="h-9 px-3 flex items-center text-xs rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground tabular-nums">
-          {defaultValue.toFixed(2)}<span className="ml-0.5">%</span>
-        </div>
-      ) : (
-        <div className="relative">
-          <Input
-            type="text"
-            inputMode="decimal"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="pr-7"
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground/60 pointer-events-none">%</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Inline-Editor fuer einen Firmen-Standardwert. Speichert das jeweilige
- *  Feld einzeln (POST mit nur diesem Key) sobald 'Speichern' geklickt
- *  wird oder das Feld den 'current'-Wert verlassen hat. */
-function DefaultField<K extends string>({ label, suffix, draftKey, drafts, setDrafts, current, onSave, saving }: {
-  label: string;
-  suffix: string;
-  draftKey: K;
-  drafts: Record<K, string>;
-  setDrafts: React.Dispatch<React.SetStateAction<Record<K, string>>>;
-  current: number;
-  onSave: (k: K) => Promise<void>;
+/** Lohn-Standardwerte-Block, gruppiert nach AN/AG. Jedes Feld speichert
+ *  einzeln (kleiner OK-Button erscheint wenn Wert vom gespeicherten
+ *  abweicht). Summe der Gruppe wird am Ende angezeigt. */
+function DefaultsGroup({ title, subtitle, fields, drafts, setDrafts, current, onSave, saving }: {
+  title: string;
+  subtitle: string;
+  fields: Array<{ key: string; label: string }>;
+  drafts: Record<string, string>;
+  setDrafts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  current: Record<string, string>;
+  onSave: (k: string) => Promise<void>;
   saving: boolean;
 }) {
-  const draft = drafts[draftKey];
-  const dirty = draft !== String(current);
+  const sum = fields.reduce((s, f) => s + (parseFloat((drafts[f.key] ?? "0").replace(",", ".")) || 0), 0);
   return (
-    <div className="space-y-0.5">
-      <label className="text-[10px] text-muted-foreground/70 truncate block">{label}</label>
-      <div className="flex gap-1">
-        <div className="relative flex-1 min-w-0">
-          <Input
-            type="text"
-            inputMode="decimal"
-            value={draft}
-            onChange={(e) => setDrafts((p) => ({ ...p, [draftKey]: e.target.value }))}
-            className="h-8 text-xs pr-8"
-          />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60 pointer-events-none">{suffix}</span>
-        </div>
-        {dirty && (
-          <button
-            type="button"
-            onClick={() => onSave(draftKey)}
-            disabled={saving}
-            className="px-2 h-8 text-[10px] font-semibold rounded-md bg-blue-500/15 text-blue-700 dark:text-blue-300 hover:bg-blue-500/25 transition-colors shrink-0"
-          >
-            OK
-          </button>
-        )}
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-[10px] text-muted-foreground/70">{subtitle} · <span className="font-semibold text-foreground/80 tabular-nums">Σ {sum.toFixed(2)}%</span></p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {fields.map((f) => {
+          const draft = drafts[f.key] ?? "";
+          const dirty = draft !== current[f.key];
+          return (
+            <div key={f.key} className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground/70 truncate block">{f.label}</label>
+              <div className="flex gap-1">
+                <div className="relative flex-1 min-w-0">
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={draft}
+                    onChange={(e) => setDrafts((p) => ({ ...p, [f.key]: e.target.value }))}
+                    className="h-8 text-xs pr-7"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60 pointer-events-none">%</span>
+                </div>
+                {dirty && (
+                  <button
+                    type="button"
+                    onClick={() => onSave(f.key)}
+                    disabled={saving}
+                    className="px-2 h-8 text-[10px] font-semibold rounded-md bg-blue-500/15 text-blue-700 dark:text-blue-300 hover:bg-blue-500/25 transition-colors shrink-0"
+                  >
+                    OK
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function LohnPreview({ wage, employerPct, ahv, alv, nbu, bvg, ktg, qst }: {
+/** Read-only Anzeige einer Pct-Gruppe (im Modal wenn Standard aktiv ist). */
+function ReadonlyPctGroup({ title, fields, values }: {
+  title: string;
+  fields: Array<{ key: string; label: string }>;
+  values: Record<string, string>;
+}) {
+  const sum = fields.reduce((s, f) => s + (parseFloat((values[f.key] ?? "0").replace(",", ".")) || 0), 0);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-[10px] text-muted-foreground/70 tabular-nums">Σ {sum.toFixed(2)}%</p>
+      </div>
+      <div className="grid grid-cols-3 gap-1 text-xs">
+        {fields.map((f) => (
+          <div key={f.key} className="flex items-center justify-between px-2 py-1 rounded border border-dashed border-border bg-muted/30 text-muted-foreground">
+            <span className="truncate text-[10px]">{f.label}</span>
+            <span className="tabular-nums">{(parseFloat((values[f.key] ?? "0").replace(",", ".")) || 0).toFixed(2)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Editierbare Pct-Gruppe (im Modal wenn Override aktiv ist).
+ *  Default-Wert wird als Placeholder angezeigt. */
+function EditablePctGroup({ title, fields, values, setValues, defaults }: {
+  title: string;
+  fields: Array<{ key: string; label: string }>;
+  values: Record<string, string>;
+  setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  defaults: Record<string, string>;
+}) {
+  const sum = fields.reduce((s, f) => {
+    const v = parseFloat((values[f.key] || defaults[f.key] || "0").replace(",", ".")) || 0;
+    return s + v;
+  }, 0);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className="text-[10px] text-muted-foreground/70 tabular-nums">Σ {sum.toFixed(2)}%</p>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {fields.map((f) => (
+          <div key={f.key} className="space-y-0.5">
+            <label className="text-[10px] text-muted-foreground/70 truncate block">{f.label}</label>
+            <div className="relative">
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                className="h-9 text-xs pr-7"
+                placeholder={defaults[f.key] ?? "0"}
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60 pointer-events-none">%</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Netto/Vollkosten-Preview. Liest direkt aus dem effektiven Pct-Set
+ *  (entweder editPcts wenn Override aktiv, sonst lohnDefaults). */
+function LohnPreview({ wage, values }: {
   wage: string;
-  /** Arbeitgeber-Anteil als % vom Brutto (z.B. "12"). */
-  employerPct: string;
-  ahv: string; alv: string; nbu: string; bvg: string; ktg: string; qst: string;
+  values: Record<string, string>;
 }) {
   const w = parseFloat(wage.replace(",", "."));
-  const eP = parseFloat(employerPct.replace(",", ".")) || 0;
   if (!Number.isFinite(w) || w < 0) return null;
-  const num = (s: string) => {
-    const n = parseFloat(s.replace(",", "."));
-    return Number.isFinite(n) ? n : 0;
-  };
-  const totalDeductionPct = num(ahv) + num(alv) + num(nbu) + num(bvg) + num(ktg) + num(qst);
-  const deductionAmount = w * (totalDeductionPct / 100);
+  const num = (k: string) => parseFloat((values[k] ?? "0").replace(",", ".")) || 0;
+  const totalAnPct = num("ahv_iv_eo_pct") + num("alv_pct") + num("nbu_pct") + num("bvg_pct") + num("ktg_pct") + num("quellensteuer_pct");
+  const totalAgPct = num("employer_ahv_pct") + num("employer_alv_pct") + num("employer_fak_pct") + num("employer_bu_pct") + num("employer_bvg_pct") + num("employer_verwaltung_pct");
+  const deductionAmount = w * (totalAnPct / 100);
   const netto = w - deductionAmount;
-  // AG-Anteil in CHF/h aus % vom Brutto.
-  const e = w * eP / 100;
-  const vollkosten = w + e;
+  const agAmount = w * (totalAgPct / 100);
+  const vollkosten = w + agAmount;
   return (
     <div className="space-y-1 px-3 py-2 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06] text-xs">
       <div className="flex items-baseline justify-between">
@@ -884,7 +934,7 @@ function LohnPreview({ wage, employerPct, ahv, alv, nbu, bvg, ktg, qst }: {
         <span className="tabular-nums">CHF {CHF.format(w)}</span>
       </div>
       <div className="flex items-baseline justify-between text-muted-foreground">
-        <span>− Abzüge ({totalDeductionPct.toFixed(2)}%)</span>
+        <span>− Abzüge ({totalAnPct.toFixed(2)}%)</span>
         <span className="tabular-nums">CHF {CHF.format(deductionAmount)}</span>
       </div>
       <div className="flex items-baseline justify-between pt-1 border-t border-foreground/10">
@@ -892,7 +942,11 @@ function LohnPreview({ wage, employerPct, ahv, alv, nbu, bvg, ktg, qst }: {
         <span className="font-semibold tabular-nums">CHF {CHF.format(netto)}</span>
       </div>
       <div className="flex items-baseline justify-between text-muted-foreground pt-1">
-        <span>Vollkosten / h (inkl. AG)</span>
+        <span>+ AG-Anteil ({totalAgPct.toFixed(2)}%)</span>
+        <span className="tabular-nums">CHF {CHF.format(agAmount)}</span>
+      </div>
+      <div className="flex items-baseline justify-between pt-1 border-t border-foreground/10 text-muted-foreground">
+        <span>Vollkosten / h</span>
         <span className="tabular-nums">CHF {CHF.format(vollkosten)}</span>
       </div>
     </div>

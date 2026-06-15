@@ -22,7 +22,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loadLohnDefaults, employerCostsPerHour, resolvePct } from "@/lib/employer-costs";
+import { loadLohnDefaults, effectivePcts, sumEmployerPct, sumEmployeePct, employerCostsPerHour } from "@/lib/employer-costs";
 import { jsPDF } from "jspdf";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { localDateIso, localHour, weekdayForDateIso } from "@/lib/swiss-time";
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
   const { data: comp } = await admin
     .from("employee_compensation")
-    .select("hourly_wage_chf, employer_pct, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, effective_from")
+    .select("hourly_wage_chf, uses_standard_lohn, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct, effective_from")
     .eq("profile_id", profileId)
     .lte("effective_from", monthStart)
     .or(`effective_to.is.null,effective_to.gte.${monthStart}`)
@@ -92,17 +92,18 @@ export async function POST(req: Request) {
     }, { status: 409 });
   }
 
-  // Effektive Lohn-Defaults + Pcts via Helper (Override -> Standard).
+  // Effektive Lohn-Defaults + Pcts via Helper (all-or-nothing via uses_standard_lohn).
   const lohnDefaults = await loadLohnDefaults(admin);
-  const effAhv = resolvePct(comp.ahv_iv_eo_pct, lohnDefaults.ahvIvEoPct);
-  const effAlv = resolvePct(comp.alv_pct, lohnDefaults.alvPct);
-  const effNbu = resolvePct(comp.nbu_pct, lohnDefaults.nbuPct);
-  const effBvg = resolvePct(comp.bvg_pct, lohnDefaults.bvgPct);
-  const effKtg = resolvePct(comp.ktg_pct, lohnDefaults.ktgPct);
-  const effQst = resolvePct(comp.quellensteuer_pct, lohnDefaults.quellensteuerPct);
+  const eff = effectivePcts(comp, lohnDefaults);
+  const effAhv = eff.ahvIvEoPct;
+  const effAlv = eff.alvPct;
+  const effNbu = eff.nbuPct;
+  const effBvg = eff.bvgPct;
+  const effKtg = eff.ktgPct;
+  const effQst = eff.quellensteuerPct;
 
   // Total-Deduction-Sanity-Check (>=100% wuerde negativen Netto erzeugen)
-  const totalDeductionPct = effAhv + effAlv + effNbu + effBvg + effKtg + effQst;
+  const totalDeductionPct = sumEmployeePct(eff);
   if (totalDeductionPct >= 100) {
     return NextResponse.json({
       success: false,
@@ -181,9 +182,8 @@ export async function POST(req: Request) {
   for (const d of sunholDays) if (d.in_current_month) { sunholRank++; if (sunholRank <= 6) sunholEligibleMin += d.total_minutes; }
 
   const wage = Number(comp.hourly_wage_chf);
-  // AG-Anteil als % vom Brutto (Migration 154): pct -> CHF/h via Helper.
-  const employerPct = resolvePct(comp.employer_pct, lohnDefaults.employerPct);
-  const employer = employerCostsPerHour(wage, employerPct);
+  // AG-Anteil pro Stunde aus den 6 effektiven AG-Pcts.
+  const employer = employerCostsPerHour(wage, sumEmployerPct(eff));
   const effectiveMin = rapportMin > 0 ? rapportMin : stempelMin;
   // 0-Stunden-Block — verhindert sinnlose CHF-0.00-PDFs in Mitarbeiter-Feed
   if (effectiveMin === 0) {

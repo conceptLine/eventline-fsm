@@ -287,15 +287,22 @@ function buildHtmlIndex(d: DossierData): string {
     </tr>`;
   }).join("");
 
-  // Comp-Historie
-  const compRows = d.comp.map((c) => `<tr>
-    <td>${fmtDate(c.effective_from)}</td>
-    <td>${c.effective_to ? fmtDate(c.effective_to) : "<i>aktiv</i>"}</td>
-    <td>CHF ${fmtChf(c.hourly_wage_chf)}</td>
-    <td>${c.employer_pct == null ? "<i>Standard</i>" : `${fmtChf(c.employer_pct)}%`}</td>
-    <td>${[c.ahv_iv_eo_pct, c.alv_pct, c.nbu_pct, c.bvg_pct, c.ktg_pct, c.quellensteuer_pct].map((p) => p == null ? "<i>Std</i>" : `${fmtChf(p)}%`).join(" / ")}</td>
-    <td>${esc(c.notes ?? "—")}</td>
-  </tr>`).join("");
+  // Comp-Historie. uses_standard_lohn-Flag entscheidet ob die Per-Spalten
+  // ueberhaupt relevant sind. Ist es true (oder NULL fuer Altdaten), zeigen
+  // wir 'Standard' statt der einzelnen Werte.
+  const compRows = d.comp.map((c) => {
+    const usesStd = c.uses_standard_lohn !== false;
+    const agPctSum = usesStd ? null : [c.employer_ahv_pct, c.employer_alv_pct, c.employer_fak_pct, c.employer_bu_pct, c.employer_bvg_pct, c.employer_verwaltung_pct].reduce<number>((s, v) => s + Number(v ?? 0), 0);
+    const anPctSum = usesStd ? null : [c.ahv_iv_eo_pct, c.alv_pct, c.nbu_pct, c.bvg_pct, c.ktg_pct, c.quellensteuer_pct].reduce<number>((s, v) => s + Number(v ?? 0), 0);
+    return `<tr>
+      <td>${fmtDate(c.effective_from)}</td>
+      <td>${c.effective_to ? fmtDate(c.effective_to) : "<i>aktiv</i>"}</td>
+      <td>CHF ${fmtChf(c.hourly_wage_chf)}</td>
+      <td>${usesStd ? "<i>Standard</i>" : `Σ AG ${fmtChf(agPctSum!)}%`}</td>
+      <td>${usesStd ? "<i>Standard</i>" : `Σ AN ${fmtChf(anPctSum!)}%`}</td>
+      <td>${esc(c.notes ?? "—")}</td>
+    </tr>`;
+  }).join("");
 
   // Jobs
   const jobRows = d.jobs.map((j) => `<tr>
@@ -420,7 +427,7 @@ function buildHtmlIndex(d: DossierData): string {
 
   <h2>Lohn-Historie (${d.comp.length})</h2>
   ${d.comp.length === 0 ? '<div class="empty">Keine Lohn-Daten hinterlegt.</div>' : `<table>
-    <thead><tr><th>Gültig ab</th><th>Gültig bis</th><th>Brutto/h</th><th>AG-Anteil %</th><th>Abzüge AHV/ALV/NBU/BVG/KTG/QST</th><th>Notiz</th></tr></thead>
+    <thead><tr><th>Gültig ab</th><th>Gültig bis</th><th>Brutto/h</th><th>AG-Anteil</th><th>AN-Abzüge</th><th>Notiz</th></tr></thead>
     <tbody>${compRows}</tbody>
   </table>`}
 

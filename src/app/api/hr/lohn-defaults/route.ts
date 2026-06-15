@@ -1,10 +1,9 @@
-// Lohn-Standardwerte (firmenweit). Firmenweite Defaults fuer
-// Arbeitgeber-Kosten und alle Mitarbeiter-Abzuege. Pro Mitarbeiter
-// koennen einzelne Werte ueberschrieben werden (siehe employee_compensation
-// — NULL = nutze Standard).
+// Firmenweite Lohn-Standardwerte. Seit Migration 156: 12 Prozent-Felder
+// (6 AG-Anteil + 6 Mitarbeiter-Abzuege). Per Mitarbeiter wird via
+// uses_standard_lohn-Flag all-or-nothing entschieden.
 //
-// GET  -> { defaults: { employerCostsChfPerHour, ahvIvEoPct, alvPct, nbuPct, bvgPct, ktgPct, quellensteuerPct } }
-// POST -> Body kann einzelne oder alle Felder enthalten — partial update.
+// GET  -> { defaults: LohnPctSet }
+// POST -> Partial-Update: Body kann beliebige Felder enthalten.
 //
 // Permission: lohn:manage (Admin laeuft via has_permission automatisch durch).
 
@@ -21,16 +20,22 @@ export async function GET() {
   return NextResponse.json({ success: true, defaults });
 }
 
-// Alle 7 Defaults sind ab Migration 154 Prozentwerte. AG-Anteil =
-// Prozent vom Brutto (Migration 154), restliche 6 = Mitarbeiter-Abzuege.
+// Mapping vom Body-Key auf den DB-Spaltennamen. Alle Felder sind Pct.
 const FIELDS: Array<{ key: string; column: string }> = [
-  { key: "default_employer_pct", column: "default_employer_pct" },
+  // AN-Abzuege
   { key: "default_ahv_iv_eo_pct", column: "default_ahv_iv_eo_pct" },
   { key: "default_alv_pct", column: "default_alv_pct" },
   { key: "default_nbu_pct", column: "default_nbu_pct" },
   { key: "default_bvg_pct", column: "default_bvg_pct" },
   { key: "default_ktg_pct", column: "default_ktg_pct" },
   { key: "default_quellensteuer_pct", column: "default_quellensteuer_pct" },
+  // AG-Anteil
+  { key: "default_employer_ahv_pct", column: "default_employer_ahv_pct" },
+  { key: "default_employer_alv_pct", column: "default_employer_alv_pct" },
+  { key: "default_employer_fak_pct", column: "default_employer_fak_pct" },
+  { key: "default_employer_bu_pct", column: "default_employer_bu_pct" },
+  { key: "default_employer_bvg_pct", column: "default_employer_bvg_pct" },
+  { key: "default_employer_verwaltung_pct", column: "default_employer_verwaltung_pct" },
 ];
 
 export async function POST(request: Request) {

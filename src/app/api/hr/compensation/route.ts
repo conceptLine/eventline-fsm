@@ -4,20 +4,28 @@
 //                                   (effective_to IS NULL). Permission: lohn:manage.
 // POST /api/hr/compensation       — Lohn-Zeile setzen. Body:
 //                                   { profile_id, hourly_wage_chf,
-//                                     employer_pct, effective_from?, notes? }
+//                                     uses_standard_lohn,
+//                                     ahv_iv_eo_pct, alv_pct, nbu_pct,
+//                                     bvg_pct, ktg_pct, quellensteuer_pct,
+//                                     employer_ahv_pct, employer_alv_pct,
+//                                     employer_fak_pct, employer_bu_pct,
+//                                     employer_bvg_pct, employer_verwaltung_pct,
+//                                     effective_from?, notes? }
 //                                   Schliesst die alte aktuelle Zeile (setzt
 //                                   effective_to = effective_from - 1 day) und
-//                                   legt eine neue an. So bleibt die Historie
-//                                   sauber erhalten.
-// Permission: lohn:manage (Admin laeuft via has_permission durch).
+//                                   legt eine neue an.
+// Permission: lohn:manage.
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTrustedDevice } from "@/lib/api-auth";
-import { loadLohnDefaults } from "@/lib/employer-costs";
+import { loadLohnDefaults, sumEmployeePct, effectivePcts } from "@/lib/employer-costs";
 
-// Konvertiert Spalten-Wert (string|number|null) zu number|null.
-// null bleibt null (= Standard verwenden), sonst Number-Cast.
+const PCT_COLUMNS = [
+  "ahv_iv_eo_pct", "alv_pct", "nbu_pct", "bvg_pct", "ktg_pct", "quellensteuer_pct",
+  "employer_ahv_pct", "employer_alv_pct", "employer_fak_pct", "employer_bu_pct", "employer_bvg_pct", "employer_verwaltung_pct",
+] as const;
+
 function toNullableNumber(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : Number(v);
@@ -30,11 +38,10 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  // Aktive Profiles (alle ausser Partner — Partner haben kein Lohnverhaeltnis bei uns).
   const [profilesRes, compsRes, defaults] = await Promise.all([
     admin.from("profiles").select("id, full_name, role, email").neq("role", "partner").order("full_name"),
     admin.from("employee_compensation")
-      .select("id, profile_id, hourly_wage_chf, employer_pct, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct")
+      .select("id, profile_id, hourly_wage_chf, uses_standard_lohn, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct")
       .is("effective_to", null),
     loadLohnDefaults(admin),
   ]);
@@ -55,10 +62,7 @@ export async function GET() {
         ? {
             id: c.id,
             hourly_wage_chf: Number(c.hourly_wage_chf),
-            // null = nutzt Standard, ansonsten der explizite Override-Wert.
-            // Frontend entscheidet anhand von null vs. Number ob die Checkbox
-            // 'Standard verwenden' an oder aus ist.
-            employer_pct: toNullableNumber(c.employer_pct),
+            uses_standard_lohn: c.uses_standard_lohn !== false,
             effective_from: c.effective_from,
             notes: c.notes,
             ahv_iv_eo_pct: toNullableNumber(c.ahv_iv_eo_pct),
@@ -67,24 +71,18 @@ export async function GET() {
             bvg_pct: toNullableNumber(c.bvg_pct),
             ktg_pct: toNullableNumber(c.ktg_pct),
             quellensteuer_pct: toNullableNumber(c.quellensteuer_pct),
+            employer_ahv_pct: toNullableNumber(c.employer_ahv_pct),
+            employer_alv_pct: toNullableNumber(c.employer_alv_pct),
+            employer_fak_pct: toNullableNumber(c.employer_fak_pct),
+            employer_bu_pct: toNullableNumber(c.employer_bu_pct),
+            employer_bvg_pct: toNullableNumber(c.employer_bvg_pct),
+            employer_verwaltung_pct: toNullableNumber(c.employer_verwaltung_pct),
           }
         : null,
     };
   });
 
-  return NextResponse.json({
-    success: true,
-    employees: rows,
-    defaults: {
-      employer_pct: defaults.employerPct,
-      ahv_iv_eo_pct: defaults.ahvIvEoPct,
-      alv_pct: defaults.alvPct,
-      nbu_pct: defaults.nbuPct,
-      bvg_pct: defaults.bvgPct,
-      ktg_pct: defaults.ktgPct,
-      quellensteuer_pct: defaults.quellensteuerPct,
-    },
-  });
+  return NextResponse.json({ success: true, employees: rows, defaults });
 }
 
 export async function POST(request: Request) {
@@ -94,8 +92,6 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ success: false, error: "Ungueltiger Body" }, { status: 400 });
 
-  // Coerce zuerst → Number, dann isFinite-Check. Body kann sowohl Number
-  // als auch String-formatierte Zahl liefern (JSON Type kann beides).
   const toNum = (v: unknown): number | null => {
     if (v == null) return null;
     const n = typeof v === "number" ? v : Number(v);
@@ -103,52 +99,11 @@ export async function POST(request: Request) {
   };
   const profile_id = typeof body.profile_id === "string" ? body.profile_id : null;
   const hourly_wage_chf = toNum(body.hourly_wage_chf);
-  // Override-Logik: NULL bedeutet 'Standard verwenden'. Frontend sendet
-  // explizit null wenn die 'Standard'-Checkbox an ist. toNum() konvertiert
-  // null/undefined zu null (was wir wollen), Strings/Numbers zu Number.
-  // employer_pct = % vom Brutto (Migration 154, ersetzt das alte CHF-Feld).
-  const employer_pct: number | null = toNum(body.employer_pct);
+  // Default: uses_standard_lohn = true (= alle Pcts werden ignoriert).
+  // Frontend muss explizit false setzen wenn Overrides gewollt sind.
+  const uses_standard_lohn = body.uses_standard_lohn !== false;
   const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
-
-  // Abzuege (% vom Brutto). null = nutze Standard, number = expliziter
-  // Override. Out-of-range -> 400 statt silent fallback.
-  let validationError: string | null = null;
-  function pctNullable(key: string): number | null {
-    const v = body[key];
-    if (v == null) return null;
-    const n = typeof v === "number" ? v : Number(v);
-    if (!Number.isFinite(n) || n < 0 || n > 100) {
-      validationError ??= `${key} ungültig (erwartet 0-100, war ${v})`;
-      return null;
-    }
-    return n;
-  }
-  const ahv_iv_eo_pct = pctNullable("ahv_iv_eo_pct");
-  const alv_pct = pctNullable("alv_pct");
-  const nbu_pct = pctNullable("nbu_pct");
-  const bvg_pct = pctNullable("bvg_pct");
-  const ktg_pct = pctNullable("ktg_pct");
-  const quellensteuer_pct = pctNullable("quellensteuer_pct");
-  if (validationError) return NextResponse.json({ success: false, error: validationError }, { status: 400 });
-  // Sanity-Check: Summe darf nicht >= 100% sein. Fuer NULL-Werte
-  // ziehen wir die Defaults aus app_settings damit der Check sinnvoll
-  // bleibt (sonst koennte jemand alle als Standard markieren und der
-  // gespeicherte Standard die Summe ueberschreiten lassen).
-  const defaults = await loadLohnDefaults(createAdminClient());
-  const totalDeductionPct =
-      (ahv_iv_eo_pct ?? defaults.ahvIvEoPct)
-    + (alv_pct ?? defaults.alvPct)
-    + (nbu_pct ?? defaults.nbuPct)
-    + (bvg_pct ?? defaults.bvgPct)
-    + (ktg_pct ?? defaults.ktgPct)
-    + (quellensteuer_pct ?? defaults.quellensteuerPct);
-  if (totalDeductionPct >= 100) {
-    return NextResponse.json({
-      success: false,
-      error: `Summe der Abzuege (inkl. Standards) ist ${totalDeductionPct.toFixed(2)}% — muss < 100% sein.`,
-    }, { status: 400 });
-  }
 
   if (!profile_id) return NextResponse.json({ success: false, error: "profile_id fehlt" }, { status: 400 });
   if (hourly_wage_chf === null || hourly_wage_chf < 0) {
@@ -157,8 +112,43 @@ export async function POST(request: Request) {
   if (hourly_wage_chf > 9999.99) {
     return NextResponse.json({ success: false, error: "Stundenlohn unrealistisch (> 9999 CHF/h)" }, { status: 400 });
   }
-  if (employer_pct != null && (employer_pct < 0 || employer_pct > 100)) {
-    return NextResponse.json({ success: false, error: "Arbeitgeber-Anteil % ungueltig (erwartet 0-100)" }, { status: 400 });
+
+  // Pct-Spalten validieren: each 0..100 oder null. Bei uses_standard_lohn=true
+  // werden sie eh ignoriert, also auch dann valid wenn null.
+  const pctValues: Record<string, number | null> = {};
+  let pctError: string | null = null;
+  for (const col of PCT_COLUMNS) {
+    const v = toNum((body as Record<string, unknown>)[col]);
+    if (v != null && (v < 0 || v > 100)) {
+      pctError = `${col} ungueltig (erwartet 0-100)`;
+      break;
+    }
+    pctValues[col] = v;
+  }
+  if (pctError) return NextResponse.json({ success: false, error: pctError }, { status: 400 });
+
+  // Sanity-Check: Summe der AN-Abzuege < 100% (egal ob Override oder
+  // Standard — wir validieren immer gegen die *effektiven* Werte).
+  const defaults = await loadLohnDefaults(createAdminClient());
+  const effective = effectivePcts(
+    uses_standard_lohn
+      ? { uses_standard_lohn: true }
+      : {
+          uses_standard_lohn: false,
+          ahv_iv_eo_pct: pctValues.ahv_iv_eo_pct,
+          alv_pct: pctValues.alv_pct,
+          nbu_pct: pctValues.nbu_pct,
+          bvg_pct: pctValues.bvg_pct,
+          ktg_pct: pctValues.ktg_pct,
+          quellensteuer_pct: pctValues.quellensteuer_pct,
+        },
+    defaults,
+  );
+  if (sumEmployeePct(effective) >= 100) {
+    return NextResponse.json({
+      success: false,
+      error: `Summe der Mitarbeiter-Abzuege ist ${sumEmployeePct(effective).toFixed(2)}% — muss < 100% sein.`,
+    }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -171,17 +161,22 @@ export async function POST(request: Request) {
     .is("effective_to", null)
     .maybeSingle();
 
+  // Wenn uses_standard_lohn=true: alle Pct-Spalten auf null setzen
+  // (saubere Trennung; sonst koennten alte Override-Werte hinter dem
+  // Flag noch rumliegen und bei spaeterem Toggle wieder aufploppen).
+  const pctPayload = uses_standard_lohn
+    ? Object.fromEntries(PCT_COLUMNS.map((c) => [c, null]))
+    : pctValues;
+
   if (current) {
-    // Wenn das neue effective_from gleich dem alten ist: alten Datensatz
-    // updaten statt einen Tag-Vorgaenger zu schliessen (waere komisch).
     if (current.effective_from === effective_from) {
       const { error } = await admin
         .from("employee_compensation")
         .update({
           hourly_wage_chf,
-          employer_pct,
+          uses_standard_lohn,
           notes,
-          ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct,
+          ...pctPayload,
           created_by: auth.user.id,
         })
         .eq("id", current.id);
@@ -189,7 +184,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode: "updated" });
     }
 
-    // Sonst: alte Zeile schliessen (effective_to = effective_from minus 1 Tag).
     const closeDate = new Date(effective_from);
     closeDate.setUTCDate(closeDate.getUTCDate() - 1);
     const closeIso = closeDate.toISOString().slice(0, 10);
@@ -204,10 +198,10 @@ export async function POST(request: Request) {
   const { error: insErr } = await admin.from("employee_compensation").insert({
     profile_id,
     hourly_wage_chf,
-    employer_pct,
+    uses_standard_lohn,
     effective_from,
     notes,
-    ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct,
+    ...pctPayload,
     created_by: auth.user.id,
   });
   if (insErr) return NextResponse.json({ success: false, error: insErr.message }, { status: 500 });
