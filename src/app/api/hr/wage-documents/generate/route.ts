@@ -349,8 +349,11 @@ export async function POST(req: Request) {
     `Vollkosten Arbeitgeber: CHF ${CHF(vollkosten)} (inkl. Arbeitgeber-Anteil ${CHF(employer)}/h)`,
     "Diese Lohnabrechnung wird automatisch aus den im System erfassten Stunden + Lohndaten generiert.",
     "Der offizielle Lohnausweis (Formular 11) wird jährlich separat erstellt.",
-    `Generiert am ${new Date().toLocaleDateString("de-CH")} um ${new Date().toLocaleTimeString("de-CH")}`,
   ];
+  if (!profile.birthdate) {
+    footerLines.push(`HINWEIS: Geburtsdatum nicht hinterlegt — Ferienanteil mit ${ferienPct.toFixed(2)}% angenommen (Erwachsene). Pruefen ob MA <20 Jahre alt ist (dann 10.64% korrekt).`);
+  }
+  footerLines.push(`Generiert am ${new Date().toLocaleDateString("de-CH")} um ${new Date().toLocaleTimeString("de-CH")}`);
   for (const line of footerLines) {
     doc.text(line, left, y, { maxWidth: contentWidth });
     y += 4;

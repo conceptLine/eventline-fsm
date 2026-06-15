@@ -111,6 +111,7 @@ export function MitarbeiterLohnTab() {
               </div>
               {employees.map((e) => {
                 const hasComp = e.compensation != null;
+                const noBirthdate = !e.birthdate;
                 return (
                   <div
                     key={e.profile_id}
@@ -119,11 +120,19 @@ export function MitarbeiterLohnTab() {
                     style={{ gridTemplateColumns: "minmax(0, 1.5fr) 100px 120px 90px 120px" }}
                   >
                     <div className="min-w-0">
-                      <div className="font-medium truncate flex items-center gap-2">
+                      <div className="font-medium truncate flex items-center gap-2 flex-wrap">
                         {e.full_name}
                         {!hasComp && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300">
                             <AlertTriangle className="h-2.5 w-2.5" /> Lohn fehlt
+                          </span>
+                        )}
+                        {noBirthdate && hasComp && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                            data-tooltip="Geburtsdatum fehlt — Ferienanteil-Berechnung nimmt Default 8.33% an (Erwachsen). Für U20 wäre das falsch (10.64%)."
+                          >
+                            <AlertTriangle className="h-2.5 w-2.5" /> Geburtstag fehlt
                           </span>
                         )}
                       </div>
@@ -261,6 +270,19 @@ function LohnEditorModal({ employee, defaults, onClose, onSaved }: {
   return (
     <Modal open={!!employee} onClose={() => !saving && onClose()} title={`Lohn — ${employee.full_name}`} size="md">
       <div className="space-y-4">
+        {!employee.birthdate && (
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-xs text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Geburtsdatum fehlt</p>
+              <p className="opacity-80 mt-0.5">
+                Ferienanteil wird mit 8.33% (Erwachsene) berechnet. Falls der MA unter 20 Jahre alt ist,
+                wäre das falsch (10.64%). Bitte in{" "}
+                <a href="/einstellungen?tab=team" className="underline">Einstellungen → Team</a> nachpflegen.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="space-y-1">
           <p className="text-[10px] text-muted-foreground/70 ml-1">Brutto-Stundenlohn (CHF/h, inkl. Ferienanteil)</p>
           <Input
