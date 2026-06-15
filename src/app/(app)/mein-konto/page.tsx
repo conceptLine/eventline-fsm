@@ -89,21 +89,25 @@ export default function MeinKontoPage() {
       </nav>
 
       {tab === "profil" && (
-        <div className="max-w-3xl">
+        <div className="max-w-3xl mx-auto">
           <MeinKontoCard />
         </div>
       )}
 
-      {tab === "benachrichtigungen" && <BenachrichtigungenTab />}
+      {tab === "benachrichtigungen" && (
+        <div className="max-w-3xl mx-auto">
+          <BenachrichtigungenTab />
+        </div>
+      )}
 
       {tab === "dokumente" && (
-        <div className="max-w-3xl">
+        <div className="max-w-3xl mx-auto">
           <LohnausweiseList />
         </div>
       )}
 
       {tab === "kalender" && (
-        <div className="max-w-3xl">
+        <div className="max-w-3xl mx-auto">
           <IcalFeedBlock
             title="Mein iCal-Feed"
             description="Abonniere deinen persönlichen Kalender mit Aufträgen, Terminen und Schichten in Google Calendar / Apple Calendar / Outlook."
