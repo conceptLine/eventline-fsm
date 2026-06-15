@@ -17,7 +17,9 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Wallet, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, Wallet, Shield, Download } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Loading } from "@/components/ui/spinner";
 import { EmployeeWageDetailModal } from "@/components/hr/employee-wage-detail-modal";
@@ -97,6 +99,40 @@ export function MonatsstundenTable() {
   const [bvgMonthLabels, setBvgMonthLabels] = useState<string[]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
   const [detailFor, setDetailFor] = useState<string | null>(null);
+  // Timesheet-Excel-Export: Default = aktueller Monat, optional Custom-Range.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const monthStartIso = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
+  const monthEndIso = (() => {
+    const lastDay = new Date(period.year, period.month, 0).getDate();
+    return `${period.year}-${String(period.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  })();
+  const [exportFrom, setExportFrom] = useState(monthStartIso);
+  const [exportTo, setExportTo] = useState(monthEndIso);
+
+  async function downloadTimesheet(from: string, to: string) {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/hr/timesheet?from=${from}&to=${to}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        toast.error(j?.error || "Export fehlgeschlagen");
+        return;
+      }
+      const blob = await res.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `eventline-timesheet_${from}_${to}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+      setExportOpen(false);
+    } finally {
+      setExporting(false);
+    }
+  }
   // Toggle "Nur mit Stunden" — verbergt Mitarbeiter ohne Stempel/Geplant/
   // Rapport-Minuten (zeigen sonst nur Dashes, wirken wie Bug). Default an.
   const [onlyWithHours, setOnlyWithHours] = useState(true);
@@ -189,6 +225,19 @@ export function MonatsstundenTable() {
           >
             <ChevronRight className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setExportFrom(monthStartIso);
+              setExportTo(monthEndIso);
+              setExportOpen(true);
+            }}
+            className="kasten kasten-muted text-xs"
+            data-tooltip="Timesheet als Excel herunterladen"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Excel
+          </button>
         </div>
       </div>
 
@@ -251,6 +300,56 @@ export function MonatsstundenTable() {
         initialYear={period.year}
         onClose={() => setDetailFor(null)}
       />
+
+      <Modal open={exportOpen} onClose={() => !exporting && setExportOpen(false)} title="Timesheet Excel-Export" size="md">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Aktueller Monat ist bereits eingestellt. Für Audits oder Jahres-Reports kannst du den Zeitraum anpassen.
+            Pro Mitarbeiter ein eigenes Sheet mit Tag-für-Tag-Aufschlüsselung + Übersichts-Sheet zur Schnellansicht.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/70 ml-1">Von</p>
+              <Input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/70 ml-1">Bis</p>
+              <Input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setExportFrom(monthStartIso); setExportTo(monthEndIso); }}
+              className="kasten kasten-muted text-xs"
+              disabled={exporting}
+            >
+              {fmtMonthLabel(period)}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setExportFrom(`${period.year}-01-01`); setExportTo(`${period.year}-12-31`); }}
+              className="kasten kasten-muted text-xs"
+              disabled={exporting}
+            >
+              Ganzes Jahr {period.year}
+            </button>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={() => setExportOpen(false)} disabled={exporting} className="kasten kasten-muted flex-1">
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadTimesheet(exportFrom, exportTo)}
+              disabled={exporting || !exportFrom || !exportTo || exportFrom > exportTo}
+              className="kasten kasten-red flex-1"
+            >
+              {exporting ? "Generiert…" : "Excel herunterladen"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
