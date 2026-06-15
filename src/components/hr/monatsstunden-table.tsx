@@ -45,6 +45,8 @@ interface EmployeeStats {
   sunhol_eligible_minutes: number;
   night_over_limit: boolean;
   sunhol_over_limit: boolean;
+  /** 3-Monats-BVG-Forecast aus geplanten Terminen: [Mo, +1, +2] in CHF. */
+  bvg_forecast_3_months_chf: number[];
 }
 
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -85,6 +87,8 @@ export function MonatsstundenTable() {
   const [period, setPeriod] = useState<{ year: number; month: number }>(todayMonth());
   const [data, setData] = useState<EmployeeStats[]>([]);
   const [bvgThreshold, setBvgThreshold] = useState<number>(1890);
+  // Monats-Labels fuer die 3 BVG-Forecast-Spalten (z.B. ["Juni 2026", "Juli 2026", "August 2026"]).
+  const [bvgMonthLabels, setBvgMonthLabels] = useState<string[]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
   const [detailFor, setDetailFor] = useState<string | null>(null);
   // Toggle "Nur mit Stunden" — verbergt Mitarbeiter ohne Stempel/Geplant/
@@ -108,6 +112,7 @@ export function MonatsstundenTable() {
         }
         setData(json.employees as EmployeeStats[]);
         if (typeof json.bvgThresholdChf === "number") setBvgThreshold(json.bvgThresholdChf);
+        if (Array.isArray(json.bvgForecastMonthLabels)) setBvgMonthLabels(json.bvgForecastMonthLabels);
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -192,7 +197,7 @@ export function MonatsstundenTable() {
               {/* Header-Row (desktop) — drei visuelle Gruppen via Border-
                   Separators: Mitarbeiter · Stunden · Vergütung. */}
               <div className="hidden md:grid items-center gap-x-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground"
-                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px 60px 60px 60px" }}
               >
                 <div>Mitarbeiter</div>
                 <div className="text-right border-l border-border pl-2" data-tooltip="Gestempelte Stunden im Monat">Stempel</div>
@@ -203,13 +208,17 @@ export function MonatsstundenTable() {
                 <div className="text-right" data-tooltip="Brutto = Basis-Lohn + Zuschläge">Brutto</div>
                 <div className="text-right text-emerald-700 dark:text-emerald-300 font-semibold" data-tooltip="= Brutto − Mitarbeiter-Abzüge. Das was auf dem Konto landet.">Auszahlung</div>
                 <div className="text-right" data-tooltip="Brutto + Arbeitgeber-Anteil (Vollkosten für die Firma)">Vollkosten</div>
+                {/* 3 BVG-Forecast-Spalten: aktuell + 2 zukuenftige Monate */}
+                <div className="text-center border-l border-border pl-2" data-tooltip={`BVG-Forecast ${bvgMonthLabels[0] || "selektierter Monat"} aus geplanten Terminen — vergleicht gegen ${CHF.format(bvgThreshold)} CHF`}>BVG-Mo</div>
+                <div className="text-center" data-tooltip={`BVG-Forecast ${bvgMonthLabels[1] || "+1 Monat"} aus geplanten Terminen`}>+1M</div>
+                <div className="text-center" data-tooltip={`BVG-Forecast ${bvgMonthLabels[2] || "+2 Monate"} aus geplanten Terminen`}>+2M</div>
               </div>
               {visibleData.map((r) => (
                 <StatsRow key={r.profile_id} row={r} bvgThreshold={bvgThreshold} onClick={() => setDetailFor(r.profile_id)} />
               ))}
               {/* Summen-Zeile */}
               <div className="hidden md:grid items-center gap-x-2 px-4 py-2.5 text-xs font-semibold bg-foreground/[0.03] dark:bg-foreground/[0.06]"
-                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
+                style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px 60px 60px 60px" }}
               >
                 <div>Summe ({visibleData.length})</div>
                 <div className="text-right tabular-nums border-l border-border pl-2">{fmtHours(totals.stempel)}</div>
@@ -220,6 +229,10 @@ export function MonatsstundenTable() {
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.lohnkosten)}</div>
                 <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">CHF {CHF.format(totals.netto)}</div>
                 <div className="text-right tabular-nums">CHF {CHF.format(totals.vollkosten)}</div>
+                {/* BVG-Spalten haben keine Summe (pro-MA-Status, nicht aggregierbar). */}
+                <div className="text-center border-l border-border pl-2 text-muted-foreground">—</div>
+                <div className="text-center text-muted-foreground">—</div>
+                <div className="text-center text-muted-foreground">—</div>
               </div>
             </div>
           )}
@@ -250,42 +263,21 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
         ? "Limit überschritten — Zeitkompensation / Ersatzruhetage statt Geld"
         : "Keine zuschlags-pflichtigen Stunden");
 
-  // BVG-Status: vergleicht Brutto (lohnkosten_chf inkl. Zuschlaege) gegen
-  // die Eintrittsschwelle. Pille erscheint nur ab >=70% damit die Tabelle
-  // bei niedrigen Pensen sauber bleibt. Crit-Faerbung (>=95%) tinted die
-  // ganze Zeile damit Admin beim Scannen sofort sieht wo's brennt.
-  const brutto = row.lohnkosten_chf ?? 0;
-  const bvgRatio = bvgThreshold > 0 ? brutto / bvgThreshold : 0;
-  const bvgStatus: "ok" | "warn" | "crit" = bvgRatio >= 0.95 ? "crit" : bvgRatio >= 0.70 ? "warn" : "ok";
-  const bvgPct = Math.round(bvgRatio * 100);
-  const showBvg = bvgStatus !== "ok" && brutto > 0;
-  const bvgPillClass =
-    bvgStatus === "crit"
-      ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40"
-      : "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40";
-  const bvgTooltip = `BVG-Schwelle ${CHF.format(bvgThreshold)} CHF/Monat — Brutto ${CHF.format(brutto)} (${bvgPct}%)${bvgStatus === "crit" ? " — BVG-Pflicht droht" : ""}`;
-  const rowTint = bvgStatus === "crit" ? "bg-red-50/40 dark:bg-red-500/[0.06]" : "";
+  // Row-Tint wenn IRGENDEINER der 3 Forecast-Monate kritisch ist (>=95% der Schwelle).
+  const anyCritical = (row.bvg_forecast_3_months_chf ?? [0, 0, 0]).some((chf) => chf >= bvgThreshold * 0.95);
+  const rowTint = anyCritical ? "bg-red-50/40 dark:bg-red-500/[0.06]" : "";
 
   return (
     <div
       className={`grid items-center gap-x-2 px-4 py-2.5 text-sm transition-colors hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.06] cursor-pointer ${row.is_active ? "" : "opacity-60"} ${rowTint}`}
-      style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px" }}
+      style={{ gridTemplateColumns: "minmax(0, 1.3fr) 65px 65px 65px 65px 85px 95px 105px 95px 60px 60px 60px" }}
       onClick={onClick}
     >
       <div className="min-w-0">
-        <div className="font-medium truncate hover:underline flex items-center gap-1.5">
+        <div className="font-medium truncate hover:underline">
           {row.full_name}
-          {showBvg && (
-            <span
-              className={`inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold border ${bvgPillClass}`}
-              data-tooltip={bvgTooltip}
-            >
-              <Shield className="h-2.5 w-2.5" />
-              BVG {bvgPct}%
-            </span>
-          )}
           {!row.is_active && (
-            <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-foreground/10 dark:bg-foreground/20 text-muted-foreground font-normal">
+            <span className="ml-1.5 text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-foreground/10 dark:bg-foreground/20 text-muted-foreground font-normal">
               deaktiv
             </span>
           )}
@@ -316,6 +308,44 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
       <div className="text-right tabular-nums text-muted-foreground">
         {row.vollkosten_chf != null ? `CHF ${CHF.format(row.vollkosten_chf)}` : "—"}
       </div>
+      {/* 3 BVG-Forecast-Spalten */}
+      {(row.bvg_forecast_3_months_chf ?? [0, 0, 0]).map((chf, i) => (
+        <BvgForecastCell
+          key={i}
+          chf={chf}
+          threshold={bvgThreshold}
+          firstCol={i === 0}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Mini-Pille pro Monat: zeigt % der BVG-Schwelle. Farbe nach Status. */
+function BvgForecastCell({ chf, threshold, firstCol }: { chf: number; threshold: number; firstCol: boolean }) {
+  const ratio = threshold > 0 ? chf / threshold : 0;
+  const status: "ok" | "warn" | "crit" = ratio >= 0.95 ? "crit" : ratio >= 0.70 ? "warn" : "ok";
+  const pct = Math.round(ratio * 100);
+  const empty = chf === 0;
+  const pillClass =
+    empty
+      ? "text-muted-foreground/40"
+      : status === "crit"
+        ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+        : status === "warn"
+          ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+          : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300";
+  const tooltip = empty
+    ? "Keine geplanten Termine in diesem Monat"
+    : `${CHF.format(chf)} / ${CHF.format(threshold)} CHF (${pct}%)${status === "crit" ? " — BVG-Pflicht droht" : ""}`;
+  return (
+    <div className={`text-center ${firstCol ? "border-l border-border pl-2" : ""}`}>
+      <span
+        className={`inline-block min-w-[42px] px-1 py-0.5 rounded text-[10px] font-semibold tabular-nums ${pillClass}`}
+        data-tooltip={tooltip}
+      >
+        {empty ? "—" : `${pct}%`}
+      </span>
     </div>
   );
 }

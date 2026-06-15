@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { bucketizeMinutes, weekdayForDateIso, type MinuteBucket } from "@/lib/swiss-time";
 import { loadLohnDefaults, effectivePcts, sumEmployerPct, sumEmployeePct, employerCostsPerHour } from "@/lib/employer-costs";
+import { calculateForecast, monthRange } from "@/lib/bvg-forecast";
 
 interface RpcRow {
   profile_id: string;
@@ -224,6 +225,32 @@ export async function GET(req: Request) {
     .maybeSingle();
   const bvgThresholdChf = Number(appSettings?.bvg_threshold_chf ?? 1890);
 
+  // 3-Monats-BVG-Forecast: selected month + 2 forward. Holt alle geplanten
+  // job_appointments fuer die Mitarbeiter im 3-Monats-Fenster.
+  const monthNum = Number(monthStr);
+  const m0 = monthRange(year, monthNum);
+  const mNext1Year = monthNum === 12 ? year + 1 : year;
+  const mNext1Month = monthNum === 12 ? 1 : monthNum + 1;
+  const m1 = monthRange(mNext1Year, mNext1Month);
+  const mNext2Year = mNext1Month === 12 ? mNext1Year + 1 : mNext1Year;
+  const mNext2Month = mNext1Month === 12 ? 1 : mNext1Month + 1;
+  const m2 = monthRange(mNext2Year, mNext2Month);
+  const FORECAST_MONTHS = [m0, m1, m2];
+
+  const { data: forecastAppts } = await adminClient
+    .from("job_appointments")
+    .select("assigned_to, start_time, end_time")
+    .in("assigned_to", profileIds)
+    .gte("start_time", `${m0.start}T00:00:00Z`)
+    .lt("start_time", `${m2.end}T23:59:59Z`)
+    .not("assigned_to", "is", null);
+  type ApptRow = { assigned_to: string; start_time: string; end_time: string | null };
+  const apptsByProfile = new Map<string, { start_time: string; end_time: string | null }[]>();
+  for (const a of (forecastAppts as ApptRow[] | null) ?? []) {
+    if (!apptsByProfile.has(a.assigned_to)) apptsByProfile.set(a.assigned_to, []);
+    apptsByProfile.get(a.assigned_to)!.push({ start_time: a.start_time, end_time: a.end_time });
+  }
+
   const employees = (data as RpcRow[]).map((r) => {
     // RPC liefert stempel_minutes als UTC-Delta-Summe — DST-broken. Wir
     // ueberschreiben mit der per-Minute-DST-safe-Berechnung.
@@ -257,6 +284,14 @@ export async function GET(req: Request) {
     const nettolohn = lohnkostenWithSurcharge != null
       ? lohnkostenWithSurcharge * (1 - totalDeductionPct / 100)
       : null;
+
+    // 3-Monats-BVG-Forecast: brutto (inkl. Nacht/Sonntag-Zuschlaegen) aus
+    // GEPLANTEN Terminen. Wage muss gesetzt sein -- sonst array of 0.
+    const myAppts = apptsByProfile.get(r.profile_id) ?? [];
+    const bvgForecast3Months = wage != null
+      ? FORECAST_MONTHS.map((m) => calculateForecast(myAppts, wage, m.start, m.end).total_chf)
+      : [0, 0, 0];
+
     return {
       ...r,
       stempel_minutes: stempelDstSafe,
@@ -276,11 +311,20 @@ export async function GET(req: Request) {
       total_surcharge_chf: surcharges.total_surcharge_chf,
       night_eligible_minutes: surcharges.night_eligible_minutes,
       sunhol_eligible_minutes: surcharges.sunhol_eligible_minutes,
+      // 3-Monats-BVG-Forecast aus job_appointments (siehe oben).
+      // Reihenfolge: selected month, +1, +2.
+      bvg_forecast_3_months_chf: bvgForecast3Months,
       // Hinweis-Flags fuers UI: wenn YTD-Limit ueberschritten wurde
       night_over_limit: surcharges.ytd_night_shifts_before_month >= 24,
       sunhol_over_limit: surcharges.ytd_sunhol_shifts_before_month >= 6,
     };
   });
 
-  return NextResponse.json({ success: true, month, employees, bvgThresholdChf });
+  return NextResponse.json({
+    success: true,
+    month,
+    employees,
+    bvgThresholdChf,
+    bvgForecastMonthLabels: FORECAST_MONTHS.map((m) => m.label),
+  });
 }

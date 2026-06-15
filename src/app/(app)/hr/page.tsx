@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 import { LohnausweiseList } from "@/components/hr/lohnausweise-list";
 import { LohndokumenteAdmin } from "@/components/hr/lohndokumente-admin";
 import { MonatsstundenTable } from "@/components/hr/monatsstunden-table";
-import { BvgMonitor } from "@/components/hr/bvg-monitor";
 import { TrustedDeviceGate } from "@/components/trust/trusted-device-gate";
 
 const TAB_BTN_CLASS = "flex items-center gap-2 px-3 py-2.5 -mb-px text-sm font-medium border-b-2 transition-colors";
@@ -128,11 +127,9 @@ export default function HRPage() {
           {isAdmin && (
             <TrustedDeviceGate>
               <div className="space-y-6">
-                {/* BVG-Monitor zuerst — vorausschauend (was kommt?), damit
-                    bei Plotting/Lohnabrechnung sofort sichtbar wird wer
-                    sich auf die BVG-Schwelle zubewegt. Erst danach die
-                    abgelaufenen Monate fuer die Lohnabrechnung. */}
-                <BvgMonitor />
+                {/* Lohnabrechnung mit integrierter BVG-Vorausschau (3 Spalten
+                    am Ende der Tabelle). Die separate BVG-Monitor-Sektion
+                    ist weg — alles in einer Tabelle. */}
                 <MonatsstundenTable />
                 <LohndokumenteAdmin />
               </div>
