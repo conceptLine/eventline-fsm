@@ -53,10 +53,10 @@ export async function POST(request: Request) {
   const assignee = appt.assignee as Joined<{ full_name: string; email: string | null }>;
 
   const apptDate = new Date(appt.start_time).toLocaleDateString("de-CH", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
   const apptTime = new Date(appt.start_time).toLocaleTimeString("de-CH", {
-    hour: "2-digit", minute: "2-digit",
+    timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit",
   });
 
   const resendKey = process.env.RESEND_API_KEY;

@@ -206,5 +206,5 @@ function formatAgo(iso: string): string {
   if (diffSec < 60) return "gerade eben";
   if (diffSec < 3600) return `vor ${Math.floor(diffSec / 60)} min`;
   if (diffSec < 86400) return `vor ${Math.floor(diffSec / 3600)} h`;
-  return new Date(iso).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" });
+  return new Date(iso).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" });
 }

@@ -411,7 +411,7 @@ export default function TicketDetailPage() {
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3 w-3" />Eingereicht</p>
               <p className="font-medium mt-0.5">
-                {new Date(ticket.created_at).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {new Date(ticket.created_at).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </p>
             </div>
             {ticket.assignee && (
@@ -502,7 +502,7 @@ export default function TicketDetailPage() {
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
               {ticket.resolved_at
-                ? new Date(ticket.resolved_at).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                ? new Date(ticket.resolved_at).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
                 : "—"}
               {ticket.resolver?.full_name ? ` · von ${ticket.resolver.full_name}` : ""}
             </p>
@@ -636,7 +636,7 @@ function TicketDataDisplay({ type, data, stempelJob }: { type: TicketType; data:
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Kaufdatum</p>
-          <p className="text-sm font-medium mt-0.5">{d.kaufdatum ? new Date(d.kaufdatum).toLocaleDateString("de-CH") : "—"}</p>
+          <p className="text-sm font-medium mt-0.5">{d.kaufdatum ? new Date(d.kaufdatum).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" }) : "—"}</p>
         </div>
         {d.lieferant && (
           <div>

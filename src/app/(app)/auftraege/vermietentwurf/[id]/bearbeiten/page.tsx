@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { localDateIso } from "@/lib/swiss-time";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EVENT_TYPES } from "@/lib/constants";
@@ -34,7 +35,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function dateToISODate(d: string | null): string {
   if (!d) return "";
-  return d.slice(0, 10);
+  // ZRH-Datum zwingend — .slice(0,10) auf timestamptz waere UTC und der
+  // <Input type="date">-Picker zeigt dann den Vortag.
+  return localDateIso(new Date(d));
 }
 
 export default function VermietentwurfBearbeitenPage() {

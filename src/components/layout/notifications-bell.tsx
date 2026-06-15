@@ -359,7 +359,7 @@ export function NotificationsBell() {
     if (diffMin < 60) return `vor ${diffMin}min`;
     const diffH = Math.floor(diffMin / 60);
     if (diffH < 24) return `vor ${diffH}h`;
-    return d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   // Action-First-Gruppierung:

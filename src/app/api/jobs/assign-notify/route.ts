@@ -42,8 +42,14 @@ export async function POST(request: Request) {
     const endTime = end_date
       ? (end_date.includes("T") ? end_date : `${end_date}T17:00:00`)
       : startTime.replace("T08:00", "T17:00");
-    const dayStart = startTime.split("T")[0] + "T00:00:00";
-    const dayEnd = startTime.split("T")[0] + "T23:59:59";
+    // De-Dup-Window: 13h beidseits von startTime decken den ganzen
+    // Europe/Zurich-Tag ab (CET +01 / CEST +02) und sind unabhaengig
+    // von Sommer/Winter. Vorher waren das `.split("T")[0] + "T00:00:00"`-
+    // Strings, was den UTC-Tag traf und beim Jahres-Edge-Case Events
+    // doppelt anlegte.
+    const startMs = new Date(startTime).getTime();
+    const dayStart = new Date(startMs - 13 * 60 * 60 * 1000).toISOString();
+    const dayEnd = new Date(startMs + 13 * 60 * 60 * 1000).toISOString();
 
     const { data: existing } = await supabase
       .from("calendar_events")
@@ -73,8 +79,8 @@ export async function POST(request: Request) {
   // E-Mails parallel verschicken (vorher seriell -> N x HTTP-Latenz)
   if (resend) {
     const dateStr = start_date
-      ? new Date(start_date.split("T")[0] + "T12:00:00").toLocaleDateString("de-CH", {
-          weekday: "long", day: "numeric", month: "long", year: "numeric",
+      ? new Date(start_date).toLocaleDateString("de-CH", {
+          timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
         })
       : null;
 

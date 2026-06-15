@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/api-auth";
 import { logError } from "@/lib/log";
+import { todayLocalIso } from "@/lib/swiss-time";
 
 export async function GET() {
   const auth = await requireUser();
@@ -50,7 +51,7 @@ export async function GET() {
     };
 
     const body = JSON.stringify(exported, null, 2);
-    const filename = `eventline-meine-daten-${new Date().toISOString().slice(0, 10)}.json`;
+    const filename = `eventline-meine-daten-${todayLocalIso()}.json`;
     return new NextResponse(body, {
       status: 200,
       headers: {

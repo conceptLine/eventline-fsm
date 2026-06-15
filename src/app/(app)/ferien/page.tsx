@@ -45,7 +45,7 @@ const STATUS_META: Record<TimeOffStatus, { label: string; color: string }> = {
 
 function formatDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatDateRange(start: string, end: string): string {

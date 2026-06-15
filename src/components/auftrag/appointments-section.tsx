@@ -12,6 +12,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { deleteRow } from "@/lib/db-mutations";
 import { logError } from "@/lib/log";
+import { todayLocalIso, localDateIso } from "@/lib/swiss-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -105,7 +106,7 @@ export function AppointmentsSection({
 
   function formatDateShort(iso: string): string {
     const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" });
+    return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" });
   }
 
   async function addAppointment(e: React.FormEvent) {
@@ -137,7 +138,7 @@ export function AppointmentsSection({
         .lt("start_time", `${m.end}T23:59:59Z`),
     ]);
     const threshold = Number(settingsRes.data?.bvg_threshold_chf ?? 1890);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalIso();
     type Comp = { profile_id: string; hourly_wage_chf: number; effective_from: string; effective_to: string | null };
     const wagePerProfile = new Map<string, number>();
     for (const c of (compRes.data ?? []) as Comp[]) {
@@ -283,9 +284,11 @@ export function AppointmentsSection({
       const newAssignees = selection.filter((id) => id !== previousAssignee && id !== user?.id);
       if (newAssignees.length > 0) {
         const { data: creator } = await supabase.from("profiles").select("full_name").eq("id", user?.id ?? "").maybeSingle();
-        const apptDate = appt.start_time.split("T")[0];
-        const apptTime = appt.start_time.split("T")[1]?.slice(0, 5) ?? "";
-        const apptEnd = appt.end_time ? appt.end_time.split("T")[1]?.slice(0, 5) : "";
+        // ZRH-Datum/Zeit zwingend — sonst zeigt die Benachrichtigung den
+        // UTC-Tag bei Terminen kurz nach Mitternacht.
+        const apptDate = localDateIso(new Date(appt.start_time));
+        const apptTime = new Date(appt.start_time).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit", hour12: false });
+        const apptEnd = appt.end_time ? new Date(appt.end_time).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit", hour12: false }) : "";
         for (const personId of newAssignees) {
           try {
             await fetch("/api/appointments/assign-notify", {
@@ -482,7 +485,7 @@ export function AppointmentsSection({
                   <div className="min-w-0">
                     <span className="font-medium text-sm break-words">{appt.title}</span>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(appt.start_time).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{appt.end_time ? ` – ${new Date(appt.end_time).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(appt.start_time).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{appt.end_time ? ` – ${new Date(appt.end_time).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" })}` : ""}</span>
                       {assignee ? (
                         <span className="flex items-center gap-1"><User className="h-3 w-3" />{assignee.full_name}</span>
                       ) : (

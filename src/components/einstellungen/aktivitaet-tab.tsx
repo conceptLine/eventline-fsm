@@ -57,7 +57,7 @@ function formatRelativeTime(date: Date | null): string {
   if (hours < 24) return `vor ${hours} Std`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `vor ${days} ${days === 1 ? "Tag" : "Tagen"}`;
-  return date.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatDuration(minutes: number): string {
@@ -72,6 +72,7 @@ function formatDuration(minutes: number): string {
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString("de-CH", {
+    timeZone: "Europe/Zurich",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

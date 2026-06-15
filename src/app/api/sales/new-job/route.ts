@@ -31,8 +31,11 @@ export async function POST(request: Request) {
 
   const formatDateCH = (d: string, opts?: Intl.DateTimeFormatOptions) => {
     if (!d) return "";
-    const [y, m, day] = d.split("T")[0].split("-").map(Number);
-    return new Date(y, m - 1, day, 12).toLocaleDateString("de-CH", opts || { day: "numeric", month: "long", year: "numeric" });
+    // timeZone Europe/Zurich zwingend — d kann timestamptz sein.
+    return new Date(d).toLocaleDateString("de-CH", {
+      timeZone: "Europe/Zurich",
+      ...(opts || { day: "numeric", month: "long", year: "numeric" }),
+    });
   };
   const dateStr = startDate
     ? formatDateCH(startDate, { weekday: "long", day: "numeric", month: "long", year: "numeric" })

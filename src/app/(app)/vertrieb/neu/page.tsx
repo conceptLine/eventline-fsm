@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { TOAST } from "@/lib/messages";
+import { todayLocalIso } from "@/lib/swiss-time";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -150,7 +151,7 @@ export default function NeuerLeadPage() {
 
     // Default-Werte fuer Status/Prio/datum_kontakt — User passt im Detail-
     // Editor an, wenn anders gewuenscht.
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = todayLocalIso();
 
     const { data: inserted, error } = await supabase
       .from("vertrieb_contacts")

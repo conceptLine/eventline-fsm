@@ -353,7 +353,7 @@ export async function POST(req: Request) {
   if (!profile.birthdate) {
     footerLines.push(`HINWEIS: Geburtsdatum nicht hinterlegt — Ferienanteil mit ${ferienPct.toFixed(2)}% angenommen (Erwachsene). Pruefen ob MA <20 Jahre alt ist (dann 10.64% korrekt).`);
   }
-  footerLines.push(`Generiert am ${new Date().toLocaleDateString("de-CH")} um ${new Date().toLocaleTimeString("de-CH")}`);
+  footerLines.push(`Generiert am ${new Date().toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })} um ${new Date().toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich" })}`);
   for (const line of footerLines) {
     doc.text(line, left, y, { maxWidth: contentWidth });
     y += 4;

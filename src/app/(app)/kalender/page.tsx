@@ -39,6 +39,7 @@ import { NeuerTerminModal } from "@/components/kalender/neuer-termin-modal";
 import { TerminEditModal } from "@/components/kalender/termin-edit-modal";
 import { IcalFeedBlock } from "@/components/kalender/ical-feed-block";
 import { usePermissions } from "@/lib/use-permissions";
+import { todayLocalIso } from "@/lib/swiss-time";
 
 // Supabase-Joined-Shape — am API-Boundary getypt damit die Loader-Logik
 // nicht durchgehend mit any/unknown rumhantieren muss.
@@ -106,7 +107,7 @@ export default function KalenderPage() {
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const monthLabel = currentDate.toLocaleDateString("de-CH", { month: "long", year: "numeric" });
+  const monthLabel = currentDate.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", month: "long", year: "numeric" });
 
   // Wochen-Tage (Mo-So) basierend auf currentDate.
   const weekDays = useMemo<Date[]>(() => {
@@ -275,7 +276,7 @@ export default function KalenderPage() {
       ]);
       if (cancelled) return;
       const threshold = Number(settingsRes.data?.bvg_threshold_chf ?? 1890);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocalIso();
       type Comp = { profile_id: string; hourly_wage_chf: number; effective_from: string; effective_to: string | null };
       const wagePerProfile = new Map<string, number>();
       for (const c of (compRes.data ?? []) as Comp[]) {
@@ -332,8 +333,8 @@ export default function KalenderPage() {
         target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
         const week1 = new Date(target.getFullYear(), 0, 4);
         const weekNo = 1 + Math.round(((target.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-        const startStr = weekDays[0].toLocaleDateString("de-CH", { day: "numeric", month: "short" });
-        const endStr = weekDays[6].toLocaleDateString("de-CH", { day: "numeric", month: "short", year: "numeric" });
+        const startStr = weekDays[0].toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" });
+        const endStr = weekDays[6].toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short", year: "numeric" });
         return `KW ${weekNo} · ${startStr} – ${endStr}`;
       })()
     : monthLabel;

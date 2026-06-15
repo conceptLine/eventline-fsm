@@ -358,7 +358,7 @@ export async function notifyAppointmentNew(
   },
 ) {
   const when = new Date(args.startTime).toLocaleString("de-CH", {
-    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
   await deliver(client, args.recipients, "appointment_new", {
     title: `Neuer Termin: ${args.appointmentTitle}`,

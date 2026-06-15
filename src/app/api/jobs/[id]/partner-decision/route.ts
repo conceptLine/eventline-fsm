@@ -148,9 +148,9 @@ async function sendDecisionEmail(p: DecisionEmailParams) {
   }
   const link = appUrl(`/partner/anfragen/${p.jobId}`);
   const dateText = p.jobStart
-    ? new Date(p.jobStart).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })
+    ? new Date(p.jobStart).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })
         + (p.jobEnd && p.jobEnd !== p.jobStart
-            ? " – " + new Date(p.jobEnd).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })
+            ? " – " + new Date(p.jobEnd).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })
             : "")
     : "";
 

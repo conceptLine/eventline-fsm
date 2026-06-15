@@ -325,8 +325,8 @@ export default function PartnerAnfragenPage() {
             const s = statusStyle(a.status, isAssigned);
             const Icon = s.icon;
             const dateText = a.start_date
-              ? new Date(a.start_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })
-                + (a.end_date && a.end_date !== a.start_date ? " – " + new Date(a.end_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }) : "")
+              ? new Date(a.start_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })
+                + (a.end_date && a.end_date !== a.start_date ? " – " + new Date(a.end_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" }) : "")
               : "";
             // Rechts-Inhalt zentral pro Karte — einmal definiert, in Mobile-
             // und Desktop-Branch identisch wiederverwendet.

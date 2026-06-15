@@ -507,8 +507,11 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
   // splitten — fuer separate <input type=date> und <input type=time>.
   // Vorteil ggue. type=datetime-local: Datum direkt tippbar (DD.MM.YYYY)
   // oder via Calendar-Picker, Zeit ohne den klobigen kombinierten Picker.
-  const dtDate = (s: string) => (s ? s.split("T")[0] ?? "" : "");
-  const dtTime = (s: string) => (s ? (s.split("T")[1] ?? "").slice(0, 5) : "");
+  // tz-ok: s ist datetime-local-String "YYYY-MM-DDTHH:MM" ohne TZ-Offset
+  // (User-Input aus <input type="date"> + <input type="time">), nicht
+  // timestamptz aus der DB. Split ist hier korrekt.
+  const dtDate = (s: string) => (s ? s.split("T")[0] ?? "" : ""); // tz-ok
+  const dtTime = (s: string) => (s ? (s.split("T")[1] ?? "").slice(0, 5) : ""); // tz-ok
   const combineDT = (date: string, time: string): string => {
     if (!date) return "";
     return `${date}T${time || "00:00"}`;

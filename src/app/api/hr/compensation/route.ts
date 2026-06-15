@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTrustedDevice } from "@/lib/api-auth";
 import { loadLohnDefaults, sumEmployeePct, effectivePcts } from "@/lib/employer-costs";
+import { localDateIso, todayLocalIso } from "@/lib/swiss-time";
 
 const PCT_COLUMNS = [
   "ahv_iv_eo_pct", "alv_pct", "nbu_pct", "bvg_pct", "ktg_pct", "quellensteuer_pct",
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
   // Default: uses_standard_lohn = true (= alle Pcts werden ignoriert).
   // Frontend muss explizit false setzen wenn Overrides gewollt sind.
   const uses_standard_lohn = body.uses_standard_lohn !== false;
-  const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
+  const effective_from = typeof body.effective_from === "string" ? body.effective_from : todayLocalIso();
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
   // Ferienanteil-Override: null = aus Geburtsdatum berechnen (8.33/10.64),
   // Zahl = expliziter Override.
@@ -194,9 +195,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode: "updated" });
     }
 
-    const closeDate = new Date(effective_from);
-    closeDate.setUTCDate(closeDate.getUTCDate() - 1);
-    const closeIso = closeDate.toISOString().slice(0, 10);
+    // effective_from ist YYYY-MM-DD (ZRH-Datum). closeIso = Vortag,
+    // ebenfalls ZRH-Kalender. Direkt String-Arithmetik damit kein
+    // UTC-Detour entsteht.
+    const [cy, cm, cd] = effective_from.split("-").map(Number);
+    const prev = new Date(Date.UTC(cy, cm - 1, cd - 1, 12));
+    const closeIso = localDateIso(prev);
 
     const { error: closeErr } = await admin
       .from("employee_compensation")

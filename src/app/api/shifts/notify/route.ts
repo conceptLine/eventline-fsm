@@ -26,7 +26,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Mitarbeiter nicht gefunden" }, { status: 404 });
   }
 
-  const formattedDate = new Date(shift_date + "T12:00:00").toLocaleDateString("de-CH", {
+  const formattedDate = new Date(shift_date + "T12:00:00Z").toLocaleDateString("de-CH", {
+    timeZone: "Europe/Zurich",
     weekday: "long",
     day: "numeric",
     month: "long",

@@ -39,10 +39,11 @@ const APP_URL = appUrl();
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
-  const datePart = d.split("T")[0];
-  const [y, m, day] = datePart.split("-").map(Number);
-  const date = new Date(y, m - 1, day, 12, 0, 0);
-  return date.toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  // timeZone Europe/Zurich zwingend — d kann timestamptz sein
+  // ("2026-06-13T22:00:00+00:00" = 14.06 ZRH).
+  return new Date(d).toLocaleDateString("de-CH", {
+    timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
 }
 
 // HMAC-Token analog zur Verify-Seite — passt zum hmacToken() in

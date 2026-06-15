@@ -559,7 +559,7 @@ export default function AnfrageDetailPage() {
                       <p className="text-xs text-muted-foreground">
                         {doc.file_size ? (doc.file_size / 1024).toFixed(0) + " KB" : ""}
                         {doc.file_size ? " · " : ""}
-                        {new Date(doc.created_at).toLocaleDateString("de-CH")}
+                        {new Date(doc.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}
                       </p>
                     </div>
                   </div>

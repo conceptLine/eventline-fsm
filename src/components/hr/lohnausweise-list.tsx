@@ -169,7 +169,7 @@ function DocRow({ doc, onDownload }: { doc: WageDoc; onDownload: () => void }) {
 
 function DigitalConsentCard({ acceptedAt, version }: { acceptedAt: string; version: string | null }) {
   const fmt = new Date(acceptedAt).toLocaleDateString("de-CH", {
-    day: "2-digit", month: "2-digit", year: "numeric",
+    timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric",
   });
   return (
     <Card className="bg-card border-emerald-500/30">

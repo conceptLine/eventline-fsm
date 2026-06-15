@@ -197,7 +197,7 @@ export function LeadForm({
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{t.type === "telefon" ? "Telefon-Termin" : "Kunden-Termin"}</p>
                           <p className="text-muted-foreground text-[11px]">
-                            {(() => { const [y,m,d] = t.date.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }); })()} · {t.time}{t.end_time ? ` – ${t.end_time}` : ""}
+                            {(() => { const [y,m,d] = t.date.split("-").map(Number); return new Date(Date.UTC(y, m-1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }); })()} · {t.time}{t.end_time ? ` – ${t.end_time}` : ""}
                           </p>
                           {t.note && <p className="text-muted-foreground text-[11px] italic mt-0.5">{t.note}</p>}
                         </div>

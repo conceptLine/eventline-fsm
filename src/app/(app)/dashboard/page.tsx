@@ -263,7 +263,7 @@ export default function HeutePage() {
   const greeting = greetingForHour(new Date().getHours());
 
   function formatDate(iso: string): string {
-    return new Date(iso + "T12:00:00").toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" });
+    return new Date(iso + "T12:00:00Z").toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" });
   }
 
   return (

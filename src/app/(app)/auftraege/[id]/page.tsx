@@ -24,6 +24,7 @@ import { BackButton } from "@/components/ui/back-button";
 import Link from "next/link";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
+import { localDateIso } from "@/lib/swiss-time";
 import { JobNumber } from "@/components/job-number";
 import { PdfPopup } from "@/components/pdf-popup";
 import { Modal } from "@/components/ui/modal";
@@ -359,10 +360,11 @@ export default function AuftragDetailPage() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   })();
-  const endDateISO = job.end_date ? job.end_date.slice(0, 10) : null;
+  // ZRH-Datum zwingend — .slice(0,10) auf timestamptz waere UTC-Datum.
+  const endDateISO = job.end_date ? localDateIso(new Date(job.end_date)) : null;
   const canFinish = !endDateISO || endDateISO <= todayISO;
   const finishBlockReason = !canFinish && endDateISO
-    ? `Auftrag kann erst ab dem Enddatum (${new Date(endDateISO).toLocaleDateString("de-CH")}) abgeschlossen werden`
+    ? `Auftrag kann erst ab dem Enddatum (${new Date(job.end_date!).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}) abgeschlossen werden`
     : "";
 
   return (
@@ -728,7 +730,7 @@ export default function AuftragDetailPage() {
               {reports.map((r) => (
                 <div key={r.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">Rapport vom {new Date(r.report_date).toLocaleDateString("de-CH")}</p>
+                    <p className="text-sm font-medium">Rapport vom {new Date(r.report_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {r.creator?.full_name} · {r.status === "abgeschlossen" ? "Abgeschlossen" : "Entwurf"}
                     </p>
@@ -779,7 +781,7 @@ export default function AuftragDetailPage() {
                       <FileText className="h-5 w-5 text-red-500 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{doc.name}</p>
-                        <p className="text-xs text-muted-foreground">{doc.file_size ? (doc.file_size / 1024).toFixed(0) + " KB" : ""} · {new Date(doc.created_at).toLocaleDateString("de-CH")}</p>
+                        <p className="text-xs text-muted-foreground">{doc.file_size ? (doc.file_size / 1024).toFixed(0) + " KB" : ""} · {new Date(doc.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">

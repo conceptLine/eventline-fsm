@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { todayLocalIso } from "@/lib/swiss-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, Shield, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -62,7 +63,7 @@ export default function PartnerKontoPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `eventline-meine-daten-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `eventline-meine-daten-${todayLocalIso()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Export heruntergeladen");
@@ -109,7 +110,7 @@ export default function PartnerKontoPage() {
         <CardContent className="space-y-3 text-sm">
           {profile.datenschutz_akzeptiert_at ? (
             <p className="text-xs text-muted-foreground">
-              Akzeptiert am {new Date(profile.datenschutz_akzeptiert_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}
+              Akzeptiert am {new Date(profile.datenschutz_akzeptiert_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })}
               {profile.datenschutz_akzeptiert_version && ` (Version ${profile.datenschutz_akzeptiert_version})`}
             </p>
           ) : (

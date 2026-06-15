@@ -31,6 +31,7 @@ function formatNumber(n: number): string {
 function formatBuildAt(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString("de-CH", {
+    timeZone: "Europe/Zurich",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

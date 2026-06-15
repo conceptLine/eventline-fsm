@@ -24,7 +24,7 @@ import { requireTrustedDevice } from "@/lib/api-auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
-import { bucketizeMinutes, weekdayForDateIso, type MinuteBucket } from "@/lib/swiss-time";
+import { bucketizeMinutes, weekdayForDateIso, localDateIso, type MinuteBucket } from "@/lib/swiss-time";
 import { loadLohnDefaults, effectivePcts, sumEmployerPct, sumEmployeePct, employerCostsPerHour } from "@/lib/employer-costs";
 import { calculateForecast, monthRange } from "@/lib/bvg-forecast";
 
@@ -357,7 +357,7 @@ export async function GET(req: Request) {
         // gehen. Fuer Forecast-Genauigkeit reicht das.
         for (const a of myAppts) {
           if (!a.end_time) continue;
-          const sDate = a.start_time.slice(0, 10);
+          const sDate = localDateIso(new Date(a.start_time));
           if (sDate < m.start || sDate > m.end) continue;
           const sH = new Date(a.start_time).getUTCHours();
           // Sehr grobe Approximation — fuer Counter ok.

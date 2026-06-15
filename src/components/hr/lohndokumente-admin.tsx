@@ -187,7 +187,7 @@ function DocRow({ doc, onDownload, onDelete }: { doc: WageDoc; onDownload: () =>
     ? `Lohnausweis ${doc.year}`
     : `Lohnabrechnung ${MONTH_NAMES[(doc.period_month ?? 1) - 1]} ${doc.year}`;
   const sizeMb = doc.file_size ? (doc.file_size / 1024 / 1024).toFixed(2) : null;
-  const uploaded = new Date(doc.uploaded_at).toLocaleDateString("de-CH");
+  const uploaded = new Date(doc.uploaded_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" });
   return (
     <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-foreground/[0.02] dark:bg-foreground/[0.04]">
       <div className="min-w-0 flex items-center gap-2">

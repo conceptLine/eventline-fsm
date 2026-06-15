@@ -503,5 +503,5 @@ export function PartnerFormTab() {
 
 function formatTs(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }

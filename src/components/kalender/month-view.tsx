@@ -123,7 +123,7 @@ const SHIFT_NEUTRAL = {
 };
 
 function fmtShiftTime(d: Date): string {
-  return d.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" });
 }
 
 export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, onSelectDay, onNavigate, onStandaloneShiftClick }: Props) {
@@ -582,13 +582,13 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
             <header className="flex items-start justify-between gap-2 pb-3 border-b">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {selectedDate.toLocaleDateString("de-CH", { weekday: "long" })}
+                  {selectedDate.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "long" })}
                 </p>
                 <p className="text-2xl font-bold leading-tight mt-0.5">
-                  {selectedDate.toLocaleDateString("de-CH", { day: "numeric", month: "long" })}
+                  {selectedDate.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "long" })}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {selectedDate.toLocaleDateString("de-CH", { year: "numeric" })}
+                  {selectedDate.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", year: "numeric" })}
                 </p>
               </div>
               <button

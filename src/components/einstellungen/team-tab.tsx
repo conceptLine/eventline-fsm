@@ -21,6 +21,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { todayLocalIso } from "@/lib/swiss-time";
 import type { Profile } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ interface RoleOption { slug: string; label: string }
 
 function calcAge(birthdate: string | null | undefined): number | null {
   if (!birthdate) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalIso();
   const [by, bm, bd] = birthdate.split("-").map(Number);
   const [ay, am, ad] = today.split("-").map(Number);
   let age = ay - by;

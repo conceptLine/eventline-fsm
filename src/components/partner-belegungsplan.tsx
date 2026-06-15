@@ -309,7 +309,7 @@ export function PartnerBelegungsplan({ locationId }: Props) {
                     const clickable = kind !== "belegt";
                     const cls = `block w-full text-left text-[10px] font-medium px-1.5 py-0.5 rounded truncate ${s.bg} ${s.text} ${s.border} border ${clickable ? "hover:opacity-80 transition-opacity cursor-pointer" : "cursor-default"}`;
                     const label = isContinuation ? "↪" : (kind === "belegt" ? "Belegt" : b.title);
-                    const titleAttr = `${kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title} (${b.start.toLocaleDateString("de-CH")}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH")}` : ""})`;
+                    const titleAttr = `${kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title} (${b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}${b.end.getTime() !== b.start.getTime() ? ` – ${b.end.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}` : ""})`;
                     if (kind === "belegt") {
                       return (
                         <div key={b.id} className={cls} title={titleAttr}>
@@ -372,8 +372,8 @@ export function PartnerBelegungsplan({ locationId }: Props) {
         {vermietungDetail && (() => {
           const b = vermietungDetail;
           const dateLabel = b.start.getTime() === b.end.getTime()
-            ? b.start.toLocaleDateString("de-CH", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })
-            : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
+            ? b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "long", day: "2-digit", month: "long", year: "numeric" })
+            : `${b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })} – ${b.end.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
           return (
             <div className="space-y-3 text-sm">
               <div>
@@ -416,8 +416,8 @@ export function PartnerBelegungsplan({ locationId }: Props) {
               const kind = effectiveKind(b.kind, assignees.length);
               const s = KIND_STYLE[kind];
               const dateLabel = b.start.getTime() === b.end.getTime()
-                ? b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
-                : `${b.start.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit" })} – ${b.end.toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
+                ? b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
+                : `${b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit" })} – ${b.end.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}`;
               const clickable = kind !== "belegt";
               const cls = `flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border ${s.bg} ${s.text} ${s.border} ${clickable ? "hover:opacity-90 transition-opacity cursor-pointer" : "cursor-default"} text-left w-full`;
               const displayTitle = kind === "belegt" ? "Belegt (EVENTLINE-intern)" : b.title;

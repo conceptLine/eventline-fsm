@@ -29,8 +29,8 @@ export async function POST(request: Request) {
   }
 
   const dateStr = due_date
-    ? new Date(due_date + "T12:00:00").toLocaleDateString("de-CH", {
-        weekday: "long", day: "numeric", month: "long", year: "numeric",
+    ? new Date(due_date + "T12:00:00Z").toLocaleDateString("de-CH", {
+        timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
       })
     : null;
 

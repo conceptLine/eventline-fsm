@@ -75,8 +75,10 @@ function fmtHours(min: number): string {
 }
 
 function fmtDate(iso: string): string {
+  // iso ist YYYY-MM-DD (DATE-Spalte) — Date-Mittag UTC + timeZone-Render
+  // sind TZ-safe.
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", weekday: "short" });
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", weekday: "short" });
 }
 
 export function EmployeeWageDetailModal({ open, profileId, initialYear, onClose }: Props) {
@@ -226,7 +228,7 @@ function Stammdaten({ c }: { c: NonNullable<DetailResp["compensation"]> }) {
         </div>
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Gültig ab {new Date(c.effective_from + "T00:00:00").toLocaleDateString("de-CH")}
+        Gültig ab {new Date(c.effective_from + "T12:00:00Z").toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}
         {c.notes && <> · {c.notes}</>}
       </p>
     </div>

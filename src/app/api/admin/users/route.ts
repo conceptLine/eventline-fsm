@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { appUrl } from "@/lib/app-url";
 import { logError } from "@/lib/log";
+import { todayLocalIso } from "@/lib/swiss-time";
 
 export async function POST(request: Request) {
   try {
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
   // Optional: Comp-Zeile mit uses_standard_lohn=true anlegen wenn Brutto
   // angegeben wurde -- so ist der MA sofort vollstaendig konfiguriert.
   if (hourly_wage_chf != null) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalIso();
     const { error: compErr } = await admin
       .from("employee_compensation")
       .insert({

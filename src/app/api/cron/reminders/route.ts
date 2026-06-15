@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { logError } from "@/lib/log";
+import { localDateIso } from "@/lib/swiss-time";
 
 export async function GET(request: Request) {
   // Cron-Secret HARD-PFLICHT — wenn die ENV-Var fehlt, ist der Endpoint
@@ -58,10 +59,11 @@ export async function GET(request: Request) {
 
   const resend = new Resend(resendKey);
 
-  // Morgen berechnen
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+  // Morgen im Europe/Zurich-Kalender — Cron laeuft UTC, ohne Konvert
+  // wuerde "morgen" zwischen 22:00-00:00 UTC schon der uebernaechste
+  // ZRH-Tag sein.
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = localDateIso(tomorrow);
 
   // Todos finden die morgen fällig sind, noch offen, und jemandem zugewiesen
   const { data: todos } = await supabase
@@ -85,8 +87,8 @@ export async function GET(request: Request) {
     const assignee = todo.assignee;
     if (!assignee?.email) continue;
 
-    const formattedDate = new Date(todo.due_date + "T12:00:00").toLocaleDateString("de-CH", {
-      weekday: "long", day: "numeric", month: "long", year: "numeric",
+    const formattedDate = new Date(todo.due_date + "T12:00:00Z").toLocaleDateString("de-CH", {
+      timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
     });
 
     try {

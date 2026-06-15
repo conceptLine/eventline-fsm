@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { todayLocalIso } from "@/lib/swiss-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Download, User } from "lucide-react";
 import { toast } from "sonner";
@@ -28,7 +29,7 @@ export function MeinKontoCard() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `eventline-meine-daten-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `eventline-meine-daten-${todayLocalIso()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Export heruntergeladen");

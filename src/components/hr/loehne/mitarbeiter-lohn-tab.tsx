@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Wallet, AlertTriangle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
+import { todayLocalIso } from "@/lib/swiss-time";
 import { Loading } from "@/components/ui/spinner";
 import {
   PCT_EMPTY,
@@ -157,7 +158,7 @@ export function MitarbeiterLohnTab() {
                       )}
                     </div>
                     <div className="text-center text-xs text-muted-foreground tabular-nums">
-                      {hasComp ? new Date(e.compensation!.effective_from).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—"}
+                      {hasComp ? new Date(e.compensation!.effective_from).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "2-digit" }) : "—"}
                     </div>
                     <div className="text-right">
                       <button
@@ -203,7 +204,7 @@ function LohnEditorModal({ employee, defaults, onClose, onSaved }: {
   useEffect(() => {
     if (!employee) return;
     const c = employee.compensation;
-    setFrom(c?.effective_from ?? new Date().toISOString().slice(0, 10));
+    setFrom(c?.effective_from ?? todayLocalIso());
     setNotes(c?.notes ?? "");
     setWage(c?.hourly_wage_chf != null ? String(c.hourly_wage_chf) : "");
     setUsesStandard(c?.uses_standard_lohn !== false);

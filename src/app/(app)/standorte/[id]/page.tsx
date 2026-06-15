@@ -373,7 +373,7 @@ export default function StandortDetailPage() {
                   <p className="text-sm whitespace-pre-wrap break-words">{n.content}</p>
                 )}
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  {new Date(n.created_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                  {new Date(n.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })}
                 </p>
               </div>
               {can("locations:edit") && (
@@ -463,7 +463,7 @@ export default function StandortDetailPage() {
                 <FileText className="h-5 w-5 text-red-500 shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium text-sm truncate">{d.name}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(d.uploaded_at).toLocaleDateString("de-CH")}</p>
+                  <p className="text-xs text-muted-foreground">{new Date(d.uploaded_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</p>
                 </div>
               </button>
               <div className="flex items-center gap-1.5 shrink-0 ml-2">
@@ -614,7 +614,7 @@ export default function StandortDetailPage() {
                     </div>
                     {t.description && <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>}
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">Erstellt: {new Date(t.created_at).toLocaleDateString("de-CH")}</span>
+                      <span className="text-xs text-muted-foreground">Erstellt: {new Date(t.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</span>
                       {t.job && <span className="text-xs text-muted-foreground">· Auftrag verknüpft</span>}
                     </div>
                     {t.photo_url && photoUrls[t.id] && (

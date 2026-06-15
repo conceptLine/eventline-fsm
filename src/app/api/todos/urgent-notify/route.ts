@@ -27,8 +27,10 @@ export async function POST(request: Request) {
 
   const dueDateStr = (() => {
     if (!dueDate) return null;
-    const [y, m, d] = dueDate.split("T")[0].split("-").map(Number);
-    return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    // timeZone Europe/Zurich zwingend — dueDate kann timestamptz sein.
+    return new Date(dueDate).toLocaleDateString("de-CH", {
+      timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
+    });
   })();
 
   try {

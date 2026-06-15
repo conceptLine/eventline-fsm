@@ -210,11 +210,11 @@ export function StempelModal({ open, onClose }: Props) {
                   const start = new Date(job.start_date);
                   if (Number.isNaN(start.getTime())) return null;
                   const fmt: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", timeZone: "Europe/Zurich" };
-                  const startStr = start.toLocaleDateString("de-CH", fmt);
+                  const startStr = start.toLocaleDateString("de-CH", fmt); // tz-ok: fmt enthaelt timeZone (siehe oben)
                   if (!job.end_date || job.end_date === job.start_date) return startStr;
                   const end = new Date(job.end_date);
                   if (Number.isNaN(end.getTime())) return startStr;
-                  const endStr = end.toLocaleDateString("de-CH", fmt);
+                  const endStr = end.toLocaleDateString("de-CH", fmt); // tz-ok
                   return `${startStr}–${endStr}`;
                 })();
                 return (

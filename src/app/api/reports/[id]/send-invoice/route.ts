@@ -109,7 +109,7 @@ async function generatePDF(
     doc.setFont("helvetica", "normal");
     for (const tr of timeRanges) {
       y += 5;
-      const dateStr = new Date(tr.date + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+      const dateStr = new Date(tr.date + "T12:00:00Z").toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
       const [sh, sm] = tr.start.split(":").map(Number);
       const [eh, em] = tr.end.split(":").map(Number);
       const workMin = (eh * 60 + em) - (sh * 60 + sm) - tr.pause;
@@ -137,7 +137,7 @@ async function generatePDF(
     doc.setFont("helvetica", "bold");
     doc.text("Datum:", 14, y);
     doc.setFont("helvetica", "normal");
-    doc.text(new Date(report.report_date).toLocaleDateString("de-CH"), 55, y);
+    doc.text(new Date(report.report_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" }), 55, y);
   }
 
   // Trennlinie

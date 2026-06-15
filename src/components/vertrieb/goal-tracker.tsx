@@ -439,5 +439,5 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 function fmtDate(iso: string): string {
-  return parseISO(iso).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return parseISO(iso).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" });
 }

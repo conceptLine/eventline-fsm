@@ -1,9 +1,9 @@
 export function formatTime(date: string) {
-  return new Date(date).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+  return new Date(date).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDate(date: string) {
-  return new Date(date).toLocaleDateString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit" });
+  return new Date(date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short", day: "2-digit", month: "2-digit" });
 }
 
 export function formatDuration(clockIn: string, clockOut: string, breakMin: number) {

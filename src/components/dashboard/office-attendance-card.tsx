@@ -124,7 +124,7 @@ export function OfficeAttendanceCard() {
     if (marksRes.data) {
       const map = new Map<string, MarkValue>();
       for (const r of marksRes.data as AttendanceRow[]) {
-        map.set(`${r.user_id}|${r.date.slice(0, 10)}`, {
+        map.set(`${r.user_id}|${r.date.slice(0, 10)}`, { // tz-ok: r.date ist DATE-Spalte (YYYY-MM-DD), slice ist no-op-Safety
           start: r.start_hour,
           end: r.end_hour,
         });
@@ -370,7 +370,7 @@ function TimeRangeModal({ dateIso, current, onClose, onSave, onDelete }: TimeRan
   const dateLabel = (() => {
     const [y, m, d] = dateIso.split("-").map(Number);
     const date = new Date(y, m - 1, d, 12);
-    return date.toLocaleDateString("de-CH", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+    return date.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
   })();
 
   const valid = end > start;

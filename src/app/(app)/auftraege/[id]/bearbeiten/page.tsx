@@ -19,10 +19,13 @@ import { JobNumber } from "@/components/job-number";
 import { popFormDraft, saveFormDraft } from "@/lib/form-resume";
 import { JOB_FORM_FIELDS } from "@/lib/constants";
 import { toDbDate } from "@/lib/format";
+import { localDateIso } from "@/lib/swiss-time";
 
 function dateToISODate(d: string | null): string {
   if (!d) return "";
-  return d.slice(0, 10);
+  // ZRH-Datum zwingend — .slice(0,10) auf timestamptz waere UTC und der
+  // <Input type="date">-Picker zeigt dann den Vortag.
+  return localDateIso(new Date(d));
 }
 
 export default function AuftragBearbeitenPage() {

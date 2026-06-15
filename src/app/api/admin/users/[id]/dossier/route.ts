@@ -247,7 +247,7 @@ function fmtDate(s: unknown): string {
   try {
     const d = new Date(s);
     if (isNaN(d.getTime())) return esc(s);
-    return d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch { return esc(s); }
 }
 

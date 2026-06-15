@@ -98,7 +98,7 @@ export function StempelWidget() {
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{active.description}</p>
                     )}
                     <p className="text-xs text-muted-foreground mt-1">
-                      Seit {new Date(active.clock_in).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}
+                      Seit {new Date(active.clock_in).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </div>
                 </div>

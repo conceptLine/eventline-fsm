@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
 import { requireTrustedDevice } from "@/lib/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
-import { bucketizeMinutes, weekdayForDateIso, type MinuteBucket } from "@/lib/swiss-time";
+import { bucketizeMinutes, weekdayForDateIso, localDateIso, todayLocalIso, type MinuteBucket } from "@/lib/swiss-time";
 import { loadLohnDefaults, effectivePcts, sumEmployeePct, sumEmployerPct, employerCostsPerHour } from "@/lib/employer-costs";
 import { effectiveFerienanteil, splitBruttoFerien } from "@/lib/ferienanteil";
 import ExcelJS from "exceljs";
@@ -165,7 +165,7 @@ export async function GET(req: Request) {
   const geplantByProfileDate = new Map<string, Map<string, number>>();
   for (const a of (appts as ApptRow[] | null) ?? []) {
     if (!a.end_time) continue;
-    const date = a.start_time.slice(0, 10);
+    const date = localDateIso(new Date(a.start_time));
     const min = Math.max(0, Math.floor((new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 60000));
     let byDate = geplantByProfileDate.get(a.assigned_to);
     if (!byDate) { byDate = new Map(); geplantByProfileDate.set(a.assigned_to, byDate); }
@@ -397,7 +397,7 @@ export async function GET(req: Request) {
   const infoSheet = wb.addWorksheet("Info");
   infoSheet.columns = [{ key: "k", width: 18 }, { key: "v", width: 60 }];
   infoSheet.addRow({ k: "Zeitraum", v: `${from} bis ${to}` });
-  infoSheet.addRow({ k: "Generiert", v: new Date().toISOString().slice(0, 10) });
+  infoSheet.addRow({ k: "Generiert", v: todayLocalIso() });
   infoSheet.addRow({ k: "Generiert von", v: auth.user.email ?? auth.user.id });
   infoSheet.addRow({ k: "Quelle", v: "EVENTLINE FSM — automatische Aggregation aus Stempel-, Termin- und Rapport-Daten" });
   infoSheet.addRow({ k: "", v: "" });

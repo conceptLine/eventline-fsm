@@ -236,7 +236,7 @@ function ArchivRow({ contact: c, selected, onClick }: {
             </span>
             {c.updated_at && (
               <span className="text-muted-foreground tabular-nums">
-                {new Date(c.updated_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                {new Date(c.updated_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "2-digit" })}
               </span>
             )}
           </div>

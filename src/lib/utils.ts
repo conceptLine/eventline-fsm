@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function parseLocalDate(dateStr: string | null | undefined): Date | null {
   if (!dateStr) return null;
-  const datePart = dateStr.split("T")[0];
+  const datePart = dateStr.split("T")[0]; // tz-ok: dateStr ist YYYY-MM-DD oder iso, hier bewusst nur Datums-Teil; result wird mit new Date(y,m-1,d,12) konstruiert (siehe unten) und ist daher TZ-neutral
   const parts = datePart.split("-").map(Number);
   if (parts.length !== 3 || parts.some(isNaN)) return null;
   const [y, m, d] = parts;
@@ -25,7 +25,10 @@ export function parseLocalDate(dateStr: string | null | undefined): Date | null 
 export function formatLocalDate(dateStr: string | null | undefined, options?: Intl.DateTimeFormatOptions): string {
   const date = parseLocalDate(dateStr);
   if (!date) return "";
-  return date.toLocaleDateString("de-CH", options || { day: "2-digit", month: "2-digit", year: "numeric" });
+  // timeZone Europe/Zurich auch hier — date ist auf 12 Uhr LOKAL gesetzt,
+  // ohne TZ-Option wuerde auf einem UTC-Server (Vercel) das Datum am
+  // Winter-DST-Edge faelschlich kippen.
+  return date.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", ...(options || { day: "2-digit", month: "2-digit", year: "numeric" }) });
 }
 
 /**

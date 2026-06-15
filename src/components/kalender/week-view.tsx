@@ -48,7 +48,7 @@ function keyOf(d: Date): string {
 }
 
 function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" });
 }
 
 const ITEM_STYLE: Record<CalendarItem["type"], { bg: string; text: string; ring: string }> = {
@@ -164,13 +164,13 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgB
               className={`p-3 text-center ${isToday ? "bg-red-50 dark:bg-red-500/15" : "bg-card"}`}
             >
               <div className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? "text-red-600 dark:text-red-300" : "text-muted-foreground"}`}>
-                {d.toLocaleDateString("de-CH", { weekday: "short" })}
+                {d.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short" })}
               </div>
               <div className={`text-2xl font-bold mt-0.5 ${isToday ? "text-red-600 dark:text-red-300" : ""}`}>
                 {d.getDate()}
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                {d.toLocaleDateString("de-CH", { month: "short" })}
+                {d.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", month: "short" })}
               </div>
             </div>
           );
@@ -241,7 +241,7 @@ export function WeekView({ weekDays, items, shifts, onStandaloneShiftClick, bvgB
                   className={`px-2 py-2 text-center ${isToday ? "bg-red-50 dark:bg-red-500/15" : "bg-muted/40"}`}
                 >
                   <div className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? "text-red-600 dark:text-red-300" : "text-muted-foreground"}`}>
-                    {d.toLocaleDateString("de-CH", { weekday: "short" })}
+                    {d.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", weekday: "short" })}
                   </div>
                   <div className={`text-sm font-bold tabular-nums ${isToday ? "text-red-600 dark:text-red-300" : ""}`}>
                     {d.getDate()}

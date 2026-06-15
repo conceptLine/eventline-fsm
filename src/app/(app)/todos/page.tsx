@@ -201,7 +201,7 @@ export default function TodosPage() {
           // anderen UIs (Mail-Templates, Sidebar-Bell) nicht doppelt
           // mit Icons + Emojis konfligieren.
           title: priority === "dringend" ? `Dringendes Todo: ${form.title}` : `Neues Todo: ${form.title}`,
-          message: `Von ${creator?.full_name || "Unbekannt"}${form.due_date ? ` · Fällig: ${(() => { const [y,m,d] = form.due_date.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH"); })()}` : ""}`,
+          message: `Von ${creator?.full_name || "Unbekannt"}${form.due_date ? ` · Fällig: ${(() => { const [y,m,d] = form.due_date.split("-").map(Number); return new Date(Date.UTC(y, m-1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" }); })()}` : ""}`,
           link: "/todos",
         }),
       });
@@ -237,7 +237,7 @@ export default function TodosPage() {
     if (reminded.has(todo.id)) return;
     setReminded((s) => new Set(s).add(todo.id));
     const dueText = todo.due_date
-      ? (() => { const [y,m,d] = todo.due_date.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH"); })()
+      ? (() => { const [y,m,d] = todo.due_date.split("-").map(Number); return new Date(Date.UTC(y, m-1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" }); })()
       : null;
     const res = await fetch("/api/notifications", {
       method: "POST",
@@ -426,11 +426,11 @@ export default function TodosPage() {
             )}
             <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
               {assignee && <span className="flex items-center gap-1"><User className="h-4 w-4" />{assignee.full_name}</span>}
-              {selectedTodo.due_date && <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />Fällig: {new Date(selectedTodo.due_date).toLocaleDateString("de-CH")}</span>}
-              <span>Erstellt: {new Date(selectedTodo.created_at).toLocaleDateString("de-CH")}</span>
+              {selectedTodo.due_date && <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />Fällig: {new Date(selectedTodo.due_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</span>}
+              <span>Erstellt: {new Date(selectedTodo.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</span>
               {selectedTodo.completed_at && (
                 <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
-                  <Check className="h-4 w-4" />Abgeschlossen: {new Date(selectedTodo.completed_at).toLocaleDateString("de-CH")}
+                  <Check className="h-4 w-4" />Abgeschlossen: {new Date(selectedTodo.completed_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}
                 </span>
               )}
             </div>
@@ -456,7 +456,7 @@ export default function TodosPage() {
                       {isImage ? <ImageIcon className="h-5 w-5 text-blue-500 shrink-0" /> : <FileText className="h-5 w-5 text-red-500 shrink-0" />}
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{a.name}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(a.uploaded_at).toLocaleDateString("de-CH")}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(a.uploaded_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}</p>
                       </div>
                     </button>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
@@ -614,11 +614,13 @@ export default function TodosPage() {
           {todos.map((todo) => {
             const overdue = todo.status === "offen" && todo.due_date && new Date(todo.due_date) < new Date(new Date().toDateString());
             const attCount = todo.attachments?.length ?? 0;
+            // due_date ist DATE-Spalte (kein timestamptz) — Mittag-UTC
+            // verwenden damit der TZ-Konvert nicht den Vortag liefert.
             const dueText = todo.due_date
-              ? (() => { const [y,m,d] = todo.due_date.split("-").map(Number); return new Date(y, m-1, d, 12).toLocaleDateString("de-CH"); })()
+              ? (() => { const [y,m,d] = todo.due_date.split("-").map(Number); return new Date(Date.UTC(y, m-1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" }); })()
               : null;
             const completedText = todo.completed_at
-              ? new Date(todo.completed_at).toLocaleDateString("de-CH")
+              ? new Date(todo.completed_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })
               : null;
             return (
               <Card

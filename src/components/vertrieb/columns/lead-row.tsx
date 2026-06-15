@@ -74,7 +74,7 @@ export function LeadRow({ contact: c, selected, onClick, draggable = true }: Pro
             {eventStart && (
               <span className="inline-flex items-center gap-0.5 text-purple-600 dark:text-purple-400">
                 <PartyPopper className="h-2 w-2" />
-                {eventStart.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" })}
+                {eventStart.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" })}
               </span>
             )}
           </div>

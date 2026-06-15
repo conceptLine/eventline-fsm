@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Calendar, Clock, Plus, Trash2, StickyNote, Check, XCircle, AlertCircle, FileText, Upload, Eye, Download, Pencil, Send } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
+import { localDateIso } from "@/lib/swiss-time";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { toLocalIsoString } from "@/lib/format";
 import { validateFileList } from "@/lib/file-upload";
@@ -129,7 +130,7 @@ export default function PartnerAnfrageDetailPage() {
               const header: string[] = [];
               if (n.author) header.push(n.author);
               if (n.created_at) {
-                try { header.push(new Date(n.created_at).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })); } catch { /* ignore */ }
+                try { header.push(new Date(n.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })); } catch { /* ignore */ }
               }
               return header.length > 0 ? `[${header.join(", ")}]\n${n.content}` : n.content;
             })
@@ -253,9 +254,11 @@ export default function PartnerAnfrageDetailPage() {
       return;
     }
     // Termin muss im Event-Zeitraum liegen (Datums-Vergleich auf YYYY-MM-DD).
-    // job.start_date/end_date sind timestamptz; nur die ersten 10 Zeichen.
-    const startDay = job?.start_date?.slice(0, 10);
-    const endDay = job?.end_date?.slice(0, 10);
+    // job.start_date/end_date sind timestamptz — via localDateIso ins
+    // Europe/Zurich-Datum, sonst kippt der Vergleich bei Events kurz nach
+    // Mitternacht auf den falschen UTC-Tag.
+    const startDay = job?.start_date ? localDateIso(new Date(job.start_date)) : undefined;
+    const endDay = job?.end_date ? localDateIso(new Date(job.end_date)) : undefined;
     if (startDay && terminForm.date < startDay) {
       toast.error("Termin liegt vor dem Veranstaltungsbeginn");
       return;
@@ -443,8 +446,8 @@ export default function PartnerAnfrageDetailPage() {
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span>
-                {job.start_date && new Date(job.start_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                {job.end_date && job.end_date !== job.start_date && ` – ${new Date(job.end_date).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })}`}
+                {job.start_date && new Date(job.start_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })}
+                {job.end_date && job.end_date !== job.start_date && ` – ${new Date(job.end_date).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" })}`}
               </span>
             </div>
           )}
@@ -500,8 +503,8 @@ export default function PartnerAnfrageDetailPage() {
                     type="date"
                     value={terminForm.date}
                     onChange={(e) => setTerminForm({ ...terminForm, date: e.target.value })}
-                    min={job?.start_date?.slice(0, 10) || undefined}
-                    max={job?.end_date?.slice(0, 10) || undefined}
+                    min={job?.start_date ? localDateIso(new Date(job.start_date)) : undefined}
+                    max={job?.end_date ? localDateIso(new Date(job.end_date)) : undefined}
                     className="mt-1"
                     required
                   />
@@ -573,8 +576,8 @@ export default function PartnerAnfrageDetailPage() {
                     })()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {new Date(t.start_time).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                    {t.end_time && ` – ${new Date(t.end_time).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}`}
+                    {new Date(t.start_time).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    {t.end_time && ` – ${new Date(t.end_time).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" })}`}
                   </p>
                   {t.description && <p className="text-xs mt-1 whitespace-pre-wrap">{t.description}</p>}
                 </div>
@@ -661,7 +664,7 @@ export default function PartnerAnfrageDetailPage() {
                     <p className="text-sm font-medium truncate">{doc.name}</p>
                     <p className="text-[11px] text-muted-foreground">
                       {doc.file_size ? (doc.file_size / 1024).toFixed(0) + " KB · " : ""}
-                      {new Date(doc.created_at).toLocaleDateString("de-CH")}
+                      {new Date(doc.created_at).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}
                     </p>
                   </div>
                 </div>

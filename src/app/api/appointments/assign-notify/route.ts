@@ -24,8 +24,8 @@ export async function POST(request: Request) {
 
   if (!profile?.email) return NextResponse.json({ success: false });
 
-  const dateStr = new Date(date + "T12:00:00").toLocaleDateString("de-CH", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  const dateStr = new Date(date + "T12:00:00Z").toLocaleDateString("de-CH", {
+    timeZone: "Europe/Zurich", weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
 
   try {

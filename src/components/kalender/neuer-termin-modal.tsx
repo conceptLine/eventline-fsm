@@ -162,7 +162,7 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
 
   function formatDateShort(iso: string): string {
     const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" });
+    return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" });
   }
 
   function reset() {

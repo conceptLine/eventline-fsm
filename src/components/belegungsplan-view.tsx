@@ -223,10 +223,10 @@ export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
     const first = days[0];
     const last = days[days.length - 1];
     const sameMonth = first.getFullYear() === last.getFullYear() && first.getMonth() === last.getMonth();
-    const lastStr = last.toLocaleDateString("de-CH", { day: "numeric", month: "short", year: "numeric" });
+    const lastStr = last.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short", year: "numeric" });
     return sameMonth
       ? `${first.getDate()}. – ${lastStr}`
-      : `${first.toLocaleDateString("de-CH", { day: "numeric", month: "short" })} – ${lastStr}`;
+      : `${first.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })} – ${lastStr}`;
   }, [days]);
 
   const gridTemplateColumns = `minmax(140px, 180px) repeat(${days.length}, minmax(28px, 1fr))`;
@@ -311,7 +311,7 @@ export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
                         }`}
                       >
                         <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold leading-none h-3">
-                          {showMonth ? d.toLocaleDateString("de-CH", { month: "short" }) : " "}
+                          {showMonth ? d.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", month: "short" }) : " "}
                         </div>
                         <div className={`text-[12px] font-bold tabular-nums leading-tight mt-0.5 ${today ? "text-red-600 dark:text-red-300" : ""}`}>
                           {d.getDate()}
@@ -416,9 +416,9 @@ export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-1 inline-flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  {b.start.toLocaleDateString("de-CH", { day: "numeric", month: "short" })}
+                  {b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}
                   {b.end.getTime() !== b.start.getTime() &&
-                    ` – ${b.end.toLocaleDateString("de-CH", { day: "numeric", month: "short" })}`}
+                    ` – ${b.end.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}`}
                 </p>
               </div>
             );
@@ -453,9 +453,9 @@ export function BelegungsplanView({ restrictToLocationId }: Props = {}) {
               )}
               <p className="text-[11px] text-muted-foreground mt-1 inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
-                {b.start.toLocaleDateString("de-CH", { day: "numeric", month: "short" })}
+                {b.start.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}
                 {b.end.getTime() !== b.start.getTime() &&
-                  ` – ${b.end.toLocaleDateString("de-CH", { day: "numeric", month: "short" })}`}
+                  ` – ${b.end.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}`}
               </p>
             </Link>
           );
