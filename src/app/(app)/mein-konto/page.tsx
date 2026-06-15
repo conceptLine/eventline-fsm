@@ -23,6 +23,7 @@ import { useSearchParams } from "next/navigation";
 import { User, Bell, FileText, Calendar, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/use-permissions";
+import { useMeinKontoOnboarding } from "@/lib/use-mein-konto-onboarding";
 import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
 import { BenachrichtigungenTab } from "@/components/einstellungen/benachrichtigungen-tab";
 import { LohnausweiseList } from "@/components/hr/lohnausweise-list";
@@ -37,7 +38,14 @@ export default function MeinKontoPage() {
   const urlTab = searchParams.get("tab") as Tab | null;
   const { role } = usePermissions();
   const isAdmin = role === "admin";
+  const { firstVisitedAt, ready: onboardingReady, markVisited } = useMeinKontoOnboarding();
   const [tab, setTab] = useState<Tab>(urlTab && ALL_TABS.includes(urlTab) ? urlTab : "profil");
+
+  // Sidebar-Badge ausschalten sobald die Seite das erste Mal geoeffnet
+  // wird. Idempotent — API no-op-t wenn schon gesetzt.
+  useEffect(() => {
+    if (onboardingReady && !firstVisitedAt) void markVisited();
+  }, [onboardingReady, firstVisitedAt, markVisited]);
 
   function selectTab(t: Tab) {
     setTab(t);

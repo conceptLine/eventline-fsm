@@ -28,6 +28,9 @@ import { useScrollRestoration } from "@/lib/use-scroll-restoration";
 import { PermissionsProvider, usePermissions } from "@/lib/use-permissions";
 import { StempelProvider } from "@/lib/use-stempel";
 import { NavCountsProvider, useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
+import { MeinKontoOnboardingProvider, useMeinKontoOnboarding } from "@/lib/use-mein-konto-onboarding";
+import { MeinKontoIntroModal } from "@/components/onboarding/mein-konto-intro-modal";
+import type { Profile } from "@/types";
 
 // Outer-Wrapper — nur Provider. Der Inner-Layout kann den Provider
 // dann via Hook konsumieren statt eigenem Self-Load.
@@ -268,6 +271,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <NavCountsProvider isAdmin={profile.role === "admin"}>
+    <MeinKontoOnboardingProvider profileReady={!!profile}>
     <div className="flex min-h-screen bg-[#f5f5f7] dark:bg-[#0a0a0a]">
       <Sidebar
         profile={profile}
@@ -341,19 +345,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
               {/* User-Card klickbar -> /mein-konto. Schliesst das Sheet
                   automatisch beim Navigieren. Theme + Logout bleiben
                   rechts daneben separat. */}
-              <Link
-                href="/mein-konto"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex-1 min-w-0 flex items-center gap-2 rounded-lg hover:bg-sidebar-accent/60 transition-all -mx-1 px-1 py-1"
-              >
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                  {profile.full_name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{profile.full_name}</p>
-                  <p className="text-[10px] text-sidebar-foreground/50 leading-tight">Mein Konto</p>
-                </div>
-              </Link>
+              <MobileMeinKontoLink profile={profile} onClose={() => setMobileMenuOpen(false)} />
               <button
                 type="button"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -377,9 +369,42 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         </SheetContent>
       </Sheet>
 
+      <MeinKontoIntroModal />
       <Toaster />
     </div>
+    </MeinKontoOnboardingProvider>
     </NavCountsProvider>
+  );
+}
+
+// MobileMeinKontoLink — gekapselt damit useMeinKontoOnboarding() innerhalb
+// des Providers konsumiert werden kann (AppLayoutInner stellt den Provider
+// fuer den Subtree, kann ihn aber nicht selbst lesen).
+function MobileMeinKontoLink({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const onboarding = useMeinKontoOnboarding();
+  const showBadge = onboarding.ready && !onboarding.firstVisitedAt;
+  return (
+    <Link
+      href="/mein-konto"
+      onClick={onClose}
+      className="flex-1 min-w-0 flex items-center gap-2 rounded-lg hover:bg-sidebar-accent/60 transition-all -mx-1 px-1 py-1"
+    >
+      <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-xs font-bold shrink-0 relative">
+        {profile.full_name.charAt(0).toUpperCase()}
+        {showBadge && (
+          <span
+            className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-sidebar shadow animate-pulse"
+            aria-label="Neue Funktion"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{profile.full_name}</p>
+        <p className="text-[10px] text-sidebar-foreground/50 leading-tight">
+          Mein Konto{showBadge && <span className="ml-1 text-red-500 font-bold">· neu</span>}
+        </p>
+      </div>
+    </Link>
   );
 }
 

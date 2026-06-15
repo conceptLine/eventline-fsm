@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useNavCounts, getBadgeForHref } from "@/lib/use-nav-counts";
+import { useMeinKontoOnboarding } from "@/lib/use-mein-konto-onboarding";
 import type { Profile } from "@/types";
 
 interface SidebarProps {
@@ -33,6 +34,8 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
   const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
   const navCounts = useNavCounts();
+  const onboarding = useMeinKontoOnboarding();
+  const showMeinKontoBadge = onboarding.ready && !onboarding.firstVisitedAt;
   const isAdmin = profile.role === "admin";
   const fullUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
 
@@ -197,16 +200,25 @@ export function Sidebar({ profile, permissions, onSignOut }: SidebarProps) {
       <div className="p-1 mx-3 mb-3 rounded-xl bg-sidebar-foreground/[0.04] border border-sidebar-border flex items-center gap-1">
         <Link
           href="/mein-konto"
-          className="flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg hover:bg-sidebar-accent/60 transition-all"
+          className="flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg hover:bg-sidebar-accent/60 transition-all relative"
         >
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-red-500/20 shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-red-500/20 shrink-0 relative">
             {profile.full_name.charAt(0).toUpperCase()}
+            {showMeinKontoBadge && (
+              <span
+                className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 border-2 border-sidebar shadow-md animate-pulse"
+                data-tooltip="Neu: dein Mein-Konto-Bereich"
+                aria-label="Neue Funktion"
+              />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-sidebar-foreground truncate">
               {profile.full_name}
             </p>
-            <p className="text-[11px] text-sidebar-foreground/50 capitalize">Mein Konto</p>
+            <p className="text-[11px] text-sidebar-foreground/50 capitalize">
+              Mein Konto{showMeinKontoBadge && <span className="ml-1 text-red-500 font-bold">· neu</span>}
+            </p>
           </div>
         </Link>
         <button
