@@ -119,9 +119,16 @@ const MONTH_LABELS_DE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug"
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  const datePart = iso.split("T")[0];
-  const [y, m, d] = datePart.split("-").map(Number);
-  return new Date(y, m - 1, d, 12).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // timeZone Europe/Zurich zwingend — sonst rendert ein Event-Datum das in
+  // der DB als '2026-06-13T22:00:00+00:00' (= 14.06 00:00 Zurich) als
+  // 13.06 weil das UTC-Datum genommen wird. .split("T")[0] hatte den
+  // gleichen Bug.
+  return new Date(iso).toLocaleDateString("de-CH", {
+    timeZone: "Europe/Zurich",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function formatHours(totalMinutes: number): string {

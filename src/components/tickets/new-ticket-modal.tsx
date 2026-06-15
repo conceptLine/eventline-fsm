@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/searchable-select";
 import { TypePickerCard, type TypePickerTone } from "@/components/ui/type-picker-card";
 import { createClient } from "@/lib/supabase/client";
+import { localDateIso } from "@/lib/swiss-time";
 import { toast } from "sonner";
 import { Wrench, Receipt, Clock, Package, Upload, X, CheckCircle2, AlertCircle, Loader2, AlertTriangle, Sparkles, Plus } from "lucide-react";
 import type { TicketType } from "@/types";
@@ -758,7 +759,10 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
                         onChange={(v) => setStempel({ ...stempel, time_entry_id: v })}
                         items={timeEntries.map((e) => ({
                           id: e.id,
-                          label: `${new Date(e.clock_in).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — ${e.job_label ?? "—"}`,
+                          // timeZone Europe/Zurich zwingend — SSR (UTC) wuerde
+                          // sonst Schichten kurz nach Mitternacht als Vortag
+                          // labeln, was die Stempel-Auswahl irrefuehrt.
+                          label: `${new Date(e.clock_in).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — ${e.job_label ?? "—"}`,
                         }))}
                         placeholder="Stempel-Eintrag auswählen…"
                         clearable={false}
@@ -813,12 +817,16 @@ export function NewTicketModal({ open, onClose, onCreated, initialType }: Props)
                         // der User nicht durch alle Auftraege scrollen.
                         // Auftraege ohne start_date bleiben drin (Default-
                         // sicher). Wenn kein Stempel-Datum getippt: alle.
+                        // start/end via localDateIso — .slice(0,10) auf
+                        // timestamptz ist UTC-Datum, was Auftraege mit
+                        // start kurz nach Mitternacht (+02:00) als Vortag
+                        // filtert und den richtigen Auftrag verbirgt.
                         const stempelDate = dtDate(stempel.neu_start);
                         const relevant = stempelDate
                           ? jobs.filter((j) => {
                               if (!j.start_date) return true;
-                              const start = j.start_date.slice(0, 10);
-                              const end = (j.end_date ?? j.start_date).slice(0, 10);
+                              const start = localDateIso(new Date(j.start_date));
+                              const end = localDateIso(new Date(j.end_date ?? j.start_date));
                               return start <= stempelDate && stempelDate <= end;
                             })
                           : jobs;

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
+import { localDateIso } from "@/lib/swiss-time";
 import { PdfPopup } from "@/components/pdf-popup";
 import type { TicketWithRelations, TicketType, TicketStatus, TicketDataBeleg, TicketDataMaterial, TicketDataStempelAenderung, TicketDataIT } from "@/types";
 
@@ -529,13 +530,16 @@ export default function TicketDetailPage() {
               // Date-Filter: nur Auftraege die am Stempel-Datum laufen.
               // start_date <= datum <= end_date. Auftraege ohne start_date
               // bleiben drin (Default-sicher).
+              // ZRH-Datum zwingend — .slice(0,10) auf einem timestamptz ist
+              // das UTC-Datum, was bei Schichten kurz nach Mitternacht den
+              // Vortag liefert und den richtigen Auftrag aus der Liste filtert.
               const sd = (ticket.data ?? {}) as { neu_start?: string };
-              const stempelDate = sd.neu_start ? sd.neu_start.slice(0, 10) : null;
+              const stempelDate = sd.neu_start ? localDateIso(new Date(sd.neu_start)) : null;
               const relevant = stempelDate
                 ? selectableJobs.filter((j) => {
                     if (!j.start_date) return true;
-                    const start = j.start_date.slice(0, 10);
-                    const end = (j.end_date ?? j.start_date).slice(0, 10);
+                    const start = localDateIso(new Date(j.start_date));
+                    const end = localDateIso(new Date(j.end_date ?? j.start_date));
                     return start <= stempelDate && stempelDate <= end;
                   })
                 : selectableJobs;
@@ -646,7 +650,9 @@ function TicketDataDisplay({ type, data, stempelJob }: { type: TicketType; data:
 
   if (type === "stempel_aenderung") {
     const d = data as unknown as TicketDataStempelAenderung;
-    const fmt = (iso?: string) => iso ? new Date(iso).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+    // timeZone Europe/Zurich zwingend — sonst rendert SSR (UTC) ein
+    // Stempel '14.06 00:30 +02:00' (= 13.06 22:30 UTC) als 13.06.
+    const fmt = (iso?: string) => iso ? new Date(iso).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-4">
