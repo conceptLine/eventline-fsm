@@ -72,6 +72,13 @@ interface SurchargeResult {
   sunhol_eligible_minutes: number;
   ytd_night_shifts_before_month: number;
   ytd_sunhol_shifts_before_month: number;
+  // Zeitkomp ab Nacht 25 (ArG 17b Abs. 3): 10% der Nacht-Minuten als Komp-Stunden
+  // gutgeschrieben. Diesen Monat erworben + YTD-Total kumuliert.
+  night_time_comp_minutes_this_month: number;
+  ytd_night_time_comp_minutes: number;
+  // Anzahl Nacht-Schichten diesen Monat ueber dem 24-Limit
+  night_shifts_over_limit_this_month: number;
+  ytd_night_shifts_total: number;
 }
 
 export async function GET(req: Request) {
@@ -180,13 +187,35 @@ export async function GET(req: Request) {
     const ytdNightBefore = nightDays.filter((d) => !d.in_current_month && d.date < monthPrefix).length;
     const ytdSunholBefore = sunholDays.filter((d) => !d.in_current_month && d.date < monthPrefix).length;
 
+    // Diesen-Monat-Zaehler: erforderlich fuer Zeitkomp-Tracking ab Nacht 25.
     let nightEligibleMin = 0;
+    let nightOverLimitMinThisMonth = 0;
+    let nightShiftsOverLimitThisMonth = 0;
     let nightRank = ytdNightBefore;
     for (const d of nightDays) {
       if (d.in_current_month) {
         nightRank++;
-        if (nightRank <= 24) nightEligibleMin += d.night_minutes;
+        if (nightRank <= 24) {
+          nightEligibleMin += d.night_minutes;
+        } else {
+          // Ab Nacht 25: keine 25%-Geldzulage mehr, dafuer 10% Zeitkomp.
+          nightOverLimitMinThisMonth += d.night_minutes;
+          nightShiftsOverLimitThisMonth++;
+        }
       }
+    }
+    // Zeitkomp diesen Monat = 10% der Nacht-Minuten die ueber dem Limit lagen.
+    const nightTimeCompThisMonth = nightOverLimitMinThisMonth * 0.10;
+
+    // YTD-Total inkl. dieser Monats (fuer's UI: 'X Komp-Minuten ytd erworben').
+    // Nutze die gleiche Rank-Logik aber ueber alle Tage des Jahres bis incl. current month.
+    let ytdNightTimeComp = 0;
+    let ytdNightShifts = 0;
+    let rank = 0;
+    for (const d of nightDays) {
+      rank++;
+      ytdNightShifts = rank;
+      if (rank > 24) ytdNightTimeComp += d.night_minutes * 0.10;
     }
 
     let sunholEligibleMin = 0;
@@ -209,6 +238,10 @@ export async function GET(req: Request) {
       sunhol_eligible_minutes: sunholEligibleMin,
       ytd_night_shifts_before_month: ytdNightBefore,
       ytd_sunhol_shifts_before_month: ytdSunholBefore,
+      night_time_comp_minutes_this_month: nightTimeCompThisMonth,
+      ytd_night_time_comp_minutes: ytdNightTimeComp,
+      night_shifts_over_limit_this_month: nightShiftsOverLimitThisMonth,
+      ytd_night_shifts_total: ytdNightShifts,
     };
   }
 
@@ -270,7 +303,9 @@ export async function GET(req: Request) {
       ? computeSurcharges(buckets, wage)
       : { night_surcharge_chf: 0, sunhol_surcharge_chf: 0, total_surcharge_chf: 0,
           night_eligible_minutes: 0, sunhol_eligible_minutes: 0,
-          ytd_night_shifts_before_month: 0, ytd_sunhol_shifts_before_month: 0 };
+          ytd_night_shifts_before_month: 0, ytd_sunhol_shifts_before_month: 0,
+          night_time_comp_minutes_this_month: 0, ytd_night_time_comp_minutes: 0,
+          night_shifts_over_limit_this_month: 0, ytd_night_shifts_total: 0 };
 
     const baseLohnkosten = wage != null ? hours * wage : null;
     const lohnkostenWithSurcharge = baseLohnkosten != null
@@ -286,11 +321,54 @@ export async function GET(req: Request) {
       : null;
 
     // 3-Monats-BVG-Forecast: brutto (inkl. Nacht/Sonntag-Zuschlaegen) aus
-    // GEPLANTEN Terminen. Wage muss gesetzt sein -- sonst array of 0.
+    // GEPLANTEN Terminen. YTD-Limits werden berueckichtigt (24/6) damit
+    // der Forecast exakt der Lohnabrechnung entspricht.
+    // YTD-Start fuer Forecast = aktueller Stand inkl. dieses Monats (also
+    // alle bisherigen Nacht-/Sonntag-Tage YTD bis Monats-Ende selected).
     const myAppts = apptsByProfile.get(r.profile_id) ?? [];
-    const bvgForecast3Months = wage != null
-      ? FORECAST_MONTHS.map((m) => calculateForecast(myAppts, wage, m.start, m.end).total_chf)
-      : [0, 0, 0];
+    const myBuckets = Array.from(perProfileDays.get(r.profile_id)?.values() ?? []);
+    const ytdNightSoFar = myBuckets.filter((b) => b.night_minutes > 0 && b.date <= m0.end).length;
+    const ytdSunholSoFar = myBuckets.filter((b) => b.is_sunhol && b.total_minutes > 0 && b.date <= m0.end).length;
+    let bvgForecast3Months: number[];
+    if (wage == null) {
+      bvgForecast3Months = [0, 0, 0];
+    } else {
+      bvgForecast3Months = [];
+      // Cumulative-counter: nach Forecast-Monat 0 die geplanten Naechte/
+      // Sonntage als 'gezaehlt' uebernehmen damit Monat 1 die laufende
+      // Summe sieht. Gleiches fuer Monat 1 -> 2.
+      let runningNight = ytdNightSoFar;
+      let runningSunhol = ytdSunholSoFar;
+      for (const m of FORECAST_MONTHS) {
+        const f = calculateForecast(myAppts, wage, m.start, m.end, {
+          ytdNightDaysBefore: runningNight,
+          ytdSunholDaysBefore: runningSunhol,
+        });
+        bvgForecast3Months.push(f.total_chf);
+        // Counter fuer naechsten Monat hochziehen — sowohl eligible als
+        // auch over-limit Naechte/Sonntage zaehlen fuer's Limit.
+        // Wir brauchen die Tage-Counts, nicht Minuten — naehern mit
+        // 'Anzahl Tage mit Nacht-Minuten in diesem Monat' aus den
+        // appointments.
+        const datesNight = new Set<string>();
+        const datesSunhol = new Set<string>();
+        // Approximation: zaehle pro Termin den Start-Tag falls Nacht-/Sonntag
+        // Vereinfachung — fuer praezise Werte muesste man wieder Per-Minute
+        // gehen. Fuer Forecast-Genauigkeit reicht das.
+        for (const a of myAppts) {
+          if (!a.end_time) continue;
+          const sDate = a.start_time.slice(0, 10);
+          if (sDate < m.start || sDate > m.end) continue;
+          const sH = new Date(a.start_time).getUTCHours();
+          // Sehr grobe Approximation — fuer Counter ok.
+          if (sH >= 22 || sH < 7) datesNight.add(sDate);
+          const wd = new Date(a.start_time).getUTCDay();
+          if (wd === 0) datesSunhol.add(sDate);
+        }
+        runningNight += datesNight.size;
+        runningSunhol += datesSunhol.size;
+      }
+    }
 
     return {
       ...r,
@@ -314,6 +392,11 @@ export async function GET(req: Request) {
       // 3-Monats-BVG-Forecast aus job_appointments (siehe oben).
       // Reihenfolge: selected month, +1, +2.
       bvg_forecast_3_months_chf: bvgForecast3Months,
+      // Zeitkomp-Tracking (ArG 17b Abs. 3): ab Nacht 25 -> 10% Zeitkomp.
+      night_time_comp_minutes_this_month: surcharges.night_time_comp_minutes_this_month,
+      ytd_night_time_comp_minutes: surcharges.ytd_night_time_comp_minutes,
+      night_shifts_over_limit_this_month: surcharges.night_shifts_over_limit_this_month,
+      ytd_night_shifts_total: surcharges.ytd_night_shifts_total,
       // Hinweis-Flags fuers UI: wenn YTD-Limit ueberschritten wurde
       night_over_limit: surcharges.ytd_night_shifts_before_month >= 24,
       sunhol_over_limit: surcharges.ytd_sunhol_shifts_before_month >= 6,

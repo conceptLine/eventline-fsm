@@ -47,6 +47,12 @@ interface EmployeeStats {
   sunhol_over_limit: boolean;
   /** 3-Monats-BVG-Forecast aus geplanten Terminen: [Mo, +1, +2] in CHF. */
   bvg_forecast_3_months_chf: number[];
+  /** Zeitkomp diesen Monat erworben (10% der Nachtmin >24/Jahr, ArG 17b). */
+  night_time_comp_minutes_this_month: number;
+  /** Kumuliert YTD. */
+  ytd_night_time_comp_minutes: number;
+  night_shifts_over_limit_this_month: number;
+  ytd_night_shifts_total: number;
 }
 
 const CHF = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -274,15 +280,28 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
       onClick={onClick}
     >
       <div className="min-w-0">
-        <div className="font-medium truncate hover:underline">
-          {row.full_name}
+        <div className="font-medium truncate hover:underline flex items-center gap-1.5">
+          <span className="truncate">{row.full_name}</span>
+          {row.night_shifts_over_limit_this_month > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold border bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40 shrink-0"
+              data-tooltip={`${row.night_shifts_over_limit_this_month} Nacht(e) > Limit diesen Monat — Zeitkomp 10% erworben: ${fmtHours(row.night_time_comp_minutes_this_month)} (YTD-Total: ${fmtHours(row.ytd_night_time_comp_minutes)})`}
+            >
+              +{fmtHours(row.night_time_comp_minutes_this_month)} Komp
+            </span>
+          )}
           {!row.is_active && (
-            <span className="ml-1.5 text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-foreground/10 dark:bg-foreground/20 text-muted-foreground font-normal">
+            <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-foreground/10 dark:bg-foreground/20 text-muted-foreground font-normal shrink-0">
               deaktiv
             </span>
           )}
         </div>
-        <div className="text-[11px] text-muted-foreground truncate">{row.role}</div>
+        <div className="text-[11px] text-muted-foreground truncate">
+          {row.role}
+          {row.ytd_night_shifts_total > 0 && (
+            <span className="ml-2 text-muted-foreground/60">· {row.ytd_night_shifts_total} Nächte YTD</span>
+          )}
+        </div>
       </div>
       <div className="text-right tabular-nums border-l border-border pl-2">{fmtHours(row.stempel_minutes)}</div>
       <div className="text-right tabular-nums">{fmtHours(row.geplant_minutes)}</div>

@@ -31,8 +31,14 @@ export interface Appointment {
 export interface ForecastResult {
   total_minutes: number;
   regular_minutes: number;
+  /** Nacht-Minuten innerhalb des ArG-Limits (= 25%-zuschlags-berechtigt). */
   night_minutes: number;
+  /** Sonntag/Feiertag-Minuten innerhalb des ArG-Limits (= 50%-zuschlags-berechtigt). */
   sunhol_minutes: number;
+  /** Nacht-Minuten ueber Limit (= 10% Zeitkomp gemaess ArG 17b Abs. 3). */
+  night_over_limit_minutes?: number;
+  /** Sonntag/Feiertag-Minuten ueber Limit (= keine Lohnzulage, dafuer Ersatzruhetag). */
+  sunhol_over_limit_minutes?: number;
   /** Brutto-Schaetzung in CHF inkl. Zuschlaegen. */
   total_chf: number;
   base_chf: number;
@@ -40,14 +46,32 @@ export interface ForecastResult {
   sunhol_premium_chf: number;
 }
 
+/** Optional: YTD-Kontext fuer Limit-aware Forecast. Wenn gesetzt, werden
+ *  die ArG-Limits (24 Naechte / 6 Sonntage pro Jahr) auf die Period
+ *  angewendet — bei ueberschrittenen Limits faellt der entsprechende
+ *  Lohnzuschlag weg (genau wie im monthly-stats-API). Wenn nicht
+ *  gesetzt -> 'naiver' Forecast wie vorher (= konservativ ueberschaetzend). */
+export interface LimitContext {
+  /** Bereits gezaehlte Nacht-Schicht-Tage YTD vor der Period. */
+  ytdNightDaysBefore: number;
+  /** Bereits gezaehlte Sonntag/Feiertag-Tage YTD vor der Period. */
+  ytdSunholDaysBefore: number;
+}
+
 /** Strikter Brutto-Forecast: filtert per-minute auf das Period-Lokal-
  *  Datum. Wichtig fuer Cross-Midnight-Schichten am Monatswechsel — die
- *  Minuten gehoeren dem Datum auf dem sie tatsaechlich fallen. */
+ *  Minuten gehoeren dem Datum auf dem sie tatsaechlich fallen.
+ *
+ *  Wenn `limits` uebergeben wird, werden 24-Naechte- + 6-Sonntage-Limits
+ *  pro Jahr respektiert (wie in der echten Lohnabrechnung). Ueberschuss
+ *  Schichten kriegen keinen Zuschlag mehr.
+ */
 export function calculateForecast(
   appointments: Appointment[],
   hourlyWage: number,
   periodStart: string,
   periodEnd: string,
+  limits?: LimitContext,
 ): ForecastResult {
   const startYear = Number(periodStart.slice(0, 4));
   const endYear = Number(periodEnd.slice(0, 4));
@@ -56,9 +80,10 @@ export function calculateForecast(
     for (const h of swissHolidaysForYear(y)) holidaySet.add(h.date);
   }
 
-  let regular = 0;
-  let night = 0;
-  let sunhol = 0;
+  // Per-Day-Buckets (chronologisch sortiert) damit wir die YTD-Rank-
+  // Logik aus monthly-stats spiegeln koennen.
+  interface DayBucket { date: string; total_minutes: number; night_minutes: number; is_sunhol: boolean; }
+  const dayMap = new Map<string, DayBucket>();
 
   for (const a of appointments) {
     if (!a.end_time) continue;
@@ -68,15 +93,38 @@ export function calculateForecast(
     for (let t = s; t < e; t += 60_000) {
       const d = new Date(t);
       const date = localDateIso(d);
-      // Nur Minuten deren Lokal-Datum in der Period ist
       if (date < periodStart || date > periodEnd) continue;
       const hour = localHour(d);
       const isNight = hour >= 23 || hour < 6;
       const wd = weekdayForDateIso(date);
       const isSunhol = wd === 0 || holidaySet.has(date);
-      regular++;
-      if (isNight) night++;
-      if (isSunhol) sunhol++;
+      let b = dayMap.get(date);
+      if (!b) { b = { date, total_minutes: 0, night_minutes: 0, is_sunhol: isSunhol }; dayMap.set(date, b); }
+      b.total_minutes += 1;
+      if (isNight) b.night_minutes += 1;
+    }
+  }
+
+  let regular = 0;
+  let night = 0;       // night_minutes within ArG-24-Limit (eligible for 25%)
+  let sunhol = 0;      // sunhol_minutes within ArG-6-Limit (eligible for 50%)
+  let nightOver = 0;   // night_minutes ueber Limit (= 10% Zeitkomp ArG 17b)
+  let sunholOver = 0;  // sunhol_minutes ueber Limit (= keine zuschlagsfähigen Stunden)
+
+  const sorted = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  let nightRank = limits?.ytdNightDaysBefore ?? 0;
+  let sunholRank = limits?.ytdSunholDaysBefore ?? 0;
+  for (const d of sorted) {
+    regular += d.total_minutes;
+    if (d.night_minutes > 0) {
+      nightRank++;
+      if (limits == null || nightRank <= 24) night += d.night_minutes;
+      else nightOver += d.night_minutes;
+    }
+    if (d.is_sunhol && d.total_minutes > 0) {
+      sunholRank++;
+      if (limits == null || sunholRank <= 6) sunhol += d.total_minutes;
+      else sunholOver += d.total_minutes;
     }
   }
 
@@ -88,6 +136,8 @@ export function calculateForecast(
     regular_minutes: regular,
     night_minutes: night,
     sunhol_minutes: sunhol,
+    night_over_limit_minutes: nightOver,
+    sunhol_over_limit_minutes: sunholOver,
     total_chf: base + nightPremium + sunholPremium,
     base_chf: base,
     night_premium_chf: nightPremium,

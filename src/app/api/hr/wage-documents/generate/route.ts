@@ -176,8 +176,15 @@ export async function POST(req: Request) {
   const sunholDays = sortedDays.filter((d) => d.is_sunhol && d.total_minutes > 0);
   const ytdNightBefore = nightDays.filter((d) => !d.in_current_month && d.date < monthPrefix).length;
   const ytdSunholBefore = sunholDays.filter((d) => !d.in_current_month && d.date < monthPrefix).length;
-  let nightEligibleMin = 0, nightRank = ytdNightBefore;
-  for (const d of nightDays) if (d.in_current_month) { nightRank++; if (nightRank <= 24) nightEligibleMin += d.night_minutes; }
+  let nightEligibleMin = 0;
+  let nightTimeCompMin = 0;        // 10% der Nacht-Minuten ueber Limit (ArG 17b Abs. 3)
+  let nightShiftsOverLimit = 0;
+  let nightRank = ytdNightBefore;
+  for (const d of nightDays) if (d.in_current_month) {
+    nightRank++;
+    if (nightRank <= 24) nightEligibleMin += d.night_minutes;
+    else { nightTimeCompMin += d.night_minutes * 0.10; nightShiftsOverLimit++; }
+  }
   let sunholEligibleMin = 0, sunholRank = ytdSunholBefore;
   for (const d of sunholDays) if (d.in_current_month) { sunholRank++; if (sunholRank <= 6) sunholEligibleMin += d.total_minutes; }
 
@@ -273,6 +280,19 @@ export async function POST(req: Request) {
   doc.setFont("helvetica", "bold");
   doc.text("Bruttolohn", left, y); doc.text(`CHF ${CHF(brutto)}`, right, y, { align: "right" });
   y += 7;
+
+  // Zeitkompensation (ArG 17b Abs. 3): ab Nacht 25/Jahr werden 10% der
+  // Nachtstunden als bezahlte Freizeit gutgeschrieben (keine Geldzulage).
+  if (nightShiftsOverLimit > 0) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8); doc.setTextColor(110);
+    doc.text(
+      `Hinweis: ${nightShiftsOverLimit} Nacht(e) >24/Jahr → 10% Zeitkompensation (${fmtHours(nightTimeCompMin)}) wird auf das Komp-Konto gutgeschrieben (ArG Art. 17b Abs. 3).`,
+      left, y, { maxWidth: contentWidth },
+    );
+    doc.setFontSize(10); doc.setTextColor(0); doc.setFont("helvetica", "normal");
+    y += 6;
+  }
 
   // Abzuege
   doc.setFont("helvetica", "bold"); doc.text("Abzüge Mitarbeiter", left, y); y += 5;
