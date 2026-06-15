@@ -109,14 +109,8 @@ export default function HRPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {isAdmin ? "HR" : "Mein Arbeitsalltag"}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {isAdmin
-            ? <>&nbsp;</>
-            : "Stempelzeiten, Ferien, Tickets — alles was du im Arbeitstag brauchst. Deine Lohndokumente findest du in Mein Konto."}
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">HR</h1>
+        <p className="text-sm text-muted-foreground mt-1" aria-hidden="true">&nbsp;</p>
       </div>
 
       {/* Tab-Nav nur rendern wenn mehr als ein Tab — fuer Non-Admins mit
