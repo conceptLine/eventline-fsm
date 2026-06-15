@@ -312,12 +312,10 @@ function buildPdf() {
     doc.addImage(logoBase64, "PNG", right - logoWidth, y - 4, logoWidth, logoHeight);
   } catch {}
 
-  doc.setFontSize(18); doc.setFont("helvetica", "bold");
-  doc.text("EVENTLINE GmbH", left, y);
-  y += 6;
+  // Firma-Name kommt aus dem Logo, nur Adresse als Text
   doc.setFontSize(9); doc.setFont("helvetica", "normal");
-  doc.text("Dornacherstrasse 192 · 4053 Basel", left, y);
-  y += 10;
+  doc.text("Dornacherstrasse 192 · 4053 Basel", left, y + 6);
+  y += 14;
 
   doc.setFontSize(14); doc.setFont("helvetica", "bold");
   doc.text("Lohnabrechnung (BEISPIEL)", left, y);
