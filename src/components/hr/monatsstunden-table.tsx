@@ -368,8 +368,15 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
         ? "Limit überschritten — Zeitkompensation / Ersatzruhetage statt Geld"
         : "Keine zuschlags-pflichtigen Stunden");
 
-  // Row-Tint wenn IRGENDEINER der 3 Forecast-Monate kritisch ist (>=95% der Schwelle).
-  const anyCritical = (row.bvg_forecast_3_months_chf ?? [0, 0, 0]).some((chf) => chf >= bvgThreshold * 0.95);
+  // Row-Tint wenn IRGENDWAS kritisch ist (>=95% der Schwelle):
+  //  - Actual Brutto im selektierten Monat (lohnkosten_chf)
+  //  - oder einer der 3 Forecast-Monate
+  // Beides pruefen damit "actuals > forecast" (mehr gearbeitet als
+  // geplant) trotzdem als BVG-Risiko erkannt wird.
+  const actualBrutto = row.lohnkosten_chf ?? 0;
+  const actualCritical = actualBrutto >= bvgThreshold * 0.95;
+  const forecastCritical = (row.bvg_forecast_3_months_chf ?? [0, 0, 0]).some((chf) => chf >= bvgThreshold * 0.95);
+  const anyCritical = actualCritical || forecastCritical;
   const rowTint = anyCritical ? "bg-red-50/40 dark:bg-red-500/[0.06]" : "";
 
   return (
@@ -413,8 +420,11 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
       >
         {hasSurcharge ? `+ ${CHF.format(row.total_surcharge_chf)}` : "—"}
       </div>
-      <div className="text-right tabular-nums text-muted-foreground"
-        data-tooltip={bruttoTooltip}
+      <div
+        className={`text-right tabular-nums ${actualCritical ? "text-red-700 dark:text-red-300 font-semibold" : "text-muted-foreground"}`}
+        data-tooltip={actualCritical
+          ? `${bruttoTooltip} — BVG-Pflicht droht (Brutto ${CHF.format(actualBrutto)} >= 95% von ${CHF.format(bvgThreshold)})`
+          : bruttoTooltip}
       >
         {row.lohnkosten_chf != null ? `CHF ${CHF.format(row.lohnkosten_chf)}` : "—"}
       </div>
