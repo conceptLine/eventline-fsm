@@ -26,7 +26,7 @@ import { Plus, KeyRound, Pencil, UserX, UserCheck, Trash2, Mail, Wallet, Chevron
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 
-type EditState = { id: string; full_name: string; role: string } | null;
+type EditState = { id: string; full_name: string; role: string; birthdate: string } | null;
 interface CompOriginal {
   hourly_wage_chf: number;
   /** All-or-Nothing: true = alle Pcts kommen aus dem Firmen-Standard,
@@ -217,7 +217,7 @@ export function TeamTab() {
   }
 
   function openEdit(p: Profile) {
-    setEdit({ id: p.id, full_name: p.full_name, role: p.role });
+    setEdit({ id: p.id, full_name: p.full_name, role: p.role, birthdate: p.birthdate ?? "" });
     setLohnOpen(false);
     // Reset wage state, lazy-fetch (kann fehlschlagen wenn Geraet nicht
     // vertraut ist — dann bleiben Felder leer und der Trust-Gate im
@@ -273,7 +273,11 @@ export function TeamTab() {
     const profileRes = await fetch(`/api/admin/users/${edit.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ full_name: edit.full_name, role: edit.role }),
+      body: JSON.stringify({
+        full_name: edit.full_name,
+        role: edit.role,
+        birthdate: edit.birthdate ? edit.birthdate : null,
+      }),
     });
     const profileJson = await profileRes.json();
     if (!profileJson.success) {
@@ -648,6 +652,27 @@ export function TeamTab() {
               >
                 {roles.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
               </select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/70 ml-1">Geburtsdatum (für Ferienanteil-Auto-Erkennung)</p>
+              <Input
+                type="date"
+                value={edit.birthdate}
+                onChange={(e) => setEdit({ ...edit, birthdate: e.target.value })}
+              />
+              {edit.birthdate && (() => {
+                const today = new Date().toISOString().slice(0, 10);
+                const [by, bm, bd] = edit.birthdate.split("-").map(Number);
+                const [ay, am, ad] = today.split("-").map(Number);
+                let age = ay - by;
+                if (am < bm || (am === bm && ad < bd)) age--;
+                const isU20 = age < 20;
+                return (
+                  <p className="text-[10px] text-muted-foreground/70 ml-1">
+                    Aktuell {age} Jahre · Ferienanteil <strong>{isU20 ? "10.64%" : "8.33%"}</strong>
+                  </p>
+                );
+              })()}
             </div>
 
             {/* Lohn-Sektion — klappbarer Header. Nur sichtbar auf vertrautem

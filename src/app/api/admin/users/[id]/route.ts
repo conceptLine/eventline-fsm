@@ -66,6 +66,13 @@ export async function PATCH(
   if (typeof body.is_active === "boolean") {
     update.is_active = body.is_active;
   }
+  // birthdate (YYYY-MM-DD oder null um zu loeschen).
+  // Wird fuer Ferienanteil-Auto-Erkennung gebraucht (U20 -> 10.64%).
+  if (body.birthdate === null) {
+    update.birthdate = null;
+  } else if (typeof body.birthdate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.birthdate)) {
+    update.birthdate = body.birthdate;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ success: false, error: "Keine Aenderungen" }, { status: 400 });

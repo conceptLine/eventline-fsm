@@ -23,6 +23,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadLohnDefaults, effectivePcts, sumEmployerPct, sumEmployeePct, employerCostsPerHour } from "@/lib/employer-costs";
+import { effectiveFerienanteil, splitBruttoFerien } from "@/lib/ferienanteil";
 import { jsPDF } from "jspdf";
 import { swissHolidaysForYear } from "@/lib/swiss-holidays";
 import { localDateIso, localHour, weekdayForDateIso } from "@/lib/swiss-time";
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
 
   // Mitarbeiter + Compensation laden
-  const { data: profile } = await admin.from("profiles").select("id, full_name, role, email").eq("id", profileId).single();
+  const { data: profile } = await admin.from("profiles").select("id, full_name, role, email, birthdate").eq("id", profileId).single();
   if (!profile) return NextResponse.json({ success: false, error: "Mitarbeiter nicht gefunden" }, { status: 404 });
 
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
 
   const { data: comp } = await admin
     .from("employee_compensation")
-    .select("hourly_wage_chf, uses_standard_lohn, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct, effective_from")
+    .select("hourly_wage_chf, uses_standard_lohn, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct, ferienanteil_pct_override, effective_from")
     .eq("profile_id", profileId)
     .lte("effective_from", monthStart)
     .or(`effective_to.is.null,effective_to.gte.${monthStart}`)
@@ -200,7 +201,17 @@ export async function POST(req: Request) {
     }, { status: 400 });
   }
   const hours = effectiveMin / 60;
-  const baseLohn = hours * wage;
+  // Ferienanteil-Logik (Art. 329a/d OR): der Brutto-Stundenlohn ist
+  // inklusive Ferienanteil. Wir spalten ihn fuer die Lohnabrechnung
+  // explizit auf -- 8.33% Erwachsene, 10.64% U20 (oder Override).
+  const monthMidIso = `${year}-${String(month).padStart(2, "0")}-15`;
+  const ferienPct = effectiveFerienanteil(comp.ferienanteil_pct_override, profile.birthdate, monthMidIso);
+  const wageSplit = splitBruttoFerien(wage, ferienPct);
+  const grundlohnHourly = wageSplit.grundlohn;
+  const ferienHourly = wageSplit.ferienanteil;
+  const baseGrundlohn = hours * grundlohnHourly;
+  const baseFerien = hours * ferienHourly;
+  const baseLohn = hours * wage; // = baseGrundlohn + baseFerien (mathematisch identisch)
   const nightSurcharge = (nightEligibleMin / 60) * wage * 0.25;
   const sunholSurcharge = (sunholEligibleMin / 60) * wage * 0.5;
   const totalSurcharge = nightSurcharge + sunholSurcharge;
@@ -263,11 +274,16 @@ export async function POST(req: Request) {
   y += 3;
   doc.setDrawColor(200); doc.line(left, y, right, y); y += 6;
 
-  // Lohnberechnung
+  // Lohnberechnung mit Brutto-Aufspaltung (Grundlohn + Ferienanteil).
   doc.setFont("helvetica", "bold"); doc.text("Vergütung", left, y); y += 5;
   doc.setFont("helvetica", "normal");
-  doc.text(`Stundenlohn (brutto)`, left, y); doc.text(`CHF ${CHF(wage)} / h`, right, y, { align: "right" }); y += 5;
-  doc.text(`Basis-Lohn (${(effectiveMin / 60).toFixed(2)} h × CHF ${CHF(wage)})`, left, y); doc.text(`CHF ${CHF(baseLohn)}`, right, y, { align: "right" }); y += 5;
+  doc.text(`Stundenlohn (brutto, inkl. Ferienanteil)`, left, y); doc.text(`CHF ${CHF(wage)} / h`, right, y, { align: "right" }); y += 5;
+  doc.setTextColor(110); doc.setFontSize(9);
+  doc.text(`davon Grundlohn:`, left + 5, y); doc.text(`CHF ${CHF(grundlohnHourly)} / h`, right, y, { align: "right" }); y += 4;
+  doc.text(`davon Ferienanteil ${ferienPct.toFixed(2)}% (Art. 329d OR):`, left + 5, y); doc.text(`CHF ${CHF(ferienHourly)} / h`, right, y, { align: "right" }); y += 5;
+  doc.setTextColor(0); doc.setFontSize(10);
+  doc.text(`Grundlohn (${(effectiveMin / 60).toFixed(2)} h × CHF ${CHF(grundlohnHourly)})`, left, y); doc.text(`CHF ${CHF(baseGrundlohn)}`, right, y, { align: "right" }); y += 5;
+  doc.text(`Ferienanteil (${(effectiveMin / 60).toFixed(2)} h × CHF ${CHF(ferienHourly)})`, left, y); doc.text(`+ CHF ${CHF(baseFerien)}`, right, y, { align: "right" }); y += 5;
   if (nightEligibleMin > 0) {
     doc.text(`Nachtzuschlag 25% (${(nightEligibleMin / 60).toFixed(2)} h × CHF ${CHF(wage)} × 25%)`, left, y);
     doc.text(`+ CHF ${CHF(nightSurcharge)}`, right, y, { align: "right" }); y += 5;

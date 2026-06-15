@@ -39,9 +39,9 @@ export async function GET() {
   const admin = createAdminClient();
 
   const [profilesRes, compsRes, defaults] = await Promise.all([
-    admin.from("profiles").select("id, full_name, role, email").neq("role", "partner").order("full_name"),
+    admin.from("profiles").select("id, full_name, role, email, birthdate").neq("role", "partner").order("full_name"),
     admin.from("employee_compensation")
-      .select("id, profile_id, hourly_wage_chf, uses_standard_lohn, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct")
+      .select("id, profile_id, hourly_wage_chf, uses_standard_lohn, effective_from, notes, ahv_iv_eo_pct, alv_pct, nbu_pct, bvg_pct, ktg_pct, quellensteuer_pct, employer_ahv_pct, employer_alv_pct, employer_fak_pct, employer_bu_pct, employer_bvg_pct, employer_verwaltung_pct, ferienanteil_pct_override")
       .is("effective_to", null),
     loadLohnDefaults(admin),
   ]);
@@ -58,6 +58,8 @@ export async function GET() {
       full_name: p.full_name,
       role: p.role,
       email: p.email,
+      // Birthdate fuer Ferienanteil-Auto-Erkennung (U20 -> 10.64%, sonst 8.33%).
+      birthdate: (p as { birthdate?: string | null }).birthdate ?? null,
       compensation: c
         ? {
             id: c.id,
@@ -77,6 +79,7 @@ export async function GET() {
             employer_bu_pct: toNullableNumber(c.employer_bu_pct),
             employer_bvg_pct: toNullableNumber(c.employer_bvg_pct),
             employer_verwaltung_pct: toNullableNumber(c.employer_verwaltung_pct),
+            ferienanteil_pct_override: toNullableNumber(c.ferienanteil_pct_override),
           }
         : null,
     };
@@ -104,6 +107,12 @@ export async function POST(request: Request) {
   const uses_standard_lohn = body.uses_standard_lohn !== false;
   const effective_from = typeof body.effective_from === "string" ? body.effective_from : new Date().toISOString().slice(0, 10);
   const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+  // Ferienanteil-Override: null = aus Geburtsdatum berechnen (8.33/10.64),
+  // Zahl = expliziter Override.
+  const ferienanteil_pct_override: number | null = toNum(body.ferienanteil_pct_override);
+  if (ferienanteil_pct_override != null && (ferienanteil_pct_override < 0 || ferienanteil_pct_override > 100)) {
+    return NextResponse.json({ success: false, error: "Ferienanteil ungueltig" }, { status: 400 });
+  }
 
   if (!profile_id) return NextResponse.json({ success: false, error: "profile_id fehlt" }, { status: 400 });
   if (hourly_wage_chf === null || hourly_wage_chf < 0) {
@@ -176,6 +185,7 @@ export async function POST(request: Request) {
           hourly_wage_chf,
           uses_standard_lohn,
           notes,
+          ferienanteil_pct_override,
           ...pctPayload,
           created_by: auth.user.id,
         })
@@ -201,6 +211,7 @@ export async function POST(request: Request) {
     uses_standard_lohn,
     effective_from,
     notes,
+    ferienanteil_pct_override,
     ...pctPayload,
     created_by: auth.user.id,
   });

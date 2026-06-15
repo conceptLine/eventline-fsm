@@ -41,6 +41,9 @@ export interface Profile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** Geburtsdatum YYYY-MM-DD. Wird fuer Ferienanteil-Auto-Erkennung
+   *  gebraucht (U20 -> 10.64%). Sensible Daten, nur Admins lesen. */
+  birthdate?: string | null;
 }
 
 export interface Customer {
