@@ -8,6 +8,7 @@
  *  - Benachrichtigungen: Channel-Matrix + Push + Sound + Quiet Hours
  *  - Dokumente: eigene Lohnabrechnungen + Lohnausweise zum Download
  *  - Kalender: iCal-Feed-Token fuer externen Kalender-Import
+ *  - Admin-Space (admin-only): geteilte Notizen aller Admins
  *
  * Vertraute-Geraete-Verwaltung liegt unter Einstellungen -> Integrationen
  * (Admin-Sicht, sieht alle User-Geraete). Mitarbeiter brauchen das nicht
@@ -19,19 +20,23 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { User, Bell, FileText, Calendar } from "lucide-react";
+import { User, Bell, FileText, Calendar, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/use-permissions";
 import { MeinKontoCard } from "@/components/einstellungen/mein-konto-card";
 import { BenachrichtigungenTab } from "@/components/einstellungen/benachrichtigungen-tab";
 import { LohnausweiseList } from "@/components/hr/lohnausweise-list";
 import { IcalFeedBlock } from "@/components/kalender/ical-feed-block";
+import { AdminSpace } from "@/components/dashboard/admin-space";
 
-type Tab = "profil" | "benachrichtigungen" | "dokumente" | "kalender";
-const ALL_TABS: Tab[] = ["profil", "benachrichtigungen", "dokumente", "kalender"];
+type Tab = "profil" | "benachrichtigungen" | "dokumente" | "kalender" | "admin-space";
+const ALL_TABS: Tab[] = ["profil", "benachrichtigungen", "dokumente", "kalender", "admin-space"];
 
 export default function MeinKontoPage() {
   const searchParams = useSearchParams();
   const urlTab = searchParams.get("tab") as Tab | null;
+  const { role } = usePermissions();
+  const isAdmin = role === "admin";
   const [tab, setTab] = useState<Tab>(urlTab && ALL_TABS.includes(urlTab) ? urlTab : "profil");
 
   function selectTab(t: Tab) {
@@ -44,18 +49,22 @@ export default function MeinKontoPage() {
   }
 
   // Falls die URL einen Tab nennt der noch nicht im state ist (z.B. via
-  // direktem Link aus der Glocke), nachziehen.
+  // direktem Link aus der Glocke), nachziehen. Non-Admins die per URL auf
+  // 'admin-space' landen werden auf 'profil' zurueckgeleitet.
   useEffect(() => {
+    if (urlTab === "admin-space" && !isAdmin) { setTab("profil"); return; }
     if (urlTab && ALL_TABS.includes(urlTab) && urlTab !== tab) setTab(urlTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlTab]);
+  }, [urlTab, isAdmin]);
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "profil",             label: "Profil",            icon: <User className="h-4 w-4" /> },
+  const allTabs: { key: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+    { key: "profil",             label: "Profil",             icon: <User className="h-4 w-4" /> },
     { key: "benachrichtigungen", label: "Benachrichtigungen", icon: <Bell className="h-4 w-4" /> },
-    { key: "dokumente",          label: "Dokumente",         icon: <FileText className="h-4 w-4" /> },
-    { key: "kalender",           label: "Kalender",          icon: <Calendar className="h-4 w-4" /> },
+    { key: "dokumente",          label: "Dokumente",          icon: <FileText className="h-4 w-4" /> },
+    { key: "kalender",           label: "Kalender",           icon: <Calendar className="h-4 w-4" /> },
+    { key: "admin-space",        label: "Admin-Space",        icon: <Users className="h-4 w-4" />, adminOnly: true },
   ];
+  const tabs = allTabs.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div className="space-y-6">
@@ -113,6 +122,15 @@ export default function MeinKontoPage() {
             description="Abonniere deinen persönlichen Kalender mit Aufträgen, Terminen und Schichten in Google Calendar / Apple Calendar / Outlook."
             source="user"
           />
+        </div>
+      )}
+
+      {tab === "admin-space" && isAdmin && (
+        <div className="max-w-3xl mx-auto space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Persönliche Ziele &amp; Notizen — sichtbar für alle Admins, jeder bearbeitet nur seinen Eintrag.
+          </p>
+          <AdminSpace />
         </div>
       )}
     </div>

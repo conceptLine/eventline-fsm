@@ -132,9 +132,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", mobile: true },
-      // /admin-space ist admin-only via ADMIN_ONLY_PREFIXES in permissions.ts —
-      // Sidebar-Filter blendet's fuer Non-Admins automatisch aus.
-      { href: "/admin-space", label: "Admin-Space", icon: "Users" },
       { href: "/todos", label: "Todos", icon: "CheckSquare", mobile: true },
       { href: "/kalender", label: "Kalender", icon: "Calendar", mobile: true },
     ],

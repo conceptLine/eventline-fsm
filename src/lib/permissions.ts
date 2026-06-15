@@ -88,13 +88,14 @@ export const PARTNER_PERMISSION_MODULES: PermissionModule[] = [
 
 /** Pfade die fuer alle eingeloggten User erreichbar sind, unabhaengig von der Rolle.
  *  - /dashboard: Startseite, jeder soll dort landen koennen
- *  - /mein-konto: User-Self-Service (Profil, Benachrichtigungen, Geraete, Kalender) */
+ *  - /mein-konto: User-Self-Service (Profil, Benachrichtigungen, Dokumente, Kalender;
+ *                 Admin-Space-Tab nur sichtbar fuer role='admin') */
 const ALWAYS_ALLOWED_PREFIXES = ["/dashboard", "/mein-konto"];
 
 /** Pfade die strikt nur fuer role='admin' sind — Sidebar blendet sie fuer
  *  alle anderen aus, isPathAllowed liefert false (-> /dashboard-Redirect
  *  im (app)/layout). RLS sperrt die Daten zusaetzlich auf der DB-Seite. */
-const ADMIN_ONLY_PREFIXES = ["/admin-space"];
+const ADMIN_ONLY_PREFIXES: string[] = [];
 
 /** Pfade die immer erreichbar sind, auch ohne Modul-View-Permission, weil
  *  sie via Verknuepfung aus einem anderen Modul aufgerufen werden (z.B.
