@@ -669,43 +669,33 @@ describe("Szenario 19: BVG-Threshold-Ampel (95%/70%)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Szenario 20: End-to-End — kompletter Mai-Mathis-Case nachgerechnet
+// Szenario 20: End-to-End — Mai-Mathis-Case nach Stempel-Regel (ab 2026-06-17)
 // ---------------------------------------------------------------------------
-describe("Szenario 20: End-to-End Mai-2026 Mathis Imoberdorf (Bug-Reproduction)", () => {
-  it("Korrekte Brutto + Auszahlung wenn Rapport-basiert (wie Tabelle)", () => {
-    // Annahme: Rapport = 21h 57min = 1317 min, Stempel = 25h 48min = 1548 min
-    const RAPPORT_MIN = 1317;
-    const hoursUsed = RAPPORT_MIN / 60; // 21.95
+describe("Szenario 20: End-to-End Mai-2026 Mathis Imoberdorf (Stempel-Basis)", () => {
+  it("Auszahlung wird auf Basis der GESTEMPELTEN Stunden berechnet", () => {
+    // Stempel = 25h 48min = 1548 min, Rapport (informativ) = 1317 min.
+    const STEMPEL_MIN = 1548;
+    const hours = STEMPEL_MIN / 60; // 25.80
     const wage = 26.00;
+    const zuschlag = 6.07; // Nacht-Zuschlag aus Stempel-Buckets
 
-    // Zuschlag 6.07 (= 0.935h Nacht × 25 × 26 / 100 → ~6.07, given)
-    const zuschlag = 6.07;
-    const brutto = hoursUsed * wage + zuschlag;
-    expect(brutto).toBeCloseTo(576.77, 2);
+    const brutto = hours * wage + zuschlag;
+    expect(brutto).toBeCloseTo(676.87, 2);
 
-    // Abzuege: AHV 5.30% + ALV 1.10% + NBU 1.45% = 7.85% von Brutto
     const eff = STANDARD_DEFAULTS;
     const deductionPct = sumEmployeePct(eff);
     expect(deductionPct).toBeCloseTo(7.85, 2);
-    const ahv = brutto * 5.30 / 100;
-    const alv = brutto * 1.10 / 100;
-    const nbu = brutto * 1.45 / 100;
-    const totalAbzug = ahv + alv + nbu;
-    expect(totalAbzug).toBeCloseTo(brutto * 0.0785, 1);
 
     const netto = brutto * (1 - deductionPct / 100);
-    expect(netto).toBeCloseTo(531.49, 1); // wie in der Tabelle
+    expect(netto).toBeCloseTo(623.74, 1); // 676.87 × 0.9215
   });
 
-  it("Wenn der Bug aktiv waere (Stempel statt Rapport), kommt 100 CHF zu viel raus", () => {
-    const STEMPEL_MIN = 1548; // 25h 48m
-    const hoursIfBuggy = STEMPEL_MIN / 60; // 25.80
-    const wage = 26.00;
-    const zuschlag = 6.07;
-    const bruttoBuggy = hoursIfBuggy * wage + zuschlag;
-    expect(bruttoBuggy).toBeCloseTo(676.87, 2); // wie das fehlerhafte PDF zeigte
-    // Differenz = (25.80 - 21.95) × 26 = 100.10 CHF zu viel
-    expect(bruttoBuggy - 576.77).toBeCloseTo(100.10, 1);
+  it("Rapport-Stunden sind in der Tabelle informativ aber zahlen NICHT", () => {
+    // Vor dem 2026-06-17 wurde Rapport>0 als Basis genommen (576.77 Brutto).
+    // Seither: Stempel als alleinige Basis (676.87 Brutto), Differenz +100.
+    const stempelBrutto = (1548 / 60) * 26 + 6.07;
+    const rapportBruttoLegacy = (1317 / 60) * 26 + 6.07;
+    expect(stempelBrutto - rapportBruttoLegacy).toBeCloseTo(100.10, 1);
   });
 });
 
@@ -793,14 +783,15 @@ describe("Szenario 23: Was wir NICHT machen (dokumentiert per Test)", () => {
 // ---------------------------------------------------------------------------
 // Szenario 24: Konsistenz Tabelle <-> PDF (gleiche Stunden-Basis)
 // ---------------------------------------------------------------------------
-describe("Szenario 24: PDF und Tabelle muessen DIESELBE Stunden-Basis nehmen", () => {
-  it("Beide rechnen mit rapportMin wenn > 0, sonst stempelMin", () => {
-    function effectiveMin(rapportMin: number, stempelMin: number): number {
-      return rapportMin > 0 ? rapportMin : stempelMin;
+describe("Szenario 24: PDF und Tabelle nutzen GESTEMPELTE Stunden als Basis", () => {
+  it("Auszahlungs-Basis ist immer Stempel (Rapport bleibt nur informativ)", () => {
+    function effectiveMin(_rapportMin: number, stempelMin: number): number {
+      return stempelMin;
     }
-    expect(effectiveMin(1317, 1548)).toBe(1317); // Rapport-Fall (Mathis Mai)
-    expect(effectiveMin(0, 820)).toBe(820); // Stempel-Fall (kein Rapport)
-    expect(effectiveMin(0, 0)).toBe(0);     // Beide leer → 0
+    expect(effectiveMin(1317, 1548)).toBe(1548); // Mathis Mai: Stempel zaehlt
+    expect(effectiveMin(0, 820)).toBe(820);
+    expect(effectiveMin(2000, 0)).toBe(0);       // Kein Stempel = 0 Auszahlung
+    expect(effectiveMin(0, 0)).toBe(0);
   });
 });
 

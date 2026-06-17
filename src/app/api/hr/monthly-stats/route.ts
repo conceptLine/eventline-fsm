@@ -288,7 +288,10 @@ export async function GET(req: Request) {
     // RPC liefert stempel_minutes als UTC-Delta-Summe — DST-broken. Wir
     // ueberschreiben mit der per-Minute-DST-safe-Berechnung.
     const stempelDstSafe = stempelMinutesByProfile.get(r.profile_id) ?? r.stempel_minutes;
-    const effectiveMinutes = r.rapport_minutes > 0 ? r.rapport_minutes : stempelDstSafe;
+    // Auszahlung wird mit den GESTEMPELTEN Stunden gerechnet — Rapport
+    // ist nur informativ in der Tabelle sichtbar, fliesst aber nicht in
+    // die Brutto-/Netto-Berechnung ein (Entscheidung Leo 2026-06-17).
+    const effectiveMinutes = stempelDstSafe;
     const hours = effectiveMinutes / 60;
     const wage = r.hourly_wage_chf != null ? Number(r.hourly_wage_chf) : null;
     // Effektive Pcts via Helper (uses_standard_lohn-Flag entscheidet
@@ -379,7 +382,7 @@ export async function GET(req: Request) {
       uses_standard_lohn: r.uses_standard_lohn !== false,
       employer_pct: employerPctSum,
       employer_costs_chf_per_hour: employerPerHour,
-      effective_basis: r.rapport_minutes > 0 ? "rapport" : "stempel",
+      effective_basis: "stempel" as const,
       base_lohnkosten_chf: baseLohnkosten,
       lohnkosten_chf: lohnkostenWithSurcharge,
       vollkosten_chf: vollkosten,

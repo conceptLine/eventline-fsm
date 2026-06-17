@@ -219,7 +219,9 @@ export async function POST(req: Request) {
   const wage = Number(comp.hourly_wage_chf);
   // AG-Anteil pro Stunde aus den 6 effektiven AG-Pcts.
   const employer = employerCostsPerHour(wage, sumEmployerPct(eff));
-  const effectiveMin = rapportMin > 0 ? rapportMin : stempelMin;
+  // Auszahlungs-Basis = Gestempelte Stunden (Entscheidung Leo 2026-06-17).
+  // Rapport-Stunden bleiben informativ im PDF sichtbar, aber zahlen nicht.
+  const effectiveMin = stempelMin;
   // 0-Stunden-Block — verhindert sinnlose CHF-0.00-PDFs in Mitarbeiter-Feed
   if (effectiveMin === 0) {
     return NextResponse.json({
@@ -300,9 +302,9 @@ export async function POST(req: Request) {
   doc.setFont("helvetica", "bold"); doc.text("Stunden", left, y); y += 5;
   doc.setFont("helvetica", "normal");
   const rows: [string, string][] = [
-    ["Gestempelt", fmtHours(stempelMin)],
+    ["Gestempelt (Basis Abrechnung)", fmtHours(stempelMin)],
     ["Geplant (Termine)", fmtHours(geplantMin)],
-    ["Rapportiert (Basis Abrechnung)", fmtHours(rapportMin)],
+    ["Rapportiert", fmtHours(rapportMin)],
   ];
   for (const [k, v] of rows) {
     doc.text(k, left, y); doc.text(v, right, y, { align: "right" }); y += 5;

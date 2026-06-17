@@ -34,7 +34,7 @@ interface EmployeeStats {
   rapport_minutes: number;
   hourly_wage_chf: number | null;
   employer_costs_chf_per_hour: number | null;
-  effective_basis: "rapport" | "stempel";
+  effective_basis: "stempel";
   base_lohnkosten_chf: number | null;
   lohnkosten_chf: number | null;
   nettolohn_chf: number | null;
@@ -361,7 +361,7 @@ function StatsRow({ row, bvgThreshold, onClick }: { row: EmployeeStats; bvgThres
     ? `Basis ${CHF.format(row.base_lohnkosten_chf ?? 0)}`
       + (row.night_surcharge_chf > 0 ? ` + Nacht (25%, ${(row.night_eligible_minutes / 60).toFixed(1)}h) ${CHF.format(row.night_surcharge_chf)}` : "")
       + (row.sunhol_surcharge_chf > 0 ? ` + So/FT (50%, ${(row.sunhol_eligible_minutes / 60).toFixed(1)}h) ${CHF.format(row.sunhol_surcharge_chf)}` : "")
-    : (row.effective_basis === "rapport" ? "Basis: Rapport-Stunden" : "Basis: Stempel-Stunden (kein Rapport)");
+    : "Basis: Gestempelte Stunden";
   const surchargeTooltip = hasSurcharge
     ? `Nacht: ${CHF.format(row.night_surcharge_chf)} · So/FT: ${CHF.format(row.sunhol_surcharge_chf)}`
     : (row.night_over_limit || row.sunhol_over_limit
