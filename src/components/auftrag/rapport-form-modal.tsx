@@ -492,8 +492,18 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
     // nicht nochmal feuert nachdem der Status DB-seitig gewechselt hat.
     setDraftStatus("abgeschlossen");
 
-    // Auftrag schliessen — atomar nach erfolgreichem Rapport-Update.
-    await supabase.from("jobs").update({ status: "abgeschlossen" }).eq("id", job.id);
+    // Auftrag schliessen via Server-Route — direkter Supabase-Update aus
+    // dem Client hat silent failed wenn der User nicht in job_assignments
+    // stand (RLS) und liess Job auf 'offen' obwohl der Rapport
+    // 'abgeschlossen' war. Server-Route nutzt Admin-Client und gibt jetzt
+    // einen Fehler zurueck statt ihn zu schlucken.
+    const finishRes = await fetch(`/api/jobs/${job.id}/finish-from-rapport`, { method: "POST" });
+    const finishJson = await finishRes.json().catch(() => null);
+    if (!finishRes.ok || !finishJson?.success) {
+      toast.error(finishJson?.error || "Auftrag konnte nicht geschlossen werden");
+      setSaving(null);
+      return;
+    }
     window.dispatchEvent(new Event("jobs:invalidate"));
 
     toast.success("Rapport abgeschlossen – PDF wird generiert...");
