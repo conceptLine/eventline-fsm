@@ -9,7 +9,6 @@
 //   profile.json              — Stammdaten
 //   compensation.json         — Lohn-Historie alle Zeilen
 //   jobs.json                 — alle Jobs wo User created_by oder project_lead
-//   assignments.json          — job_assignments-Eintraege
 //   appointments.json         — job_appointments mit assigned_to=user
 //   time_entries.json         — alle Stempel
 //   service_reports.json      — alle Rapporte
@@ -51,13 +50,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .select("id, job_number, title, status, start_date, end_date, created_at, created_by, project_lead_id")
     .or(`created_by.eq.${profileId},project_lead_id.eq.${profileId}`);
 
-  // 4. Job-Assignments
-  const { data: assignments } = await admin
-    .from("job_assignments")
-    .select("*")
-    .eq("profile_id", profileId);
-
-  // 5. Job-Appointments (zugewiesen)
+  // 4. Job-Appointments (zugewiesen)
   const { data: appts } = await admin
     .from("job_appointments")
     .select("*")
@@ -111,7 +104,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     `  profile.json — Stammdaten\n` +
     `  compensation.json — Lohn-Historie (${comp?.length ?? 0} Zeilen)\n` +
     `  jobs.json — Jobs als created_by/project_lead (${jobsCreated?.length ?? 0})\n` +
-    `  assignments.json — Job-Zuweisungen (${assignments?.length ?? 0})\n` +
     `  appointments.json — Termin-Zuweisungen (${appts?.length ?? 0})\n` +
     `  time_entries.json — Stempel-Eintraege (${stempel?.length ?? 0})\n` +
     `  service_reports.json — Rapporte (${reports?.length ?? 0})\n` +
@@ -127,7 +119,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     profile,
     comp: comp ?? [],
     jobs: jobsCreated ?? [],
-    assignments: assignments ?? [],
     appointments: appts ?? [],
     stempel: stempel ?? [],
     reports: reports ?? [],
@@ -140,7 +131,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   zip.file("profile.json", JSON.stringify(profile, null, 2));
   zip.file("compensation.json", JSON.stringify(comp ?? [], null, 2));
   zip.file("jobs.json", JSON.stringify(jobsCreated ?? [], null, 2));
-  zip.file("assignments.json", JSON.stringify(assignments ?? [], null, 2));
   zip.file("appointments.json", JSON.stringify(appts ?? [], null, 2));
   zip.file("time_entries.json", JSON.stringify(stempel ?? [], null, 2));
   zip.file("service_reports.json", JSON.stringify(reports ?? [], null, 2));
@@ -204,7 +194,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     summary: {
       compensation_rows: comp?.length ?? 0,
       jobs: jobsCreated?.length ?? 0,
-      assignments: assignments?.length ?? 0,
       appointments: appts?.length ?? 0,
       time_entries: stempel?.length ?? 0,
       service_reports: reports?.length ?? 0,
@@ -223,7 +212,6 @@ interface DossierData {
   profile: Record<string, unknown>;
   comp: Record<string, unknown>[];
   jobs: Record<string, unknown>[];
-  assignments: Record<string, unknown>[];
   appointments: Record<string, unknown>[];
   stempel: Record<string, unknown>[];
   reports: Record<string, unknown>[];
@@ -474,7 +462,7 @@ function buildHtmlIndex(d: DossierData): string {
   </table>`}
 
   <h2 style="margin-top:48px;color:#888;font-size:14px;border-bottom:1px solid #2a2a2a">Rohdaten</h2>
-  <div class="note">Alle Daten zusätzlich als JSON: <code>profile.json</code>, <code>compensation.json</code>, <code>jobs.json</code>, <code>assignments.json</code>, <code>appointments.json</code>, <code>time_entries.json</code>, <code>service_reports.json</code>, <code>notifications.json</code>, <code>wage_documents.json</code>, <code>uploaded_documents.json</code>.</div>
+  <div class="note">Alle Daten zusätzlich als JSON: <code>profile.json</code>, <code>compensation.json</code>, <code>jobs.json</code>, <code>appointments.json</code>, <code>time_entries.json</code>, <code>service_reports.json</code>, <code>notifications.json</code>, <code>wage_documents.json</code>, <code>uploaded_documents.json</code>.</div>
 </body>
 </html>`;
 }

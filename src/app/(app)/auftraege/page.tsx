@@ -33,7 +33,7 @@ const ACTIVE_PAGE_SIZE = 30;
 // Location wird mit dem Verwaltungs-Kunden gejoint, sodass Standort-Auftraege
 // (jobs.customer_id = null) trotzdem einen Kundennamen anzeigen koennen.
 // Room wird ebenfalls gejoint fuer extern-Auftraege mit bekanntem Raum.
-const JOBS_SELECT = "*, customer:customers(name, email), location:locations(name, customer:customers(id, name)), room:rooms(id, name), project_lead_id, assignments:job_assignments(profile_id), appointments:job_appointments(id, start_time, assigned_to)";
+const JOBS_SELECT = "*, customer:customers(name, email), location:locations(name, customer:customers(id, name)), room:rooms(id, name), project_lead_id, appointments:job_appointments(id, start_time, assigned_to)";
 import { useRouter } from "next/navigation";
 import { SearchableSelect } from "@/components/searchable-select";
 import { JobNumber } from "@/components/job-number";

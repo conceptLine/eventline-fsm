@@ -38,11 +38,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Termin nicht gefunden" }, { status: 404 });
   }
 
-  // Zugewiesene Techniker laden
-  const { data: assignments } = await supabase
-    .from("job_assignments")
-    .select("*, profile:profiles(full_name, email)")
-    .eq("job_id", job_id);
+  // Zugewiesene Techniker laden: alle die ueber job_appointments einen
+  // Termin auf diesem Job haben (job_assignments wurde 2026-06-17 mit
+  // Migration 164 entfernt — alle Zuweisungen leben jetzt in Terminen).
+  // Dedup auf Profile-Ebene unten in der Mail-Schleife.
+  const { data: apptAssignees } = await supabase
+    .from("job_appointments")
+    .select("profile:profiles!assigned_to(full_name, email)")
+    .eq("job_id", job_id)
+    .not("assigned_to", "is", null);
 
   // Supabase-Joins kommen nominell als Array | Objekt | null. Hier ist die
   // FK 1:1, also nur Single-Object oder null. Inline-Type dokumentiert das.
@@ -214,11 +218,16 @@ export async function POST(request: Request) {
   // ein Auftrag mit 50+ Assignments nicht in einer Aktion 50+ externe Mails
   // ausloest (Resend-Quota + Reputation-Risiko).
   const MAX_RECIPIENTS = 20;
-  if (assignments) {
-    for (const a of assignments as Array<{ profile?: { full_name: string; email: string | null } | null }>) {
+  if (apptAssignees) {
+    const seenEmails = new Set<string>();
+    for (const a of apptAssignees as Array<{ profile?: { full_name: string; email: string | null } | { full_name: string; email: string | null }[] | null }>) {
       if (sentTo.length + failed.length >= MAX_RECIPIENTS) break;
-      const techEmail = a.profile?.email;
-      if (techEmail && techEmail !== projectLead?.email && techEmail !== assignee?.email) {
+      // Supabase liefert join je nach FK-Typ als Single oder Array — beides
+      // normalisieren auf Single (assigned_to ist FK 1:1).
+      const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
+      const techEmail = profile?.email;
+      if (techEmail && !seenEmails.has(techEmail) && techEmail !== projectLead?.email && techEmail !== assignee?.email) {
+        seenEmails.add(techEmail);
         try {
           await resend.emails.send({
             from: "EVENTLINE FSM <noreply@eventline-basel.com>",
@@ -230,7 +239,7 @@ export async function POST(request: Request) {
                   <h2 style="color:white;margin:0;font-size:16px">EVENTLINE GmbH</h2>
                 </div>
                 <div style="background:white;padding:24px;border:1px solid #e5e5e5;border-top:none;border-radius:0 0 12px 12px">
-                  <p style="margin:0 0 12px">Hallo ${a.profile?.full_name ?? ""},</p>
+                  <p style="margin:0 0 12px">Hallo ${profile?.full_name ?? ""},</p>
                   <p style="margin:0 0 16px">Termin-Info für Auftrag <strong>${job.title}</strong>:</p>
                   <div style="background:#f5f5f5;padding:16px;border-radius:8px;border-left:4px solid #ef4444;margin:0 0 16px">
                     <p style="margin:0 0 4px;font-weight:600">${appt.title}</p>

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { JOB_STATUS } from "@/lib/constants";
-import type { JobAssignment, JobAppointment, Profile, Document as DocType, JobStatus, JobDetailWithRelations, ServiceReport } from "@/types";
+import type { JobAppointment, Profile, Document as DocType, JobStatus, JobDetailWithRelations, ServiceReport } from "@/types";
 
 // Rapport mit eingebettetem Creator — wie Supabase-Join es liefert.
 type ReportWithCreator = ServiceReport & {
@@ -46,7 +46,6 @@ export default function AuftragDetailPage() {
   const { can } = usePermissions();
 
   const [job, setJob] = useState<JobDetailWithRelations | null>(null);
-  const [assignments, setAssignments] = useState<JobAssignment[]>([]);
   const [appointments, setAppointments] = useState<JobAppointment[]>([]);
   const [documents, setDocuments] = useState<DocType[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -114,9 +113,8 @@ export default function AuftragDetailPage() {
   }, [autoOpenAppt, id, router]);
 
   async function loadAll() {
-    const [jobRes, assignRes, apptRes, docRes, profRes, repRes, maintRes] = await Promise.all([
+    const [jobRes, apptRes, docRes, profRes, repRes, maintRes] = await Promise.all([
       supabase.from("jobs").select("*, customer:customers(id, name, address_street, address_zip, address_city, bexio_contact_id), location:locations(id, name, address_street, address_zip, address_city, customer:customers(id, name)), room:rooms(id, name, address_street, address_zip, address_city), project_lead:profiles!project_lead_id(full_name), cancelled_by_profile:profiles!cancelled_by(full_name)").eq("id", id).single(),
-      supabase.from("job_assignments").select("*, profile:profiles(full_name, role)").eq("job_id", id),
       supabase.from("job_appointments").select("*, assignee:profiles!assigned_to(full_name)").eq("job_id", id).order("start_time"),
       supabase.from("documents").select("*").eq("job_id", id).order("created_at", { ascending: false }),
       // Nur die Felder die das Form/Dropdown wirklich braucht — Profil-Listen
@@ -147,7 +145,6 @@ export default function AuftragDetailPage() {
       setNotesText(initial);
       setSavedText(initial);
     }
-    if (assignRes.data) setAssignments(assignRes.data as unknown as JobAssignment[]);
     if (apptRes.data) setAppointments(apptRes.data as unknown as JobAppointment[]);
     if (docRes.data) setDocuments(docRes.data as DocType[]);
     if (profRes.data) setProfiles(profRes.data as Profile[]);

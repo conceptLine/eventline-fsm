@@ -150,11 +150,12 @@ export default function HeutePage() {
           .select("clock_in, clock_out")
           .eq("user_id", user.id)
           .not("clock_out", "is", null),
-        // Aktive Auftraege via job_assignments
+        // Aktive Auftraege via job_appointments (= Termine des Mitarbeiters).
+        // Set dedupliziert weiter unten falls mehrere Termine pro Job.
         supabase
-          .from("job_assignments")
+          .from("job_appointments")
           .select("job:jobs(id, status, is_deleted)")
-          .eq("profile_id", user.id),
+          .eq("assigned_to", user.id),
         // Aktive Auftraege bei denen ich Project-Lead bin
         supabase
           .from("jobs")

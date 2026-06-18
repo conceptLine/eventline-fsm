@@ -12,9 +12,9 @@
  *
  *  2. User-Token (profiles.calendar_feed_token) — persoenlicher Feed.
  *     Mappt zurueck auf den User und zeigt nur was er auch in der App
- *     sieht: Auftraege in denen er Project-Lead oder via job_assignments
- *     dabei ist, plus Termine bei denen er assigned_to ist ODER auf
- *     einem Auftrag wo er drauf ist. Admins als User sehen alles.
+ *     sieht: Auftraege in denen er Project-Lead oder via job_appointments
+ *     (= Termine) dabei ist, plus Termine bei denen er assigned_to ist
+ *     ODER auf einem Auftrag wo er drauf ist. Admins als User sehen alles.
  *
  * Lookup-Reihenfolge: erst Firma-Token (eine Row, schneller Hit/Miss),
  * dann User-Token. Kein 401 leakt welcher Typ einen Treffer haette.
@@ -91,12 +91,14 @@ export async function GET(request: NextRequest) {
   // Welche Job-IDs darf der User sehen?
   // - Admin: alle nicht-geloeschten, nicht-stornierten
   // - Mitarbeiter: alle bei denen er project_lead_id ist ODER via
-  //   job_assignments verknuepft.
+  //   job_appointments (= Termine) verknuepft. job_assignments wurde
+  //   mit Migration 164 entfernt; Zuweisungen leben nur noch in
+  //   Terminen.
   let allowedJobIds: Set<string> | null = null;
   if (!isAdmin) {
     const [{ data: leadJobs }, { data: assignedJobs }] = await Promise.all([
       supabase.from("jobs").select("id").eq("project_lead_id", userId).neq("is_deleted", true),
-      supabase.from("job_assignments").select("job_id").eq("profile_id", userId),
+      supabase.from("job_appointments").select("job_id").eq("assigned_to", userId),
     ]);
     allowedJobIds = new Set<string>();
     for (const j of leadJobs ?? []) allowedJobIds.add(j.id);

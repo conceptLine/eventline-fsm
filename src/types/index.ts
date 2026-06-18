@@ -157,7 +157,6 @@ export interface Job {
   customer?: Customer;
   location?: Location;
   room?: Room;
-  assignments?: JobAssignment[];
   project_lead?: Profile;
   appointments?: JobAppointment[];
   cancelled_by_profile?: { full_name: string };
@@ -241,16 +240,6 @@ export interface JobAppointment {
   assignee?: Profile;
 }
 
-export interface JobAssignment {
-  id: string;
-  job_id: string;
-  profile_id: string;
-  role_on_job: string;
-  notes: string | null;
-  created_at: string;
-  // Joined
-  profile?: Profile;
-}
 
 export interface ServiceReport {
   id: string;
