@@ -13,7 +13,7 @@
 // Module die keine Action-Granularitaet haben (Kalender, HR, Vertrieb,
 // Einstellungen): nur "view". Wer diese Module sieht, sieht alles drin.
 
-export type PermissionAction = "view" | "create" | "edit" | "archive" | "delete" | "manage" | "approve";
+export type PermissionAction = "view" | "create" | "edit" | "archive" | "delete" | "manage" | "approve" | "see-all" | "edit-all";
 
 export interface PermissionModule {
   slug: string;
@@ -29,7 +29,10 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   // Ist auch fuer Termine im Auftrag-Detail relevant (gleiche Permission).
   { slug: "kalender",      label: "Kalender",      paths: ["/kalender"],                                         actions: ["view", "create", "edit", "delete"] },
   // Operationen → Aufträge (Begriff aus der Sidebar, statt "Operations").
-  { slug: "auftraege",     label: "Aufträge",      paths: ["/auftraege"],                                        actions: ["view", "create", "edit", "delete"] },
+  // 'see-all' ist die ehemalige Lead-Funktion: sieht alle Auftraege,
+  // nicht nur eigene (=via job_appointments zugewiesene). Steuert
+  // is_admin_or_lead() in der DB.
+  { slug: "auftraege",     label: "Aufträge",      paths: ["/auftraege"],                                        actions: ["view", "create", "edit", "delete", "see-all"] },
   // Abrechnung — abgeschlossene Auftraege als "Rechnung gestellt" markieren.
   // view = /abrechnung-Seite sehen; edit = "Rechnung gestellt"-Button druecken.
   { slug: "abrechnung",    label: "Abrechnung",    paths: ["/abrechnung"],                                       actions: ["view", "edit"] },
@@ -39,10 +42,12 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { slug: "kunden",        label: "Kunden",        paths: ["/kunden"],                                           actions: ["view", "create", "edit", "archive", "delete"] },
   { slug: "lieferanten",   label: "Lieferanten",   paths: ["/lieferanten"],                                      actions: ["view", "create", "edit", "delete"] },
   // Todos sind personal (RLS ueber created_by/assigned_to). Permissions
-  // gaten nur den UI-Pfad: view = Sidebar+Page, create = Anlegen-Button.
-  // Edit/Delete eigener Todos ist immer erlaubt (RLS-Owner) — daher nicht
-  // in der Matrix als Toggle, sonst missverstaendlich.
-  { slug: "todos",         label: "Todos",         paths: ["/todos"],                                            actions: ["view", "create"] },
+  // gaten den UI-Pfad: view = Sidebar+Page, create = Anlegen-Button.
+  // Edit/Delete eigener Todos ist immer erlaubt (RLS-Owner) — daher
+  // nicht als Toggle, sonst missverstaendlich.
+  // see-all / edit-all heben den Owner-Lock auf: sieht/bearbeitet
+  // Todos aller Mitarbeiter (z.B. fuer Team-Leitung).
+  { slug: "todos",         label: "Todos",         paths: ["/todos"],                                            actions: ["view", "create", "see-all", "edit-all"] },
   // HR-Hub-Sammelseite (zeigt nur Karten — Sub-Pfade haben eigene Module).
   { slug: "hr",            label: "HR-Hub",        paths: ["/hr"],                                               actions: ["view"] },
   // Loehne — Pro-Mitarbeiter-Saetze (Brutto + Arbeitgeber-Anteil) pflegen.
@@ -53,13 +58,15 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { slug: "lohn",          label: "Löhne",         paths: [],                                                    actions: ["manage"] },
   // Stempelzeiten als eigenes Modul — User mit hr:view aber nicht
   // stempelzeiten:view kann den HR-Hub sehen, aber nicht die Stempel-Liste.
-  { slug: "stempelzeiten", label: "Stempelzeiten", paths: ["/stempelzeiten"],                                    actions: ["view"] },
+  // see-all / edit-all heben den Owner-Lock auf der time_entries-Tabelle
+  // auf — fuer HR-Verantwortliche die alle Stempelzeiten korrigieren.
+  { slug: "stempelzeiten", label: "Stempelzeiten", paths: ["/stempelzeiten"],                                    actions: ["view", "see-all", "edit-all"] },
   { slug: "tickets",       label: "Tickets",       paths: ["/tickets"],                                          actions: ["view", "create", "manage"] },
   { slug: "einstellungen", label: "Einstellungen", paths: ["/einstellungen"],                                    actions: ["view"] },
-  // Ferien: Mitarbeiter sehen + beantragen ihre eigenen via RLS
-  // (kein view-Slug noetig). approve = Admin/Genehmiger genehmigt
-  // oder lehnt ab. /ferien Pfad fuer alle authenticated User offen.
-  { slug: "ferien",        label: "Ferien",        paths: ["/ferien"],                                           actions: ["view", "approve"] },
+  // Ferien: Mitarbeiter beantragen ihre eigenen via RLS (user_id),
+  // brauchen keine view-Permission — Seite ist always-allowed.
+  // approve = Admin/Genehmiger genehmigt oder lehnt ab.
+  { slug: "ferien",        label: "Ferien",        paths: [],                                                    actions: ["approve"] },
   // Buero-Anwesenheit — Dashboard-Widget Wochen-Grid: wer ist welchen Tag
   // im Buero. Nur view (= sieht das Grid UND kann sich selbst eintragen);
   // keine separate edit-Action, da die Aktion (Toggle der eigenen Zeile)
@@ -90,7 +97,7 @@ export const PARTNER_PERMISSION_MODULES: PermissionModule[] = [
  *  - /dashboard: Startseite, jeder soll dort landen koennen
  *  - /mein-konto: User-Self-Service (Profil, Benachrichtigungen, Dokumente, Kalender;
  *                 Admin-Space-Tab nur sichtbar fuer role='admin') */
-const ALWAYS_ALLOWED_PREFIXES = ["/dashboard", "/mein-konto"];
+const ALWAYS_ALLOWED_PREFIXES = ["/dashboard", "/mein-konto", "/ferien"];
 
 /** Pfade die strikt nur fuer role='admin' sind — Sidebar blendet sie fuer
  *  alle anderen aus, isPathAllowed liefert false (-> /dashboard-Redirect

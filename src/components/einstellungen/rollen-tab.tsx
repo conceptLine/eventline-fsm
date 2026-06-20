@@ -47,9 +47,11 @@ const ACTION_LABELS: Record<PermissionAction, string> = {
   delete: "Löschen",
   manage: "Verwalten",
   approve: "Genehmigen",
+  "see-all": "Alle sehen",
+  "edit-all": "Alle bearbeiten",
 };
 
-const ACTION_COLUMNS: PermissionAction[] = ["view", "create", "edit", "archive", "delete", "approve"];
+const ACTION_COLUMNS: PermissionAction[] = ["view", "create", "edit", "archive", "delete", "approve", "manage", "see-all", "edit-all"];
 
 // Visuelles Toggle-Cell: aktive Permission = rotes X im Cell, sonst leer.
 // `onToggle` fehlt bei locked-Rollen (Admin) damit die Cells nicht klickbar sind.
@@ -287,7 +289,10 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
                           label={`${mod.label} ${ACTION_LABELS[a]}`}
                         />
                       ) : (
-                        <span className="text-muted-foreground/40">—</span>
+                        <span
+                          className="text-muted-foreground/40"
+                          data-tooltip={`'${ACTION_LABELS[a]}' gibt es im Bereich '${mod.label}' nicht.`}
+                        >—</span>
                       )}
                     </td>
                   );
@@ -413,11 +418,33 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
 
                 {isOpen && (
                   <CardContent className="px-4 pt-0 pb-4 space-y-4 border-t border-border">
-                    <div className="pt-3 text-[11px] text-muted-foreground italic">
-                      Rotes X = erlaubt. Klick auf eine Zelle setzt oder entfernt die Berechtigung.
-                    </div>
-                    {renderModuleMatrix(role.slug, currentPerms, locked, (perm) => togglePermission(role.slug, perm))}
-                    {renderFeatureGrid(currentPerms, locked, (perm) => togglePermission(role.slug, perm))}
+                    {locked ? (
+                      // Admin-Rolle: Matrix zeigen ist sinnlos (kann nicht geaendert
+                      // werden). Stattdessen eine kurze Erklaerung.
+                      <div className="pt-3">
+                        <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/5">
+                          <Lock className="h-4 w-4 text-blue-600 dark:text-blue-300 mt-0.5 shrink-0" />
+                          <div className="text-xs space-y-1">
+                            <p className="font-medium">Admin hat per Definition alle Rechte.</p>
+                            <p className="text-muted-foreground">
+                              Diese Rolle ist System-geschützt und kann nicht editiert oder
+                              gelöscht werden — sonst könntest du dich selbst aussperren.
+                              Wenn du jemandem nur einen Teil der Admin-Funktionen geben
+                              willst, lege eine neue Rolle an.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="pt-3 text-[11px] text-muted-foreground italic">
+                          Rotes X = erlaubt. Klick auf eine Zelle setzt oder entfernt die Berechtigung.
+                          „—" = Aktion ist im jeweiligen Bereich nicht möglich.
+                        </div>
+                        {renderModuleMatrix(role.slug, currentPerms, locked, (perm) => togglePermission(role.slug, perm))}
+                        {renderFeatureGrid(currentPerms, locked, (perm) => togglePermission(role.slug, perm))}
+                      </>
+                    )}
                   </CardContent>
                 )}
               </Card>
