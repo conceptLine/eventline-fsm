@@ -465,7 +465,7 @@ function BvgForecastCell({ chf, threshold, firstCol }: { chf: number; threshold:
           : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300";
   const tooltip = empty
     ? "Keine geplanten Termine in diesem Monat"
-    : `${CHF.format(chf)} / ${CHF.format(threshold)} CHF (${pct}%)${status === "crit" ? " — BVG-Pflicht droht" : ""}`;
+    : `${CHF.format(chf)} / ${CHF.format(threshold)} CHF (${pct}%) — Formel: IST-Brutto + geplante Termine × 1.20 (20% Puffer)${status === "crit" ? " · BVG-Pflicht droht" : ""}`;
   return (
     <div className={`text-center ${firstCol ? "border-l border-border pl-2" : ""}`}>
       <span

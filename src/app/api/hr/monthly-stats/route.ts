@@ -337,17 +337,37 @@ export async function GET(req: Request) {
       bvgForecast3Months = [0, 0, 0];
     } else {
       bvgForecast3Months = [];
+      // BVG-Forecast-Formel:
+      //   Monat 0 (laufend): IST-Brutto (aus Stempelzeiten, schon inkl.
+      //     Zuschlag) + (zukuenftig geplante Termine × Lohn × 1.20).
+      //     Der 1.20-Faktor ist ein 20%-Puffer auf die geplanten Stunden,
+      //     fuer ungeplante Verlaengerungen / spontan dazukommende Schichten.
+      //   Monat +1, +2: vollstaendig geplant × 1.20 (selbe Puffer-Logik).
+      //
       // Cumulative-counter: nach Forecast-Monat 0 die geplanten Naechte/
       // Sonntage als 'gezaehlt' uebernehmen damit Monat 1 die laufende
       // Summe sieht. Gleiches fuer Monat 1 -> 2.
+      const PUFFER_FAKTOR = 1.20;
+      const nowIso = new Date().toISOString();
       let runningNight = ytdNightSoFar;
       let runningSunhol = ytdSunholSoFar;
-      for (const m of FORECAST_MONTHS) {
-        const f = calculateForecast(myAppts, wage, m.start, m.end, {
+      for (let mi = 0; mi < FORECAST_MONTHS.length; mi++) {
+        const m = FORECAST_MONTHS[mi];
+        const isCurrentMonth = mi === 0;
+        // Im laufenden Monat: nur FUTURE-Termine als Plan-Forecast;
+        // im naechsten/uebernaechsten Monat: alle Termine im Monat.
+        const planAppts = isCurrentMonth
+          ? myAppts.filter((a) => a.start_time >= nowIso)
+          : myAppts;
+        const f = calculateForecast(planAppts, wage, m.start, m.end, {
           ytdNightDaysBefore: runningNight,
           ytdSunholDaysBefore: runningSunhol,
         });
-        bvgForecast3Months.push(f.total_chf);
+        const planBruttoMitPuffer = f.total_chf * PUFFER_FAKTOR;
+        const total = isCurrentMonth
+          ? (lohnkostenWithSurcharge ?? 0) + planBruttoMitPuffer
+          : planBruttoMitPuffer;
+        bvgForecast3Months.push(total);
         // Counter fuer naechsten Monat hochziehen — sowohl eligible als
         // auch over-limit Naechte/Sonntage zaehlen fuer's Limit.
         // Wir brauchen die Tage-Counts, nicht Minuten — naehern mit
