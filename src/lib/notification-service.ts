@@ -431,6 +431,29 @@ export async function notifyStempelReminder(
   });
 }
 
+// --- VERTRIEB ------------------------------------------------
+
+export async function notifyVertriebWiedervorlage(
+  client: SupabaseClient,
+  args: BaseArgs & {
+    leadId: string;
+    leadNr: number;
+    firma: string;
+    note: string | null;
+  },
+) {
+  const msg = args.note
+    ? `Wiedervorlage faellig fuer ${args.firma}: ${args.note}`
+    : `Wiedervorlage faellig fuer ${args.firma}`;
+  await deliver(client, args.recipients, "vertrieb_wiedervorlage", {
+    title: `Vertrieb: ${args.firma}`,
+    message: msg,
+    link: `/vertrieb/${args.leadId}`,
+    resource_type: "vertrieb_lead",
+    resource_id: args.leadId,
+  });
+}
+
 // --- SYSTEM (fallback) ---------------------------------------
 
 export async function notifySystem(

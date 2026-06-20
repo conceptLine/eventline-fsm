@@ -13,7 +13,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Search, Flame, AlertTriangle, PartyPopper } from "lucide-react";
+import { Search, Flame, AlertTriangle, PartyPopper, Moon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { LeadRow } from "./lead-row";
 import { LegendButton } from "@/components/vertrieb/legend-button";
@@ -33,6 +33,7 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
   const [filterHot, setFilterHot] = useState(false);
   const [filterStale, setFilterStale] = useState(false);
   const [filterSoon, setFilterSoon] = useState(false);
+  const [showSnoozed, setShowSnoozed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const nowMs = Date.now();
 
@@ -45,6 +46,13 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
       // fremde Zuweisungen anschauen.
       .filter((c) => !c.assigned_to)
       .filter((c) => c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen")
+      // Snoozed-Leads aus der aktiven Sicht ausblenden (Inbox-Pattern) —
+      // koennen via Filter wieder eingeblendet werden.
+      .filter((c) => {
+        if (showSnoozed) return true;
+        if (!c.wiedervorlage_snoozed || !c.wiedervorlage_am) return true;
+        return new Date(c.wiedervorlage_am).getTime() <= nowMs;
+      })
       .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
       .filter((c) => !filterHot || c.prioritaet === "top")
       .filter((c) => !filterStale || detectLeadAnomaly(c, nowMs).stale)
@@ -63,7 +71,19 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
         if (bd === null) return -1;
         return bd - ad; // groesserer days-Wert = aelter = oben
       });
-  }, [contacts, search, filterHot, filterStale, filterSoon, nowMs]);
+  }, [contacts, search, filterHot, filterStale, filterSoon, showSnoozed, nowMs]);
+
+  // Wieviele Leads sind aktuell snoozed? Fuer den Filter-Counter.
+  const snoozedCount = useMemo(
+    () => contacts.filter((c) =>
+      !c.assigned_to
+      && c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen"
+      && c.wiedervorlage_snoozed
+      && c.wiedervorlage_am
+      && new Date(c.wiedervorlage_am).getTime() > nowMs
+    ).length,
+    [contacts, nowMs],
+  );
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -103,6 +123,14 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
           <FilterChip icon={Flame} label="Hot" active={filterHot} onClick={() => setFilterHot((v) => !v)} />
           <FilterChip icon={AlertTriangle} label="Stale" active={filterStale} onClick={() => setFilterStale((v) => !v)} />
           <FilterChip icon={PartyPopper} label="Bald" active={filterSoon} onClick={() => setFilterSoon((v) => !v)} />
+          {snoozedCount > 0 && (
+            <FilterChip
+              icon={Moon}
+              label={`Snoozed (${snoozedCount})`}
+              active={showSnoozed}
+              onClick={() => setShowSnoozed((v) => !v)}
+            />
+          )}
         </div>
       </div>
 

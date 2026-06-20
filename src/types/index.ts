@@ -367,6 +367,15 @@ export interface VertriebContact {
   /** Profil-ID des zustaendigen Sales-Mitarbeiters (Leo oder Mischa).
    *  Null wenn noch nicht zugewiesen. */
   assigned_to: string | null;
+  /** Wiedervorlage-Konzept (Migration 169):
+   *  wiedervorlage_am = wann den Lead wieder anfassen.
+   *  wiedervorlage_note = warum (optional, kurz).
+   *  wiedervorlage_snoozed = true wenn Lead bis dahin aus aktiver Liste
+   *    ausgeblendet werden soll. Bei Faelligkeit setzt der Cron snoozed
+   *    auto auf false und feuert die Benachrichtigung. */
+  wiedervorlage_am: string | null;
+  wiedervorlage_note: string | null;
+  wiedervorlage_snoozed: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -560,6 +569,7 @@ export type NotificationType =
   | "appointment_new"
   | "todo_assigned"
   | "stempel_reminder"
+  | "vertrieb_wiedervorlage"
   | "system";
 
 export interface Notification {

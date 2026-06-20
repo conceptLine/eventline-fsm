@@ -20,7 +20,7 @@ import { useMemo, useState } from "react";
 import { LeadRow } from "./lead-row";
 import { SearchableSelect } from "@/components/searchable-select";
 import { Input } from "@/components/ui/input";
-import { Inbox, Search } from "lucide-react";
+import { Inbox, Search, Moon } from "lucide-react";
 import type { VertriebContact } from "@/types";
 import { daysSinceLastTouch } from "@/lib/vertrieb-anomaly";
 
@@ -45,6 +45,7 @@ export function PersonalColumn({
 }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const [search, setSearch] = useState("");
+  const [showSnoozed, setShowSnoozed] = useState(false);
   const nowMs = Date.now();
 
   const filtered = useMemo(() => {
@@ -52,7 +53,18 @@ export function PersonalColumn({
     return contacts
       .filter((c) => c.assigned_to === viewedUserId && c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen")
       .filter((c) => !q || c.firma.toLowerCase().includes(q) || (c.ansprechperson || "").toLowerCase().includes(q))
+      // Snoozed-Leads aus der aktiven Sicht ausblenden — koennen via
+      // 'Snoozed'-Filter (siehe Header) wieder eingeblendet werden.
+      .filter((c) => {
+        if (showSnoozed) return true;
+        if (!c.wiedervorlage_snoozed || !c.wiedervorlage_am) return true;
+        return new Date(c.wiedervorlage_am).getTime() <= nowMs;
+      })
       .sort((a, b) => {
+        // Ueberfaellige Wiedervorlagen zuerst (kritischer als Aging).
+        const aOver = a.wiedervorlage_am && new Date(a.wiedervorlage_am).getTime() <= nowMs;
+        const bOver = b.wiedervorlage_am && new Date(b.wiedervorlage_am).getTime() <= nowMs;
+        if (aOver !== bOver) return aOver ? -1 : 1;
         const ad = daysSinceLastTouch(a, nowMs);
         const bd = daysSinceLastTouch(b, nowMs);
         if (ad === null && bd === null) return 0;
@@ -60,7 +72,18 @@ export function PersonalColumn({
         if (bd === null) return -1;
         return bd - ad;
       });
-  }, [contacts, viewedUserId, nowMs, search]);
+  }, [contacts, viewedUserId, nowMs, search, showSnoozed]);
+
+  const snoozedCount = useMemo(
+    () => contacts.filter((c) =>
+      c.assigned_to === viewedUserId
+      && c.status !== "gewonnen" && c.status !== "abgesagt" && c.status !== "verworfen"
+      && c.wiedervorlage_snoozed
+      && c.wiedervorlage_am
+      && new Date(c.wiedervorlage_am).getTime() > nowMs
+    ).length,
+    [contacts, viewedUserId, nowMs],
+  );
 
   const viewedName = salesPeople.find((s) => s.id === viewedUserId)?.full_name ?? "Mich";
 
@@ -101,6 +124,19 @@ export function PersonalColumn({
             placeholder="Suche…" className="pl-7 h-8 text-xs"
           />
         </div>
+        {snoozedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowSnoozed((v) => !v)}
+            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+              showSnoozed
+                ? "border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                : "border-border text-muted-foreground hover:bg-muted/40"
+            }`}
+          >
+            <Moon className="h-2.5 w-2.5" />Snoozed ({snoozedCount})
+          </button>
+        )}
         {/* Person-Switcher fuer Admins. Nicht-Admins sehen fix die eigene. */}
         {isAdmin && peopleOptions.length > 1 && (
           <SearchableSelect

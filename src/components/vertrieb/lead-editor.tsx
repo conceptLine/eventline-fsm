@@ -34,6 +34,7 @@ import { VerbesserungModalBody } from "@/components/vertrieb/verbesserung-modal-
 import { LostModalBody } from "@/components/vertrieb/lost-modal-body";
 import { LeadForm } from "@/components/vertrieb/lead-form";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { WiedervorlageBlock } from "@/components/vertrieb/wiedervorlage-block";
 import type { VertriebContact, VertriebStatus, VertriebPriority } from "@/types";
 
 interface Props {
@@ -543,6 +544,14 @@ export function LeadEditor({ contactId, onClose }: Props) {
         <ArrowLeft className="h-3.5 w-3.5" />
         Vertriebs-Liste
       </button>
+
+      <WiedervorlageBlock
+        contactId={contact.id}
+        wiedervorlageAm={contact.wiedervorlage_am}
+        wiedervorlageNote={contact.wiedervorlage_note}
+        snoozed={contact.wiedervorlage_snoozed}
+        onChange={load}
+      />
 
       <LeadForm
         editingId={contact.id}

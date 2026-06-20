@@ -12,7 +12,7 @@
  */
 
 import { Card } from "@/components/ui/card";
-import { PartyPopper, AlertTriangle, Flame } from "lucide-react";
+import { PartyPopper, AlertTriangle, Flame, Bell, Clock, Moon } from "lucide-react";
 import type { VertriebContact } from "@/types";
 import { STATUS_OPTIONS, STEPS } from "@/app/(app)/vertrieb/constants";
 import { detectLeadAnomaly, hasAnomaly, daysSinceLastTouch, parseEventStart } from "@/lib/vertrieb-anomaly";
@@ -35,6 +35,16 @@ export function LeadRow({ contact: c, selected, onClick, draggable = true }: Pro
   const eventStart = parseEventStart(c);
   const isHot = c.prioritaet === "top";
 
+  // Wiedervorlage-State: ueberfaellig (rot), snoozed (lila), faellig-bald
+  // (orange). Markiert die Karte deutlich am linken Rand.
+  const wvAm = c.wiedervorlage_am ? new Date(c.wiedervorlage_am).getTime() : null;
+  const wvOverdue = wvAm != null && wvAm <= nowMs;
+  const wvDueSoon = wvAm != null && !wvOverdue && wvAm <= nowMs + 24 * 60 * 60 * 1000;
+  const wvSnoozed = c.wiedervorlage_snoozed && wvAm != null && wvAm > nowMs;
+  const wvLabel = wvAm
+    ? new Date(wvAm).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" })
+    : null;
+
   return (
     <Card
       onClick={() => onClick?.(c)}
@@ -47,7 +57,13 @@ export function LeadRow({ contact: c, selected, onClick, draggable = true }: Pro
       className={`p-2 cursor-pointer transition-colors group relative ${
         selected
           ? "bg-red-50 border-red-300 dark:bg-red-500/15 dark:border-red-500/40"
-          : "bg-card hover:bg-muted/30"
+          : wvOverdue
+            ? "bg-card border-red-500/60 ring-1 ring-red-500/30 hover:bg-muted/30"
+            : wvDueSoon
+              ? "bg-card border-amber-500/40 hover:bg-muted/30"
+              : wvSnoozed
+                ? "bg-card border-purple-500/30 opacity-70 hover:bg-muted/30 hover:opacity-100"
+                : "bg-card hover:bg-muted/30"
       } ${draggable ? "active:cursor-grabbing" : ""}`}
     >
       <div className="flex items-start gap-2 min-w-0">
@@ -75,6 +91,26 @@ export function LeadRow({ contact: c, selected, onClick, draggable = true }: Pro
               <span className="inline-flex items-center gap-0.5 text-purple-600 dark:text-purple-400">
                 <PartyPopper className="h-2 w-2" />
                 {eventStart.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit" })}
+              </span>
+            )}
+            {wvOverdue && (
+              <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-300 font-semibold" data-tooltip={c.wiedervorlage_note ?? "Wiedervorlage überfällig"}>
+                <AlertTriangle className="h-2.5 w-2.5" />{wvLabel}
+              </span>
+            )}
+            {wvDueSoon && (
+              <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-300" data-tooltip={c.wiedervorlage_note ?? "Wiedervorlage bald fällig"}>
+                <Clock className="h-2.5 w-2.5" />{wvLabel}
+              </span>
+            )}
+            {wvSnoozed && (
+              <span className="inline-flex items-center gap-0.5 text-purple-600 dark:text-purple-300" data-tooltip={`Snooze bis ${wvLabel}`}>
+                <Moon className="h-2.5 w-2.5" />bis {wvLabel}
+              </span>
+            )}
+            {!wvOverdue && !wvDueSoon && !wvSnoozed && wvLabel && (
+              <span className="inline-flex items-center gap-0.5 text-foreground/60" data-tooltip={c.wiedervorlage_note ?? "Wiedervorlage geplant"}>
+                <Bell className="h-2.5 w-2.5" />{wvLabel}
               </span>
             )}
           </div>
