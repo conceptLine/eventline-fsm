@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { allKnownPermissions } from "@/lib/permissions";
+import { logPermissionAudit } from "@/lib/permission-audit";
 
 export async function PATCH(
   request: Request,
@@ -39,8 +40,21 @@ export async function PATCH(
   }
 
   const admin = createAdminClient();
+  // Vorher-Zustand fuer Audit-Diff laden.
+  const { data: before } = await admin
+    .from("roles")
+    .select("label, permissions")
+    .eq("slug", slug)
+    .maybeSingle();
   const { error } = await admin.from("roles").update(update).eq("slug", slug);
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+
+  await logPermissionAudit({
+    actor_profile_id: auth.user.id,
+    action: "role.updated",
+    target_role_slug: slug,
+    details: { before: before ?? null, changes: update },
+  });
   return NextResponse.json({ success: true });
 }
 
@@ -69,7 +83,19 @@ export async function DELETE(
     }, { status: 400 });
   }
 
+  const { data: before } = await admin
+    .from("roles")
+    .select("label, permissions")
+    .eq("slug", slug)
+    .maybeSingle();
   const { error } = await admin.from("roles").delete().eq("slug", slug);
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+
+  await logPermissionAudit({
+    actor_profile_id: auth.user.id,
+    action: "role.deleted",
+    target_role_slug: slug,
+    details: { before: before ?? null },
+  });
   return NextResponse.json({ success: true });
 }

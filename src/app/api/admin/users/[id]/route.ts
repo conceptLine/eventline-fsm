@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { logError } from "@/lib/log";
+import { logPermissionAudit } from "@/lib/permission-audit";
 
 export async function PATCH(
   request: Request,
@@ -78,10 +79,26 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: "Keine Aenderungen" }, { status: 400 });
   }
 
+  // Vorherigen Profile-Stand laden — Audit-Diff fuer Rollen-Wechsel.
+  const { data: before } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", id)
+    .maybeSingle();
   const { error: profErr } = await admin.from("profiles").update(update).eq("id", id);
   if (profErr) {
     logError("admin.users.update.profile", profErr, { userId: id });
     return NextResponse.json({ success: false, error: "Update fehlgeschlagen" }, { status: 500 });
+  }
+
+  // Audit-Log nur fuer Rollen-Aenderungen (sicherheitsrelevant).
+  if (typeof update.role === "string" && before?.role !== update.role) {
+    await logPermissionAudit({
+      actor_profile_id: auth.user.id,
+      action: "user.role_changed",
+      target_profile_id: id,
+      details: { from: before?.role ?? null, to: update.role },
+    });
   }
 
   // Wenn is_active=false: Auth-User bannen damit Login nicht mehr geht.

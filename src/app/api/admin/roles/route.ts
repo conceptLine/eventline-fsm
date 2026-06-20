@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { allKnownPermissions } from "@/lib/permissions";
+import { logPermissionAudit } from "@/lib/permission-audit";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -56,5 +57,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
+  await logPermissionAudit({
+    actor_profile_id: auth.user.id,
+    action: "role.created",
+    target_role_slug: slug,
+    details: { label, permissions },
+  });
   return NextResponse.json({ success: true, slug });
 }

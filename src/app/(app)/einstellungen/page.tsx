@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { IntegrationenTab } from "@/components/einstellungen/integrationen-tab";
 import { TeamTab } from "@/components/einstellungen/team-tab";
 import { RollenTab } from "@/components/einstellungen/rollen-tab";
+import { PermissionAuditLogCard } from "@/components/einstellungen/permission-audit-log";
 import { AktivitaetTab } from "@/components/einstellungen/aktivitaet-tab";
 import { PartnerTab } from "@/components/einstellungen/partner-tab";
 import { PartnerFormTab } from "@/components/einstellungen/partner-form-tab";
@@ -183,7 +184,12 @@ export default function EinstellungenPage() {
 
       {tab === "partner" && isAdmin && <PartnerTab />}
 
-      {tab === "rollen" && isAdmin && <RollenTab scope="firma" />}
+      {tab === "rollen" && isAdmin && (
+        <div className="space-y-6">
+          <RollenTab scope="firma" />
+          <PermissionAuditLogCard />
+        </div>
+      )}
 
       {tab === "partner-rollen" && isAdmin && <RollenTab scope="partner" />}
 

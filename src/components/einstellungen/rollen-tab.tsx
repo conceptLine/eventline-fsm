@@ -51,7 +51,13 @@ const ACTION_LABELS: Record<PermissionAction, string> = {
   "edit-all": "Alle bearbeiten",
 };
 
-const ACTION_COLUMNS: PermissionAction[] = ["view", "create", "edit", "archive", "delete", "approve", "manage", "see-all", "edit-all"];
+// Spalten gruppiert: Standard-CRUD vs. erweiterte/Spezial-Permissions.
+// Visuell durch einen Trennstrich in der Matrix unterschieden, damit
+// klar ist dass z.B. 'Alle sehen' oder 'Genehmigen' nicht in jedem
+// Bereich existieren — sondern bewusst nur dort wo angeboten.
+const STANDARD_ACTIONS: PermissionAction[] = ["view", "create", "edit", "archive", "delete"];
+const ADVANCED_ACTIONS: PermissionAction[] = ["approve", "manage", "see-all", "edit-all"];
+const ACTION_COLUMNS: PermissionAction[] = [...STANDARD_ACTIONS, ...ADVANCED_ACTIONS];
 
 // Visuelles Toggle-Cell: aktive Permission = rotes X im Cell, sonst leer.
 // `onToggle` fehlt bei locked-Rollen (Admin) damit die Cells nicht klickbar sind.
@@ -243,9 +249,18 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
           <thead>
             <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
               <th className="text-left pb-1 pr-3">Bereich</th>
-              {actionCols.map((a) => (
-                <th key={a} className="text-center pb-1 px-1 w-16">{ACTION_LABELS[a]}</th>
-              ))}
+              {actionCols.map((a, i) => {
+                const isFirstAdvanced = ADVANCED_ACTIONS.includes(a) && (i === 0 || STANDARD_ACTIONS.includes(actionCols[i - 1]));
+                return (
+                  <th
+                    key={a}
+                    className={`text-center pb-1 px-1 w-16 ${isFirstAdvanced ? "border-l border-border" : ""}`}
+                    data-tooltip={ADVANCED_ACTIONS.includes(a) ? "Erweiterte Permission — nur in einzelnen Bereichen verfuegbar." : undefined}
+                  >
+                    {ACTION_LABELS[a]}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -274,13 +289,14 @@ export function RollenTab({ scope = "firma" }: RollenTabProps = {}) {
                     )}
                   </div>
                 </td>
-                {actionCols.map((a) => {
+                {actionCols.map((a, i) => {
                   const supported = mod.actions.includes(a);
                   const perm = `${mod.slug}:${a}`;
                   const active = locked ? supported : currentPerms.includes(perm);
                   const isLast = a === actionCols[actionCols.length - 1];
+                  const isFirstAdvanced = ADVANCED_ACTIONS.includes(a) && (i === 0 || STANDARD_ACTIONS.includes(actionCols[i - 1]));
                   return (
-                    <td key={a} className={`text-center py-1 px-1 ${isLast ? "rounded-r-lg" : ""}`}>
+                    <td key={a} className={`text-center py-1 px-1 ${isLast ? "rounded-r-lg" : ""} ${isFirstAdvanced ? "border-l border-border" : ""}`}>
                       {supported ? (
                         <PermCell
                           active={active}
