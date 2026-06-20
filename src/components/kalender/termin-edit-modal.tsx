@@ -25,7 +25,7 @@ import { useConfirm } from "@/components/ui/use-confirm";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { logError } from "@/lib/log";
-import { Trash2, User } from "lucide-react";
+import { Trash2, User, Mail, Check } from "lucide-react";
 import { toLocalIsoString } from "@/lib/format";
 
 interface Props {
@@ -45,6 +45,9 @@ interface ApptRow {
   job_id: string | null;
   assigned_to: string;
   assignee: { full_name: string } | null;
+  customer_email: string | null;
+  customer_name: string | null;
+  confirmation_sent_at: string | null;
 }
 
 // YYYY-MM-DD im LOKALEN Timezone — gleicher Helper wie in NeuerTerminModal
@@ -77,6 +80,12 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Confirm-Send-State
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confEmail, setConfEmail] = useState("");
+  const [confName, setConfName] = useState("");
+  const [confMessage, setConfMessage] = useState("");
+  const [confSending, setConfSending] = useState(false);
 
   const open = apptId !== null;
 
@@ -87,7 +96,7 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
     (async () => {
       const { data, error } = await supabase
         .from("job_appointments")
-        .select("id, title, start_time, end_time, description, job_id, assigned_to, assignee:profiles!assigned_to(full_name)")
+        .select("id, title, start_time, end_time, description, job_id, assigned_to, customer_email, customer_name, confirmation_sent_at, assignee:profiles!assigned_to(full_name)")
         .eq("id", apptId)
         .maybeSingle();
       if (error || !data) {
@@ -103,9 +112,50 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
       setStartTime(toLocalTime(row.start_time));
       setEndTime(row.end_time ? toLocalTime(row.end_time) : "");
       setDescription(row.description ?? "");
+      setConfEmail(row.customer_email ?? "");
+      setConfName(row.customer_name ?? "");
+      setConfMessage("");
       setLoading(false);
     })();
   }, [apptId, supabase, onClose]);
+
+  async function sendConfirmation() {
+    if (!appt) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(confEmail.trim())) {
+      toast.error("Bitte gueltige Email-Adresse eingeben");
+      return;
+    }
+    setConfSending(true);
+    try {
+      const res = await fetch(`/api/appointments/${appt.id}/send-confirmation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_email: confEmail.trim(),
+          customer_name: confName.trim() || undefined,
+          custom_message: confMessage.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        toast.error(json?.error || "Versand fehlgeschlagen");
+        return;
+      }
+      toast.success(`Bestaetigung an ${confEmail.trim()} gesendet`);
+      // Termin-State im Modal aktualisieren damit die Status-Pille
+      // gleich sichtbar wird ohne Reload.
+      setAppt((prev) => prev ? {
+        ...prev,
+        customer_email: confEmail.trim(),
+        customer_name: confName.trim() || null,
+        confirmation_sent_at: new Date().toISOString(),
+      } : prev);
+      setShowConfirm(false);
+      onChanged();
+    } finally {
+      setConfSending(false);
+    }
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -217,6 +267,36 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
               />
             </div>
 
+            {/* Termin-Bestaetigung an Kunde — auch fuer Termine mit Job
+                erlaubt (manchmal will man Kunde separat informieren ueber
+                eine Begehung etc.). */}
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Bestaetigung an Kunde</span>
+                {appt.confirmation_sent_at && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    <Check className="h-2.5 w-2.5" />gesendet
+                  </span>
+                )}
+              </div>
+              {appt.confirmation_sent_at && (
+                <p className="text-[11px] text-muted-foreground">
+                  Letzter Versand am {new Date(appt.confirmation_sent_at).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {appt.customer_email && <> an <span className="font-medium text-foreground/80">{appt.customer_email}</span></>}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                className="kasten kasten-blue"
+                disabled={saving || deleting}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {appt.confirmation_sent_at ? "Nochmals senden" : "Bestaetigung senden"}
+              </button>
+            </div>
+
             {/* Action-Bar: Loeschen ganz links (destructive, abgesetzt vom
                 primaeren Save-CTA rechts), dazwischen Abbrechen. */}
             <div className="flex items-center gap-2 pt-2">
@@ -241,6 +321,51 @@ export function TerminEditModal({ apptId, onClose, onChanged }: Props) {
           </form>
         )}
       </Modal>
+
+      <Modal
+        open={showConfirm}
+        onClose={() => !confSending && setShowConfirm(false)}
+        title="Bestaetigung an Kunde senden"
+        icon={<Mail className="h-4 w-4 text-blue-600" />}
+        size="md"
+        closable={!confSending}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Sendet eine HTML-Email mit Termin-Datum + Uhrzeit + Titel +
+            Beschreibung an die angegebene Adresse. Email + Name werden
+            am Termin gespeichert (fuer das naechste Mal).
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Email *</label>
+              <Input type="email" value={confEmail} onChange={(e) => setConfEmail(e.target.value)} placeholder="kunde@beispiel.ch" className="mt-1" required disabled={confSending} />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Name (Anrede)</label>
+              <Input value={confName} onChange={(e) => setConfName(e.target.value)} placeholder="Herr Muster" className="mt-1" disabled={confSending} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Persoenliche Nachricht (optional)</label>
+            <textarea
+              value={confMessage}
+              onChange={(e) => setConfMessage(e.target.value)}
+              rows={3}
+              placeholder="z.B. 'Bitte bringen Sie die Plaene mit.'"
+              className="mt-1 w-full px-3 py-2 text-sm rounded-lg border bg-card resize-none"
+              disabled={confSending}
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={() => setShowConfirm(false)} className="kasten kasten-muted flex-1" disabled={confSending}>Abbrechen</button>
+            <button type="button" onClick={sendConfirmation} className="kasten kasten-red flex-1" disabled={confSending}>
+              <Mail className="h-3.5 w-3.5" />{confSending ? "Sendet…" : "Senden"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {ConfirmModalElement}
     </>
   );
