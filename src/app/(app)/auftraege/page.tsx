@@ -22,8 +22,10 @@ import {
   ChevronDown,
   ExternalLink,
   UserPlus,
+  Download,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { Modal } from "@/components/ui/modal";
 
 // Kleinere Page-Size = "Mehr laden" wird sichtbar, schnellerer initial-Load.
 // Beide Listen jetzt server-seitig nach start_date sortiert damit Pagination
@@ -83,6 +85,11 @@ export default function AuftraegePage() {
   const [filterStatus, setFilterStatus] = useState<JobStatus | "all">(() => typeof window !== "undefined" ? (localStorage.getItem("auftraege-status") as JobStatus | "all") || "all" : "all");
   const [filterLocation, setFilterLocation] = useState<"all" | "scala" | "barakuba" | "bau3" | "sonstige">(() => typeof window !== "undefined" ? (localStorage.getItem("auftraege-location") as "all" | "scala" | "barakuba" | "bau3" | "sonstige" | null) || "all" : "all");
   const [showArchive, setShowArchive] = useState(() => typeof window !== "undefined" ? localStorage.getItem("auftraege-archive") === "true" : false);
+  // Rapport-ZIP-Download im Archiv
+  const [showRapportExport, setShowRapportExport] = useState(false);
+  const [exportFrom, setExportFrom] = useState<string>("");
+  const [exportTo, setExportTo] = useState<string>("");
+  const [exportInProgress, setExportInProgress] = useState(false);
   const [loading, setLoading] = useState(true);
   // Inline-Step-Aktion: welche Anfrage-Karte hat aktuell das Mail-Modal offen?
   const [activeStepJobId, setActiveStepJobId] = useState<string | null>(null);
@@ -387,6 +394,28 @@ export default function AuftraegePage() {
             <span className="hidden sm:inline">{showArchive ? "Aktive anzeigen" : `Archiv (${counts.abgeschlossen + counts.storniert})`}</span>
             <span className="sm:hidden">{showArchive ? "Aktiv" : `Archiv (${counts.abgeschlossen + counts.storniert})`}</span>
           </button>
+          {showArchive && can("auftraege:see-all") && (
+            <button
+              onClick={() => {
+                // Default-Range: ganzes letztes Monat (häufigster Buchhaltungs-Use-Case).
+                if (!exportFrom || !exportTo) {
+                  const now = new Date();
+                  const firstThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                  const lastMonthEnd = new Date(firstThisMonth.getTime() - 24 * 60 * 60 * 1000);
+                  const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+                  const pad = (n: number) => String(n).padStart(2, "0");
+                  setExportFrom(`${lastMonthStart.getFullYear()}-${pad(lastMonthStart.getMonth() + 1)}-${pad(lastMonthStart.getDate())}`);
+                  setExportTo(`${lastMonthEnd.getFullYear()}-${pad(lastMonthEnd.getMonth() + 1)}-${pad(lastMonthEnd.getDate())}`);
+                }
+                setShowRapportExport(true);
+              }}
+              className="kasten kasten-blue"
+              data-tooltip="Alle abgeschlossenen Rapporte im Zeitraum als ZIP herunterladen"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Rapporte-ZIP</span>
+            </button>
+          )}
           {!showArchive && can("auftraege:create") && (
             <>
               <Link href="/auftraege/vermietentwurf/neu" className="kasten kasten-purple" data-tooltip="Neuer Vermietentwurf">
@@ -877,6 +906,79 @@ export default function AuftraegePage() {
           />
         );
       })()}
+
+      <Modal
+        open={showRapportExport}
+        onClose={() => !exportInProgress && setShowRapportExport(false)}
+        title="Rapporte als ZIP herunterladen"
+        size="sm"
+        closable={!exportInProgress}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Lädt alle <strong>abgeschlossenen</strong> Rapporte mit Report-Datum im
+            Zeitraum als ZIP herunter. Entwürfe werden ignoriert. Max. 500 Rapporte pro Export.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Von</label>
+              <Input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)} disabled={exportInProgress} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Bis</label>
+              <Input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)} disabled={exportInProgress} className="mt-1" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowRapportExport(false)}
+              className="kasten kasten-muted flex-1"
+              disabled={exportInProgress}
+            >
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!exportFrom || !exportTo) { toast.error("Von/Bis ausfüllen"); return; }
+                if (exportFrom > exportTo) { toast.error("'Von' liegt nach 'Bis'"); return; }
+                setExportInProgress(true);
+                try {
+                  const url = `/api/reports/export-zip?from=${exportFrom}&to=${exportTo}`;
+                  const res = await fetch(url);
+                  if (!res.ok) {
+                    const j = await res.json().catch(() => null);
+                    toast.error(j?.error || `Download fehlgeschlagen (${res.status})`);
+                    return;
+                  }
+                  const blob = await res.blob();
+                  const dlUrl = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = dlUrl;
+                  a.download = `Rapporte_${exportFrom}_bis_${exportTo}.zip`;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  URL.revokeObjectURL(dlUrl);
+                  toast.success("ZIP heruntergeladen");
+                  setShowRapportExport(false);
+                } finally {
+                  setExportInProgress(false);
+                }
+              }}
+              disabled={exportInProgress}
+              className="kasten kasten-red flex-1"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exportInProgress ? "Generiere…" : "Download"}
+            </button>
+          </div>
+          {exportInProgress && (
+            <p className="text-[11px] text-center text-muted-foreground italic">
+              PDFs werden serverseitig generiert — das kann bei vielen Rapporten 10-30 Sekunden dauern.
+            </p>
+          )}
+        </div>
+      </Modal>
 
     </div>
   );
