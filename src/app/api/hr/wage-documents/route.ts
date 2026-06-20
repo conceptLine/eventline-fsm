@@ -30,16 +30,34 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const profileFilter = url.searchParams.get("profile_id");
 
-  // RLS sorgt dafuer dass Non-Admin nur eigene sieht — wir koennen die
-  // Query unfiltered laufen lassen. profileFilter ist nur fuer Admin-UI
-  // sinnvoll (welche pro Mitarbeiter zeigen).
-  let q = supabase
+  // Strikte Filterung: 'Mein Konto'-Aufrufer (kein profile_id-Param)
+  // bekommen IMMER nur ihre eigenen Dokumente, auch wenn sie Admin sind.
+  // RLS allein liess Admins fremde Docs in 'Mein Konto' sehen
+  // (Privacy-Bug: Admin sah fremde Lohnabrechnung im persoenlichen Bereich).
+  // Admin-Sicht (HR > Loehne > Lohnabrechnungen) muss explizit
+  // profile_id=X uebergeben; fremde profile_ids verlangen Admin-Recht.
+  let effectiveProfileId: string;
+  if (!profileFilter || profileFilter === auth.user.id) {
+    effectiveProfileId = auth.user.id;
+  } else {
+    const admin = createAdminClient();
+    const { data: me } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+    if (me?.role !== "admin") {
+      return NextResponse.json({ success: false, error: "Nicht erlaubt" }, { status: 403 });
+    }
+    effectiveProfileId = profileFilter;
+  }
+
+  const { data, error } = await supabase
     .from("wage_documents")
     .select("id, profile_id, doc_type, year, period_month, storage_path, file_size, uploaded_at, notes, source, profile:profiles!wage_documents_profile_id_fkey(full_name)")
+    .eq("profile_id", effectiveProfileId)
     .order("year", { ascending: false })
     .order("period_month", { ascending: false, nullsFirst: false });
-  if (profileFilter) q = q.eq("profile_id", profileFilter);
-  const { data, error } = await q;
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   return NextResponse.json({ success: true, documents: data ?? [] });
 }
