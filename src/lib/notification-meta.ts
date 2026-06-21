@@ -10,7 +10,7 @@
 //   purple = "IT/Tech"
 //   gray   = "System/Neutral"
 
-import { Ticket, CheckCircle2, XCircle, Info, Briefcase, Calendar, CheckSquare, Clock, Bell } from "lucide-react";
+import { Ticket, CheckCircle2, XCircle, Info, Briefcase, Calendar, CheckSquare, Clock, Bell, AlertTriangle } from "lucide-react";
 import type { NotificationType } from "@/types";
 
 export type NotificationAccent = "blue" | "green" | "red" | "amber" | "purple" | "gray";
@@ -28,6 +28,7 @@ export const NOTIFICATION_META: Record<NotificationType, NotificationTypeMeta> =
   job_assigned:     { icon: Briefcase,    accent: "red",   label: "Auftrag zugewiesen" },
   appointment_new:  { icon: Calendar,     accent: "blue",  label: "Neuer Termin"      },
   todo_assigned:    { icon: CheckSquare,  accent: "amber", label: "Todo zugewiesen"   },
+  todo_overdue:     { icon: AlertTriangle, accent: "red",  label: "Todo ueberfaellig" },
   stempel_reminder: { icon: Clock,        accent: "green", label: "Stempel-Erinnerung" },
   vertrieb_wiedervorlage: { icon: Bell,   accent: "amber", label: "Wiedervorlage"     },
   system:           { icon: Info,         accent: "gray",  label: "System"            },

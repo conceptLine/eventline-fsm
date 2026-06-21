@@ -568,6 +568,7 @@ export type NotificationType =
   | "job_assigned"
   | "appointment_new"
   | "todo_assigned"
+  | "todo_overdue"
   | "stempel_reminder"
   | "vertrieb_wiedervorlage"
   | "system";

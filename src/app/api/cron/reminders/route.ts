@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { logError } from "@/lib/log";
-import { localDateIso } from "@/lib/swiss-time";
+import { localDateIso, todayLocalIso } from "@/lib/swiss-time";
+import { notifyTodoOverdue } from "@/lib/notification-service";
 
 export async function GET(request: Request) {
   // Cron-Secret HARD-PFLICHT — wenn die ENV-Var fehlt, ist der Endpoint
@@ -125,11 +126,50 @@ export async function GET(request: Request) {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  // Ueberfaellige Todos — Push + Bell-Notification an den Assignee.
+  // Laeuft einmal pro Tag (mit dieser Cron), also automatisch idempotent:
+  // pro Todo eine Notification pro Tag. Kein Mail-Versand hier — Mail
+  // wuerde die Inbox bei mehreren ueberfaelligen Todos zumuellen.
+  // ─────────────────────────────────────────────────────────────────
+  const todayIso = todayLocalIso();
+  const { data: overdue } = await supabase
+    .from("todos")
+    .select("id, title, due_date, assigned_to")
+    .lt("due_date", todayIso)
+    .neq("status", "erledigt")
+    .not("assigned_to", "is", null)
+    .not("due_date", "is", null);
+
+  let overdueNotified = 0;
+  for (const t of (overdue ?? []) as Array<{ id: string; title: string; due_date: string; assigned_to: string }>) {
+    try {
+      // Tage-Differenz im Europe/Zurich-Kalender (Datum minus Datum,
+      // beides als YYYY-MM-DD aus der DB).
+      const [dy, dm, dd] = t.due_date.split("-").map(Number);
+      const [ty, tm, td] = todayIso.split("-").map(Number);
+      const dueMs = Date.UTC(dy, dm - 1, dd);
+      const todayMs = Date.UTC(ty, tm - 1, td);
+      const daysOverdue = Math.max(1, Math.round((todayMs - dueMs) / (24 * 60 * 60 * 1000)));
+      await notifyTodoOverdue(supabase, {
+        recipients: [t.assigned_to],
+        todoId: t.id,
+        title: t.title,
+        dueDateIso: t.due_date,
+        daysOverdue,
+      });
+      overdueNotified++;
+    } catch (e) {
+      logError("cron.reminders.todo-overdue", e, { todoId: t.id });
+    }
+  }
+
   return NextResponse.json({
     success: true,
     count: sent.length,
     sent,
     failed,
+    overdue_notified: overdueNotified,
     cleanup: deletedNotifications ?? 0,
   });
 }

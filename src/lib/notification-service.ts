@@ -431,6 +431,28 @@ export async function notifyStempelReminder(
   });
 }
 
+// --- TODOS (taeglicher Overdue-Ping) -------------------------
+
+export async function notifyTodoOverdue(
+  client: SupabaseClient,
+  args: BaseArgs & {
+    todoId: string;
+    title: string;
+    /** YYYY-MM-DD — wird im Body als 'seit X Tagen ueberfaellig' ausgewiesen. */
+    dueDateIso: string;
+    daysOverdue: number;
+  },
+) {
+  const dayWord = args.daysOverdue === 1 ? "Tag" : "Tagen";
+  await deliver(client, args.recipients, "todo_overdue", {
+    title: `Ueberfaelliges Todo: ${args.title}`,
+    message: `Seit ${args.daysOverdue} ${dayWord} ueberfaellig (war faellig am ${args.dueDateIso}).`,
+    link: "/todos",
+    resource_type: "todo",
+    resource_id: args.todoId,
+  });
+}
+
 // --- VERTRIEB ------------------------------------------------
 
 export async function notifyVertriebWiedervorlage(
