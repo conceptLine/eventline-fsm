@@ -51,6 +51,26 @@ export function hasAnomaly(a: LeadAnomaly): boolean {
   return a.stale || a.hotIdle || a.eventSoon || a.forgotten;
 }
 
+/** Sortier-Prioritaet eines Leads (kleiner = weiter oben in der Liste).
+ *  Praezedenz:
+ *   0 — "Vergessen": stale ODER forgotten + KEIN Wiedervorlage-Datum.
+ *       Diese fielen niemandem mehr auf — top Prio.
+ *   1 — Ueberfaellige Wiedervorlage: Datum verstrichen, aktiv gesetzt.
+ *   2 — Stale mit Wiedervorlage: alt, aber schon geplant.
+ *   3 — Rest.
+ *  Innerhalb des Buckets weiter nach aging-days DESC sortieren. */
+export function leadSortBucket(c: VertriebContact, nowMs: number): number {
+  const wvMs = c.wiedervorlage_am ? new Date(c.wiedervorlage_am).getTime() : null;
+  const hasReminder = wvMs != null;
+  const overdue = wvMs != null && wvMs <= nowMs;
+  const anomaly = detectLeadAnomaly(c, nowMs);
+  const isStale = anomaly.stale || anomaly.forgotten;
+  if (isStale && !hasReminder) return 0;
+  if (overdue) return 1;
+  if (isStale) return 2;
+  return 3;
+}
+
 /** Tage seit letzter Aktion (datum_kontakt > created_at). */
 export function daysSinceLastTouch(c: VertriebContact, nowMs: number): number | null {
   let thenMs: number;

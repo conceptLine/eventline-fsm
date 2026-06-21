@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { LeadRow } from "./lead-row";
 import { LegendButton } from "@/components/vertrieb/legend-button";
 import type { VertriebContact } from "@/types";
-import { detectLeadAnomaly, daysSinceLastTouch, parseEventStart } from "@/lib/vertrieb-anomaly";
+import { detectLeadAnomaly, daysSinceLastTouch, parseEventStart, leadSortBucket } from "@/lib/vertrieb-anomaly";
 
 interface Props {
   contacts: VertriebContact[];
@@ -64,12 +64,18 @@ export function GeneralColumn({ contacts, selectedId, onSelect, onUnassign, canR
         return days >= 0 && days <= 30;
       })
       .sort((a, b) => {
+        // Bucket-Sortierung (siehe leadSortBucket): vergessene zuerst,
+        // dann ueberfaellige Reminder, dann stale-mit-Reminder, dann
+        // Rest nach aging-days DESC.
+        const ba = leadSortBucket(a, nowMs);
+        const bb = leadSortBucket(b, nowMs);
+        if (ba !== bb) return ba - bb;
         const ad = daysSinceLastTouch(a, nowMs);
         const bd = daysSinceLastTouch(b, nowMs);
         if (ad === null && bd === null) return 0;
         if (ad === null) return 1;
         if (bd === null) return -1;
-        return bd - ad; // groesserer days-Wert = aelter = oben
+        return bd - ad;
       });
   }, [contacts, search, filterHot, filterStale, filterSoon, showSnoozed, nowMs]);
 

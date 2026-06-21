@@ -22,7 +22,7 @@ import { SearchableSelect } from "@/components/searchable-select";
 import { Input } from "@/components/ui/input";
 import { Inbox, Search, Moon } from "lucide-react";
 import type { VertriebContact } from "@/types";
-import { daysSinceLastTouch } from "@/lib/vertrieb-anomaly";
+import { daysSinceLastTouch, leadSortBucket } from "@/lib/vertrieb-anomaly";
 
 interface Props {
   contacts: VertriebContact[];
@@ -61,10 +61,13 @@ export function PersonalColumn({
         return new Date(c.wiedervorlage_am).getTime() <= nowMs;
       })
       .sort((a, b) => {
-        // Ueberfaellige Wiedervorlagen zuerst (kritischer als Aging).
-        const aOver = a.wiedervorlage_am && new Date(a.wiedervorlage_am).getTime() <= nowMs;
-        const bOver = b.wiedervorlage_am && new Date(b.wiedervorlage_am).getTime() <= nowMs;
-        if (aOver !== bOver) return aOver ? -1 : 1;
+        // Bucket-basiert: vergessene Stale-Leads ohne Reminder zuerst,
+        // dann ueberfaellige Reminder, dann stale-mit-Reminder, dann Rest
+        // (siehe leadSortBucket in vertrieb-anomaly.ts). Innerhalb des
+        // Buckets nach aging-days DESC.
+        const ba = leadSortBucket(a, nowMs);
+        const bb = leadSortBucket(b, nowMs);
+        if (ba !== bb) return ba - bb;
         const ad = daysSinceLastTouch(a, nowMs);
         const bd = daysSinceLastTouch(b, nowMs);
         if (ad === null && bd === null) return 0;
