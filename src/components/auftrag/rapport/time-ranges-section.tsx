@@ -145,17 +145,6 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium">{calcDuration(tr)}</span>
-              {!isReadOnly && (
-                <button
-                  type="button"
-                  onClick={() => toggleNotBillable(i)}
-                  className={tr.not_billable ? "icon-btn icon-btn-green" : "icon-btn icon-btn-red"}
-                  aria-label={tr.not_billable ? "Wieder verrechnen" : "Nicht verrechnen"}
-                  data-tooltip={tr.not_billable ? "Wieder verrechnen" : "Diese Stunden nicht verrechnen"}
-                >
-                  {tr.not_billable ? <CheckCircle className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                </button>
-              )}
               {timeRanges.length > 1 && (
                 <button type="button" onClick={() => removeRange(i)} className="icon-btn icon-btn-red" aria-label="Zeitbereich entfernen" data-tooltip="Entfernen">
                   <Trash2 className="h-3.5 w-3.5" />
@@ -206,6 +195,25 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
               <Input type="number" min={0} step={5} value={tr.pause} onChange={(e) => updateRange(i, "pause", parseInt(e.target.value) || 0)} disabled={isReadOnly} required className="mt-1 h-9 text-xs" />
             </div>
           </div>
+          {!isReadOnly && (
+            <button
+              type="button"
+              onClick={() => toggleNotBillable(i)}
+              className={`w-full ${tr.not_billable ? "kasten kasten-green" : "kasten kasten-red"}`}
+            >
+              {tr.not_billable ? (
+                <>
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Diese Stunden wieder verrechnen
+                </>
+              ) : (
+                <>
+                  <Ban className="h-3.5 w-3.5" />
+                  Diese Stunden NICHT verrechnen
+                </>
+              )}
+            </button>
+          )}
         </div>
       ))}
       {!isReadOnly && (
