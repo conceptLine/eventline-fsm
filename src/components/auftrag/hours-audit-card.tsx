@@ -62,7 +62,9 @@ export function HoursAuditCard({ rows }: Props) {
   const totalStempel = rows.reduce((s, r) => s + r.stempel_minutes, 0);
   const totalRapport = rows.reduce((s, r) => s + r.rapport_minutes, 0);
   const totalNotBillable = rows.reduce((s, r) => s + (r.not_billable_minutes ?? 0), 0);
-  const totalDiff = totalRapport - totalStempel;
+  // Konsistent zum RPC (Migration 174): Differenz umfasst auch nicht
+  // verrechnete Rapport-Stunden, weil das gearbeitete Stunden sind.
+  const totalDiff = (totalRapport + totalNotBillable) - totalStempel;
   const totalTone = diffTone(totalDiff);
   const hasNotBillable = totalNotBillable > 0;
 
