@@ -7,6 +7,7 @@
 
 import { Trash2, Plus, Ban, CheckCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { usePrompt } from "@/components/ui/use-prompt";
 import type { TimeRange, ProfileOption } from "./types";
 
 interface Props {
@@ -71,6 +72,8 @@ function findOverlapIndices(timeRanges: TimeRange[]): Set<number> {
 }
 
 export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }: Props) {
+  const { prompt, PromptModalElement } = usePrompt();
+
   function addRange() {
     onChange([...timeRanges, { date: "", start: "", end: "", pause: 0, technician_id: "" }]);
   }
@@ -82,16 +85,23 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
     onChange(timeRanges.map((tr, idx) => idx === i ? { ...tr, [field]: value } : tr));
   }
 
-  function toggleNotBillable(i: number) {
+  async function toggleNotBillable(i: number) {
     const tr = timeRanges[i];
     if (tr.not_billable) {
       // Aus: not_billable + reason loeschen
       onChange(timeRanges.map((t, idx) => idx === i ? { ...t, not_billable: false, not_billable_reason: undefined } : t));
       return;
     }
-    const reason = (typeof window !== "undefined" ? window.prompt("Grund warum diese Stunden NICHT verrechnet werden:\n\n(z.B. 'Kulanz', 'Eigenleistung', 'Fehler-Korrektur — kostenlos')") : "");
-    if (!reason || !reason.trim()) return;
-    onChange(timeRanges.map((t, idx) => idx === i ? { ...t, not_billable: true, not_billable_reason: reason.trim() } : t));
+    const reason = await prompt({
+      title: "Stunden nicht verrechnen",
+      label: "Warum werden diese Stunden NICHT dem Kunden verrechnet?",
+      hint: "Wird im Rapport-PDF und in der Abrechnung dokumentiert.",
+      placeholder: "z.B. Kulanz, Eigenleistung, Fehler-Korrektur — kostenlos",
+      confirmLabel: "Als nicht verrechnet markieren",
+      variant: "red",
+    });
+    if (!reason) return;
+    onChange(timeRanges.map((t, idx) => idx === i ? { ...t, not_billable: true, not_billable_reason: reason } : t));
   }
 
   const overlapIdx = findOverlapIndices(timeRanges);
@@ -208,6 +218,7 @@ export function TimeRangesSection({ timeRanges, profiles, isReadOnly, onChange }
           Weitere Stunden hinzufügen
         </button>
       )}
+      {PromptModalElement}
     </div>
   );
 }
