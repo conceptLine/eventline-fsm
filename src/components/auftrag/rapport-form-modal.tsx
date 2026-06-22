@@ -30,6 +30,7 @@ import { TOAST } from "@/lib/messages";
 import { reportFormErrors, type FormError } from "@/lib/scroll-to-error";
 import { todayLocalDateString } from "@/lib/format";
 import { logError } from "@/lib/log";
+import { usePermissions } from "@/lib/use-permissions";
 import { TimeRangesSection } from "./rapport/time-ranges-section";
 import { PhotosSection } from "./rapport/photos-section";
 import { SignaturesSection } from "./rapport/signatures-section";
@@ -67,6 +68,8 @@ interface Props {
 export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, finishBlockReason, onBeforeFinalSubmit, isMaintenance = false }: Props) {
   const supabase = createClient();
   const { confirm, ConfirmModalElement } = useConfirm();
+  const { role } = usePermissions();
+  const isAdmin = role === "admin";
   const [saving, setSaving] = useState<"draft" | "final" | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<"entwurf" | "abgeschlossen" | null>(null);
@@ -518,6 +521,27 @@ export function RapportFormModal({ open, onClose, job, onCompleted, canFinish, f
       } catch (err) {
         logError("rapport.modal.pdf", err, { reportId });
         toast.info("Rapport abgeschlossen, PDF-Generierung wird nachgeholt");
+      }
+
+      // Auto-Stempel: NUR fuer Admins. Schreibt die rapportierten
+      // time_ranges automatisch in time_entries (pro Range einer, fuer
+      // den jeweiligen Techniker). Pause wird abgezogen damit die
+      // Stempel-Dauer der echten Arbeitszeit entspricht.
+      // Techniker rapportieren weiter ohne Auto-Stempel — sie stempeln
+      // separat ueber die Stempel-Uhr.
+      if (isAdmin) {
+        try {
+          const stRes = await fetch(`/api/reports/${reportId}/auto-stempel`, { method: "POST" });
+          const stJson = await stRes.json().catch(() => null);
+          if (stJson?.success && (stJson.inserted ?? 0) > 0) {
+            const word = stJson.inserted === 1 ? "Stempel-Eintrag" : "Stempel-Eintraege";
+            toast.success(`${stJson.inserted} ${word} aus Rapport erstellt`);
+          } else if (stJson?.success && (stJson.skipped ?? 0) > 0 && (stJson.inserted ?? 0) === 0) {
+            toast.info("Stempelzeiten waren bereits vorhanden");
+          }
+        } catch (err) {
+          logError("rapport.modal.auto-stempel", err, { reportId });
+        }
       }
     }
 

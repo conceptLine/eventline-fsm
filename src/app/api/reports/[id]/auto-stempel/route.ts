@@ -1,0 +1,117 @@
+// POST /api/reports/[id]/auto-stempel
+//
+// Erstellt aus den time_ranges eines abgeschlossenen Rapports
+// automatisch time_entries (Stempelzeiten) — pro time_range einer,
+// fuer den jeweiligen Techniker.
+//
+// Wird vom rapport-form-modal nach erfolgreichem Job-Abschluss
+// aufgerufen, ABER NUR wenn der einreichende User Admin ist. Use-Case:
+// Admins wickeln im Buero Rapporte fuer Techniker ab, die das selber
+// nicht stempeln (z.B. Externe oder Mitarbeiter die nur Rapport-Daten
+// liefern). So entstehen ohne weiteren Klick die Stempelzeiten fuer
+// die Lohnabrechnung.
+//
+// Idempotent: vor jedem INSERT pruefen ob fuer (user_id, job_id,
+// clock_in) schon ein time_entry existiert. Wenn ja, skippen — der
+// Endpoint darf gefahrlos wiederholt werden.
+//
+// Pause-Behandlung: clock_out = end_time MINUS pause minutes. Damit
+// entspricht die Stempel-Dauer der echten Arbeitszeit nach Abzug.
+
+import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/api-auth";
+import { logError } from "@/lib/log";
+
+interface TimeRange {
+  date?: string;
+  start?: string;
+  end?: string;
+  pause?: number;
+  technician_id?: string;
+}
+
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+  const { id: reportId } = await params;
+
+  const admin = createAdminClient();
+  const { data: report, error } = await admin
+    .from("service_reports")
+    .select("id, job_id, time_ranges, status")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  if (!report) return NextResponse.json({ success: false, error: "Rapport nicht gefunden" }, { status: 404 });
+  if (report.status !== "abgeschlossen") {
+    return NextResponse.json({ success: false, error: "Rapport ist nicht abgeschlossen" }, { status: 400 });
+  }
+
+  const ranges = (report.time_ranges ?? []) as TimeRange[];
+  let inserted = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const tr of ranges) {
+    if (!tr.date || !tr.start || !tr.end || !tr.technician_id) {
+      skipped++; // unvollstaendige Range — kein Stempel
+      continue;
+    }
+    // Local datetime im Browser-Timezone (Europe/Zurich) interpretieren.
+    // Beim Insert in timestamptz wird automatisch in UTC konvertiert.
+    const clockInLocal = `${tr.date}T${tr.start}:00`;
+    let endLocal = `${tr.date}T${tr.end}:00`;
+    // Overnight: end < start -> end ist auf dem naechsten Kalendertag
+    if (tr.end < tr.start) {
+      const [y, m, d] = tr.date.split("-").map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1, 12)); // tz-ok: nur Datum-Arithmetik
+      const nextDate = next.toISOString().slice(0, 10); // tz-ok: ISO date YYYY-MM-DD
+      endLocal = `${nextDate}T${tr.end}:00`;
+    }
+    const clockIn = new Date(clockInLocal);
+    const clockOutWithPause = new Date(endLocal);
+    if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOutWithPause.getTime())) {
+      errors.push(`Ungueltige Zeit ${tr.date} ${tr.start}-${tr.end}`);
+      continue;
+    }
+    // Pause abziehen damit die Stempel-Dauer der echten Arbeitszeit
+    // entspricht (= Basis fuer die Lohnabrechnung).
+    const pauseMin = Number(tr.pause ?? 0) || 0;
+    const clockOut = new Date(clockOutWithPause.getTime() - pauseMin * 60_000);
+    if (clockOut.getTime() <= clockIn.getTime()) {
+      errors.push(`Negative Dauer nach Pause-Abzug ${tr.date} ${tr.start}-${tr.end}`);
+      continue;
+    }
+
+    // Idempotenz: schon vorhanden?
+    const { data: existing } = await admin
+      .from("time_entries")
+      .select("id")
+      .eq("user_id", tr.technician_id)
+      .eq("job_id", report.job_id ?? "")
+      .eq("clock_in", clockIn.toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    const { error: insErr } = await admin.from("time_entries").insert({
+      user_id: tr.technician_id,
+      job_id: report.job_id,
+      clock_in: clockIn.toISOString(),
+      clock_out: clockOut.toISOString(),
+      description: `Auto-Stempel aus Rapport (Pause ${pauseMin} min abgezogen)`,
+    });
+    if (insErr) {
+      errors.push(`${tr.date}: ${insErr.message}`);
+      logError("reports.auto-stempel.insert", insErr, { reportId, range: tr });
+      continue;
+    }
+    inserted++;
+  }
+
+  return NextResponse.json({ success: true, inserted, skipped, errors });
+}
