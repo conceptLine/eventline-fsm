@@ -15,8 +15,10 @@
 // clock_in) schon ein time_entry existiert. Wenn ja, skippen — der
 // Endpoint darf gefahrlos wiederholt werden.
 //
-// Pause-Behandlung: clock_out = end_time MINUS pause minutes. Damit
-// entspricht die Stempel-Dauer der echten Arbeitszeit nach Abzug.
+// Pause-Behandlung: 1:1 die rapportierte Range stempeln (clock_in =
+// start, clock_out = end). Pause wird NICHT abgezogen — die Stempel-
+// zeiten zeigen die volle Anwesenheit wie im Rapport eingetragen.
+// Pause-Info bleibt als Hinweis in description erhalten.
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -70,19 +72,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       endLocal = `${nextDate}T${tr.end}:00`;
     }
     const clockIn = new Date(clockInLocal);
-    const clockOutWithPause = new Date(endLocal);
-    if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOutWithPause.getTime())) {
+    const clockOut = new Date(endLocal);
+    if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOut.getTime())) {
       errors.push(`Ungueltige Zeit ${tr.date} ${tr.start}-${tr.end}`);
       continue;
     }
-    // Pause abziehen damit die Stempel-Dauer der echten Arbeitszeit
-    // entspricht (= Basis fuer die Lohnabrechnung).
-    const pauseMin = Number(tr.pause ?? 0) || 0;
-    const clockOut = new Date(clockOutWithPause.getTime() - pauseMin * 60_000);
     if (clockOut.getTime() <= clockIn.getTime()) {
-      errors.push(`Negative Dauer nach Pause-Abzug ${tr.date} ${tr.start}-${tr.end}`);
+      errors.push(`Negative Dauer ${tr.date} ${tr.start}-${tr.end}`);
       continue;
     }
+    const pauseMin = Number(tr.pause ?? 0) || 0;
 
     // Idempotenz: schon vorhanden?
     const { data: existing } = await admin
@@ -98,12 +97,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       continue;
     }
 
+    const descSuffix = pauseMin > 0 ? ` (Rapport-Pause: ${pauseMin} min)` : "";
     const { error: insErr } = await admin.from("time_entries").insert({
       user_id: tr.technician_id,
       job_id: report.job_id,
       clock_in: clockIn.toISOString(),
       clock_out: clockOut.toISOString(),
-      description: `Auto-Stempel aus Rapport (Pause ${pauseMin} min abgezogen)`,
+      description: `Auto-Stempel aus Rapport${descSuffix}`,
     });
     if (insErr) {
       errors.push(`${tr.date}: ${insErr.message}`);
