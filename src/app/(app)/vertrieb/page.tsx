@@ -30,7 +30,7 @@ import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VertriebContact } from "@/types";
-import { Plus, PanelLeftClose, PanelLeftOpen, Archive, Download } from "lucide-react";
+import { Plus, PanelLeftClose, PanelLeftOpen, Archive, Download, FolderTree, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { LeadEditor } from "@/components/vertrieb/lead-editor";
 import { GoalTracker } from "@/components/vertrieb/goal-tracker";
@@ -298,11 +298,14 @@ export default function VertriebPage() {
             <button
               type="button"
               onClick={() => setFoldersCollapsed(false)}
-              className="h-full flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground"
+              className="h-full w-full flex flex-col items-center gap-3 pt-3 pb-3 text-muted-foreground hover:text-foreground transition-colors"
               data-tooltip="Ordner ausklappen"
               aria-label="Ordner ausklappen"
             >
-              <PanelLeftOpen className="h-4 w-4" />
+              <FolderTree className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ writingMode: "vertical-rl" }}>
+                Ordner
+              </span>
             </button>
           ) : (
             <>
@@ -339,10 +342,14 @@ export default function VertriebPage() {
             <button
               type="button"
               onClick={() => setGeneralCollapsed(false)}
-              className="h-full flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground"
+              className="h-full w-full flex flex-col items-center gap-3 pt-3 pb-3 text-muted-foreground hover:text-foreground transition-colors"
               data-tooltip="Alle Leads ausklappen"
+              aria-label="Alle Leads ausklappen"
             >
-              <PanelLeftOpen className="h-4 w-4" />
+              <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ writingMode: "vertical-rl" }}>
+                Alle Leads
+              </span>
             </button>
           ) : (
             <>
