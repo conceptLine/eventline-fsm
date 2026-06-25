@@ -9,11 +9,13 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Folder, FolderInput, FolderOpen, X, ChevronDown } from "lucide-react";
+import { folderColor } from "@/components/vertrieb/folder-colors";
 
 interface FolderRow {
   id: string;
   parent_id: string | null;
   name: string;
+  color: string | null;
 }
 
 interface Props {
@@ -33,7 +35,7 @@ export function VertriebFolderPicker({ leadId, onChanged }: Props) {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     const [foldersRes, mineRes] = await Promise.all([
-      supabase.from("vertrieb_folders").select("id, parent_id, name").order("name"),
+      supabase.from("vertrieb_folders").select("id, parent_id, name, color").order("name"),
       user
         ? supabase
             .from("vertrieb_lead_folders")
@@ -80,7 +82,9 @@ export function VertriebFolderPicker({ leadId, onChanged }: Props) {
     return out;
   }, [folders]);
 
-  const currentName = currentFolderId ? folders.find((f) => f.id === currentFolderId)?.name ?? null : null;
+  const currentFolder = currentFolderId ? folders.find((f) => f.id === currentFolderId) ?? null : null;
+  const currentName = currentFolder?.name ?? null;
+  const currentColor = folderColor(currentFolder?.color ?? null);
 
   async function assignTo(folderId: string | null) {
     setSaving(true);
@@ -119,7 +123,7 @@ export function VertriebFolderPicker({ leadId, onChanged }: Props) {
         data-tooltip={currentName ? `In Ordner: ${currentName}` : "In einen Ordner verschieben"}
       >
         {currentFolderId ? (
-          <FolderOpen className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <FolderOpen className={`h-3.5 w-3.5 ${currentColor.icon}`} />
         ) : (
           <FolderInput className="h-3.5 w-3.5 text-muted-foreground" />
         )}
@@ -155,7 +159,7 @@ export function VertriebFolderPicker({ leadId, onChanged }: Props) {
                   }`}
                   style={{ paddingLeft: `${depth * 12 + 10}px` }}
                 >
-                  <Folder className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <Folder className={`h-3.5 w-3.5 ${folderColor(f.color).icon} shrink-0`} />
                   <span className="truncate">{f.name}</span>
                   {isCurrent && <span className="ml-auto text-[10px] text-muted-foreground shrink-0">aktuell</span>}
                 </button>

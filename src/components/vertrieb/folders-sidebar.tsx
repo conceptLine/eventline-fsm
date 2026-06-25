@@ -17,9 +17,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { TOAST } from "@/lib/messages";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Folder, FolderPlus, Inbox, Layers, Pencil, Trash2, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderPlus, Inbox, Layers, Pencil, Trash2, Plus, Palette } from "lucide-react";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { usePrompt } from "@/components/ui/use-prompt";
+import { folderColor, FOLDER_COLOR_SLUGS, folderColorLabel, type FolderColorSlug } from "@/components/vertrieb/folder-colors";
 
 export type FolderFilter = { kind: "all" } | { kind: "inbox" } | { kind: "folder"; id: string };
 
@@ -31,6 +32,7 @@ export interface FolderRow {
   parent_id: string | null;
   name: string;
   sort_order: number;
+  color: string | null;
 }
 
 interface Props {
@@ -55,6 +57,8 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
   // Welches Drop-Target gerade ein Lead-Drag ueber sich hat (fuer Highlight).
   // Special-Werte: "__inbox__". Sonst folder-id.
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Color-Picker: welcher Folder hat ihn gerade offen (NULL = keiner).
+  const [colorPickerFor, setColorPickerFor] = useState<string | null>(null);
 
   // Lead via DnD in Folder (oder Inbox = aus Folder raus) verschieben.
   // Aufgerufen aus den onDrop-Handlern der Folder-Zeilen + Spezial-Items.
@@ -88,13 +92,20 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from("vertrieb_folders")
-      .select("id, parent_id, name, sort_order")
+      .select("id, parent_id, name, sort_order, color")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (error) { TOAST.supabaseError(error); setLoading(false); return; }
     setFolders((data ?? []) as FolderRow[]);
     setLoading(false);
   }, [supabase]);
+
+  async function setFolderColor(folderId: string, color: FolderColorSlug | null) {
+    const { error } = await supabase.from("vertrieb_folders").update({ color }).eq("id", folderId);
+    if (error) { TOAST.supabaseError(error); return; }
+    setColorPickerFor(null);
+    await load();
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -234,12 +245,21 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
           >
             {hasKids && (isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
           </button>
-          <Folder className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <Folder className={`h-3.5 w-3.5 shrink-0 ${folderColor(f.color).icon}`} />
           <span className="truncate flex-1">{f.name}</span>
           {leadCount > 0 && (
             <span className="text-[10px] font-mono tabular-nums text-foreground/50 shrink-0 px-1">{leadCount}</span>
           )}
           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setColorPickerFor(colorPickerFor === f.id ? null : f.id); }}
+              className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-foreground/10 text-foreground/60"
+              data-tooltip="Farbe"
+              aria-label="Farbe"
+            >
+              <Palette className="h-3 w-3" />
+            </button>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); createFolder(f.id); }}
@@ -269,6 +289,29 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
             </button>
           </div>
         </div>
+        {colorPickerFor === f.id && (
+          <div
+            className="mx-2 my-1 p-2 rounded-lg border border-border bg-popover shadow-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-6 gap-1.5">
+              {FOLDER_COLOR_SLUGS.map((slug) => {
+                const def = folderColor(slug);
+                const isActive = (f.color ?? "amber") === slug;
+                return (
+                  <button
+                    key={slug}
+                    type="button"
+                    onClick={() => setFolderColor(f.id, slug)}
+                    className={`w-5 h-5 rounded-full ${def.dot} ${isActive ? `ring-2 ring-offset-1 ring-offset-popover ${def.ring}` : "hover:scale-110"} transition-transform`}
+                    data-tooltip={folderColorLabel(slug)}
+                    aria-label={folderColorLabel(slug)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
         {hasKids && isOpen && (
           <div>{kids.map((k) => renderNode(k, depth + 1))}</div>
         )}
