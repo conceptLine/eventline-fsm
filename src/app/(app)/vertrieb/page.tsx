@@ -36,6 +36,7 @@ import { LeadEditor } from "@/components/vertrieb/lead-editor";
 import { GoalTracker } from "@/components/vertrieb/goal-tracker";
 import { GeneralColumn } from "@/components/vertrieb/columns/general-column";
 import { PersonalColumn } from "@/components/vertrieb/columns/personal-column";
+import { VertriebFoldersSidebar, type FolderFilter } from "@/components/vertrieb/folders-sidebar";
 import { useConfirm } from "@/components/ui/use-confirm";
 
 type Counts = {
@@ -65,7 +66,15 @@ export default function VertriebPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(searchParams.get("lead"));
   const [viewedPersonId, setViewedPersonId] = useState<string>("");
   const [generalCollapsed, setGeneralCollapsed] = useState(false);
+  const [foldersCollapsed, setFoldersCollapsed] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("all");
+
+  // Folder-State
+  const [folderFilter, setFolderFilter] = useState<FolderFilter>({ kind: "all" });
+  // Map lead_id -> folder_id (fuer den aktuellen User — nur sein eigener
+  // Filter sieht ihn). Wenn der Lead keinen Eintrag hat = "ohne Ordner".
+  const [leadFolderByLeadId, setLeadFolderByLeadId] = useState<Map<string, string>>(new Map());
+  const [folderReloadKey, setFolderReloadKey] = useState(0);
 
   const load = useCallback(async () => {
     const [{ data }, countsRes, salesRes, userRes] = await Promise.all([
@@ -96,6 +105,23 @@ export default function VertriebPage() {
     return () => window.removeEventListener("realtime:vertrieb_contacts", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lead<->Folder-Mapping fuer den aktuellen User laden (RLS sorgt eh
+  // dafuer dass nur eigene Eintraege kommen). Reload triggert wenn der
+  // User in einem Lead den Folder wechselt oder einen Folder loescht.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("vertrieb_lead_folders").select("lead_id, folder_id");
+      if (cancelled) return;
+      const map = new Map<string, string>();
+      for (const row of (data ?? []) as { lead_id: string; folder_id: string }[]) {
+        map.set(row.lead_id, row.folder_id);
+      }
+      setLeadFolderByLeadId(map);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, folderReloadKey, contacts.length]);
 
   // URL <-> Selection sync (Detail oeffnen via ?lead=<id>).
   useEffect(() => {
@@ -166,6 +192,35 @@ export default function VertriebPage() {
     gewonnen: counts.gewonnen, abgesagt: counts.abgesagt, verworfen: counts.verworfen,
   } : {};
 
+  // Folder-Counts: pro folder_id wie viele Leads. __all__ = total aktive
+  // Leads (ohne abgesagt/verworfen/gewonnen); __inbox__ = aktive Leads
+  // die der User noch in keinen Folder gelegt hat.
+  const folderCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    let all = 0;
+    let inbox = 0;
+    for (const c of contacts) {
+      if (c.status === "abgesagt" || c.status === "verworfen" || c.status === "gewonnen") continue;
+      all++;
+      const fid = leadFolderByLeadId.get(c.id);
+      if (!fid) { inbox++; continue; }
+      m.set(fid, (m.get(fid) ?? 0) + 1);
+    }
+    m.set("__all__", all);
+    m.set("__inbox__", inbox);
+    return m;
+  }, [contacts, leadFolderByLeadId]);
+
+  // Aktiv gefilterte Leads — wird an die Spalten weitergereicht.
+  const filteredContacts = useMemo(() => {
+    if (folderFilter.kind === "all") return contacts;
+    if (folderFilter.kind === "inbox") {
+      return contacts.filter((c) => !leadFolderByLeadId.has(c.id));
+    }
+    // folder: nur Leads die in genau diesem Folder fuer mich liegen
+    return contacts.filter((c) => leadFolderByLeadId.get(c.id) === folderFilter.id);
+  }, [contacts, folderFilter, leadFolderByLeadId]);
+
   // Page hat eine fixe Hoehe damit nicht die ganze Seite scrollt —
   // stattdessen scrollen die einzelnen Spalten intern.
   // Berechnung (passt zum (app)/layout.tsx Padding):
@@ -233,9 +288,46 @@ export default function VertriebPage() {
         )}
       </div>
 
-      {/* Drei-Spalten-Layout — fillt remaining Hoehe, Spalten scrollen intern */}
+      {/* Vier-Spalten-Layout — Folder-Sidebar links, dann Alle/Meine/Detail */}
       <div className="flex-1 min-h-0 flex gap-3 rounded-lg overflow-hidden">
-        {/* SPALTE 1 — Alle Leads */}
+        {/* SPALTE 0 — Folder-Sidebar (Outlook-Stil, privat pro User) */}
+        <div
+          className={`hidden md:flex ${foldersCollapsed ? "md:w-9" : "md:w-52"} flex-col rounded-lg border border-border bg-card overflow-hidden shrink-0 transition-all`}
+        >
+          {foldersCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setFoldersCollapsed(false)}
+              className="h-full flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground"
+              data-tooltip="Ordner ausklappen"
+              aria-label="Ordner ausklappen"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center justify-end px-1 py-1 border-b border-border shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setFoldersCollapsed(true)}
+                  className="icon-btn icon-btn-muted hidden md:flex"
+                  data-tooltip="Ordner einklappen"
+                  aria-label="Ordner einklappen"
+                >
+                  <PanelLeftClose className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <VertriebFoldersSidebar
+                selected={folderFilter}
+                onSelect={setFolderFilter}
+                counts={folderCounts}
+                onChanged={() => setFolderReloadKey((k) => k + 1)}
+              />
+            </>
+          )}
+        </div>
+
+        {/* SPALTE 1 — Alle Leads (gefiltert) */}
         <div
           className={`${
             mobileTab === "all" ? "flex" : "hidden md:flex"
@@ -266,7 +358,7 @@ export default function VertriebPage() {
                 </button>
               </div>
               <GeneralColumn
-                contacts={contacts}
+                contacts={filteredContacts}
                 selectedId={selectedLeadId}
                 onSelect={selectLead}
                 onUnassign={unassignLead}
@@ -282,7 +374,7 @@ export default function VertriebPage() {
         } md:w-72 w-full flex-col rounded-lg border border-border bg-card overflow-hidden shrink-0`}>
           {currentUserId && (
             <PersonalColumn
-              contacts={contacts}
+              contacts={filteredContacts}
               selectedId={selectedLeadId}
               onSelect={selectLead}
               viewedUserId={viewedPersonId || currentUserId}

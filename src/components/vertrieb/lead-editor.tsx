@@ -35,6 +35,7 @@ import { LostModalBody } from "@/components/vertrieb/lost-modal-body";
 import { LeadForm } from "@/components/vertrieb/lead-form";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { WiedervorlageBlock } from "@/components/vertrieb/wiedervorlage-block";
+import { VertriebFolderPicker } from "@/components/vertrieb/folder-picker";
 import type { VertriebContact, VertriebStatus, VertriebPriority } from "@/types";
 
 interface Props {
@@ -545,11 +546,17 @@ export function LeadEditor({ contactId, onClose }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Back-Button als eigene Zeile, dezent — Detail-Page-Pattern wie /auftraege/[id] */}
-      <button type="button" onClick={onClose} className="kasten kasten-muted">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Vertriebs-Liste
-      </button>
+      {/* Back-Button + Folder-Picker — Header-Aktionen des Leads */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={onClose} className="kasten kasten-muted">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Vertriebs-Liste
+        </button>
+        <VertriebFolderPicker
+          leadId={contact.id}
+          onChanged={() => window.dispatchEvent(new CustomEvent("realtime:vertrieb_contacts"))}
+        />
+      </div>
 
       <WiedervorlageBlock
         contactId={contact.id}
