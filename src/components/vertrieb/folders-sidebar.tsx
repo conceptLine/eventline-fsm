@@ -23,6 +23,9 @@ import { usePrompt } from "@/components/ui/use-prompt";
 
 export type FolderFilter = { kind: "all" } | { kind: "inbox" } | { kind: "folder"; id: string };
 
+// DnD-Payload-Format matched lead-row.tsx: "lead:<id>".
+const LEAD_DRAG_PREFIX = "lead:";
+
 export interface FolderRow {
   id: string;
   parent_id: string | null;
@@ -49,6 +52,38 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
   const [folders, setFolders] = useState<FolderRow[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  // Welches Drop-Target gerade ein Lead-Drag ueber sich hat (fuer Highlight).
+  // Special-Werte: "__inbox__". Sonst folder-id.
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  // Lead via DnD in Folder (oder Inbox = aus Folder raus) verschieben.
+  // Aufgerufen aus den onDrop-Handlern der Folder-Zeilen + Spezial-Items.
+  const moveLeadToFolder = useCallback(async (leadId: string, folderId: string | null) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast.error("Nicht eingeloggt"); return; }
+    if (folderId === null) {
+      const { error } = await supabase
+        .from("vertrieb_lead_folders")
+        .delete()
+        .eq("lead_id", leadId)
+        .eq("owner_id", user.id);
+      if (error) { TOAST.supabaseError(error, "Konnte nicht entfernen"); return; }
+      toast.success("Aus Ordner entfernt");
+    } else {
+      const { error } = await supabase
+        .from("vertrieb_lead_folders")
+        .upsert({ lead_id: leadId, owner_id: user.id, folder_id: folderId }, { onConflict: "lead_id,owner_id" });
+      if (error) { TOAST.supabaseError(error, "Konnte nicht verschieben"); return; }
+      toast.success("In Ordner verschoben");
+    }
+    onChanged();
+  }, [supabase, onChanged]);
+
+  function parseLeadDrag(e: React.DragEvent): string | null {
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data.startsWith(LEAD_DRAG_PREFIX)) return null;
+    return data.slice(LEAD_DRAG_PREFIX.length);
+  }
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -161,14 +196,34 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
     const isOpen = expanded.has(f.id);
     const isSelected = selected.kind === "folder" && selected.id === f.id;
     const leadCount = counts.get(f.id) ?? 0;
+    const isDropOver = dropTarget === f.id;
     return (
       <div key={f.id}>
         <div
-          className={`group flex items-center gap-1 pr-1 py-1 rounded-md text-xs cursor-pointer ${
-            isSelected ? "bg-foreground/[0.08] text-foreground font-semibold" : "hover:bg-foreground/[0.04] text-foreground/80"
+          className={`group flex items-center gap-1 pr-1 py-1 rounded-md text-xs cursor-pointer transition-colors ${
+            isDropOver
+              ? "bg-blue-500/20 ring-2 ring-blue-500/60 text-foreground"
+              : isSelected
+                ? "bg-foreground/[0.08] text-foreground font-semibold"
+                : "hover:bg-foreground/[0.04] text-foreground/80"
           }`}
           style={{ paddingLeft: `${depth * 12 + 4}px` }}
           onClick={() => onSelect({ kind: "folder", id: f.id })}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("text/plain")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget !== f.id) setDropTarget(f.id);
+            }
+          }}
+          onDragLeave={() => { if (dropTarget === f.id) setDropTarget(null); }}
+          onDrop={async (e) => {
+            const id = parseLeadDrag(e);
+            setDropTarget(null);
+            if (!id) return;
+            e.preventDefault();
+            await moveLeadToFolder(id, f.id);
+          }}
         >
           <button
             type="button"
@@ -240,7 +295,8 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
-        {/* Spezial-Eintraege */}
+        {/* Spezial-Eintraege. "Ohne Ordner" ist auch Drop-Target: Lead
+            wird aus seinem Folder entfernt (junction delete). */}
         <SpecialItem
           icon={<Layers className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
           label="Alle Leads"
@@ -254,6 +310,22 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
           count={inboxCount}
           active={selected.kind === "inbox"}
           onClick={() => onSelect({ kind: "inbox" })}
+          isDropOver={dropTarget === "__inbox__"}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("text/plain")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget !== "__inbox__") setDropTarget("__inbox__");
+            }
+          }}
+          onDragLeave={() => { if (dropTarget === "__inbox__") setDropTarget(null); }}
+          onDrop={async (e) => {
+            const id = parseLeadDrag(e);
+            setDropTarget(null);
+            if (!id) return;
+            e.preventDefault();
+            await moveLeadToFolder(id, null);
+          }}
         />
         <div className="my-1 border-t border-border" />
         {loading ? (
@@ -272,19 +344,30 @@ export function VertriebFoldersSidebar({ selected, onSelect, counts, onChanged }
   );
 }
 
-function SpecialItem({ icon, label, count, active, onClick }: {
+function SpecialItem({ icon, label, count, active, onClick, isDropOver, onDragOver, onDragLeave, onDrop }: {
   icon: React.ReactNode;
   label: string;
   count: number;
   active: boolean;
   onClick: () => void;
+  isDropOver?: boolean;
+  onDragOver?: React.DragEventHandler<HTMLDivElement>;
+  onDragLeave?: React.DragEventHandler<HTMLDivElement>;
+  onDrop?: React.DragEventHandler<HTMLDivElement>;
 }) {
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs cursor-pointer ${
-        active ? "bg-foreground/[0.08] text-foreground font-semibold" : "hover:bg-foreground/[0.04] text-foreground/80"
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs cursor-pointer transition-colors ${
+        isDropOver
+          ? "bg-blue-500/20 ring-2 ring-blue-500/60 text-foreground"
+          : active
+            ? "bg-foreground/[0.08] text-foreground font-semibold"
+            : "hover:bg-foreground/[0.04] text-foreground/80"
       }`}
       onClick={onClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
       {icon}
       <span className="truncate flex-1">{label}</span>
