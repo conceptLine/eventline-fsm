@@ -234,6 +234,9 @@ export interface JobAppointment {
   start_time: string;
   end_time: string | null;
   assigned_to: string | null;
+  /** Optionaler Meeting-Link (Teams / Zoom / Meet / ...). Frontend validiert
+   *  http/https. NULL = kein Online-Termin. */
+  meeting_link: string | null;
   created_at: string;
   updated_at: string;
   // Joined

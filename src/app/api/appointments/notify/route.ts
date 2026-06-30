@@ -68,6 +68,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, reason: "Kein RESEND_API_KEY" });
   }
 
+  // Meeting-Link-Snippet — wird in alle Mail-Varianten optional eingebaut.
+  // href/Text getrennt damit lange Teams-URLs nicht das Mail-Layout sprengen.
+  const meetingBlock = appt.meeting_link
+    ? `<p style="margin:0 0 4px;color:#666">🎥 <a href="${appt.meeting_link}" style="color:#3b82f6;text-decoration:underline" target="_blank" rel="noopener">Meeting beitreten</a></p>`
+    : "";
+
   const resend = new Resend(resendKey);
   const sentTo: string[] = [];
   const failed: string[] = [];
@@ -103,7 +109,8 @@ export async function POST(request: Request) {
                   <p style="margin:0 0 4px;font-weight:600;font-size:16px">${appt.title}</p>
                   <p style="margin:0 0 4px;color:#666">${apptDate} um ${apptTime} Uhr</p>
                   ${location ? `<p style="margin:0 0 4px;color:#666">Standort: ${location.name}</p>` : ""}
-                  ${job?.title ? `<p style="margin:0;color:#666">Auftrag: ${job.title}</p>` : ""}
+                  ${job?.title ? `<p style="margin:0 0 4px;color:#666">Auftrag: ${job.title}</p>` : ""}
+                  ${meetingBlock}
                 </div>
                 <p style="margin:0 0 8px;color:#999;font-size:13px">Bei Fragen erreichen Sie uns unter info@eventline-basel.com</p>
                 <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
@@ -137,7 +144,8 @@ export async function POST(request: Request) {
                 <p style="margin:0 0 4px;font-weight:600;font-size:16px">${appt.title}</p>
                 <p style="margin:0 0 4px;color:#666">${apptDate} um ${apptTime} Uhr</p>
                 ${location ? `<p style="margin:0 0 4px;color:#666">Standort: ${location.name}</p>` : ""}
-                ${assignee ? `<p style="margin:0;color:#666">Techniker: ${assignee.full_name}</p>` : ""}
+                ${assignee ? `<p style="margin:0 0 4px;color:#666">Techniker: ${assignee.full_name}</p>` : ""}
+                ${meetingBlock}
               </div>
               <p style="margin:0 0 8px">Auftrag: <strong>${job.title}</strong></p>
               <p style="margin:0 0 8px;color:#999;font-size:13px">Bei Fragen erreichen Sie uns unter Tel. 055 556 62 61.</p>
@@ -171,7 +179,8 @@ export async function POST(request: Request) {
                 <p style="margin:0 0 4px;color:#666">${apptDate} um ${apptTime} Uhr</p>
                 <p style="margin:0 0 4px;color:#666">Kunde: ${customer?.name || "-"}</p>
                 ${location ? `<p style="margin:0 0 4px;color:#666">Standort: ${location.name}</p>` : ""}
-                ${assignee ? `<p style="margin:0;color:#666">Zugewiesen an: ${assignee.full_name}</p>` : ""}
+                ${assignee ? `<p style="margin:0 0 4px;color:#666">Zugewiesen an: ${assignee.full_name}</p>` : ""}
+                ${meetingBlock}
               </div>
               <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
               <p style="margin:0;color:#bbb;font-size:11px">EVENTLINE GmbH · St. Jakobs-Strasse 200 · CH-4052 Basel</p>
@@ -202,7 +211,8 @@ export async function POST(request: Request) {
                 <p style="margin:0 0 4px;font-weight:600">${appt.title}</p>
                 <p style="margin:0 0 4px;color:#666">${apptDate} um ${apptTime} Uhr</p>
                 <p style="margin:0 0 4px;color:#666">Kunde: ${customer?.name || "-"}</p>
-                ${location ? `<p style="margin:0;color:#666">Standort: ${location.name}</p>` : ""}
+                ${location ? `<p style="margin:0 0 4px;color:#666">Standort: ${location.name}</p>` : ""}
+                ${meetingBlock}
               </div>
               <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
               <p style="margin:0;color:#bbb;font-size:11px">EVENTLINE GmbH · St. Jakobs-Strasse 200 · CH-4052 Basel</p>

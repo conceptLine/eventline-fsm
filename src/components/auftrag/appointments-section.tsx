@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/use-confirm";
-import { Calendar, Clock, User, Plus, Send, Check, Trash2, AlertTriangle, UserPlus, X } from "lucide-react";
+import { Calendar, Clock, User, Plus, Send, Check, Trash2, AlertTriangle, UserPlus, X, Video } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import { usePermissions } from "@/lib/use-permissions";
@@ -58,6 +58,7 @@ export function AppointmentsSection({
     end_time: "17:00",
     assigned_to: [] as string[],
     description: "",
+    meeting_link: "",
   });
   const [notifiedAppts, setNotifiedAppts] = useState<Set<string>>(new Set());
   const [notifyPopup, setNotifyPopup] = useState<string | null>(null);
@@ -112,6 +113,14 @@ export function AppointmentsSection({
   async function addAppointment(e: React.FormEvent) {
     e.preventDefault();
     if (addingAppt) return; // Doppel-Klick-Schutz
+    // Meeting-Link, wenn gesetzt, muss http/https sein. Verhindert dass
+    // jemand z.B. "teams.microsoft.com/..." ohne Schema einkippt und das
+    // dann als relativer Link auf der eigenen Seite landet.
+    const meetingLinkRaw = apptForm.meeting_link.trim();
+    if (meetingLinkRaw && !/^https?:\/\//i.test(meetingLinkRaw)) {
+      toast.error("Meeting-Link muss mit https:// oder http:// beginnen");
+      return;
+    }
     setAddingAppt(true);
     try {
     const startTime = toLocalIsoString(apptForm.date, apptForm.time || "00:00");
@@ -176,6 +185,7 @@ export function AppointmentsSection({
   }
 
   async function persistAppointment(startTime: string, endTime: string, assignees: string[], userId: string | null) {
+    const meetingLink = apptForm.meeting_link.trim() || null;
     const rows = assignees.map((personId) => ({
       job_id: jobId,
       title: apptForm.title,
@@ -183,6 +193,7 @@ export function AppointmentsSection({
       end_time: endTime,
       assigned_to: personId,
       description: apptForm.description || null,
+      meeting_link: meetingLink,
     }));
     await supabase.from("job_appointments").insert(rows);
 
@@ -217,6 +228,7 @@ export function AppointmentsSection({
       end_time: "17:00",
       assigned_to: [],
       description: "",
+      meeting_link: "",
     });
     setShowApptForm(false);
     onReload();
@@ -447,6 +459,16 @@ export function AppointmentsSection({
                 )}
               </div>
               <textarea placeholder="Beschreibung..." value={apptForm.description} onChange={(e) => setApptForm({ ...apptForm, description: e.target.value })} className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card resize-none focus:outline-none focus:ring-2 focus:ring-ring/40" rows={2} style={{ fieldSizing: "content" } as React.CSSProperties} />
+              <div className="relative">
+                <Video className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="url"
+                  placeholder="Meeting-Link (optional) — z.B. https://teams.microsoft.com/..."
+                  value={apptForm.meeting_link}
+                  onChange={(e) => setApptForm({ ...apptForm, meeting_link: e.target.value })}
+                  className="pl-9"
+                />
+              </div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setShowApptForm(false)} className="kasten kasten-muted">Abbrechen</button>
                 <button type="submit" disabled={addingAppt} className="kasten kasten-red">{addingAppt ? "Speichere…" : "Termin erstellen"}</button>
@@ -484,12 +506,24 @@ export function AppointmentsSection({
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="min-w-0">
                     <span className="font-medium text-sm break-words">{appt.title}</span>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
                       <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(appt.start_time).toLocaleString("de-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{appt.end_time ? ` – ${new Date(appt.end_time).toLocaleTimeString("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" })}` : ""}</span>
                       {assignee ? (
                         <span className="flex items-center gap-1"><User className="h-3 w-3" />{assignee.full_name}</span>
                       ) : (
                         <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-medium"><UserPlus className="h-3 w-3" />Nicht zugewiesen</span>
+                      )}
+                      {appt.meeting_link && (
+                        <a
+                          href={appt.meeting_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                          data-tooltip={appt.meeting_link}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Video className="h-3 w-3" />Meeting öffnen
+                        </a>
                       )}
                     </div>
                   </div>
