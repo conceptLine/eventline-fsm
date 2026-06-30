@@ -64,6 +64,7 @@ interface RawShift {
   title: string;
   start_time: string;
   end_time: string | null;
+  meeting_link: string | null;
   job_id: string | null;
   assigned_to: string | null;
   assignee: { full_name: string } | null;
@@ -146,7 +147,7 @@ export default function KalenderPage() {
           .lte("start_date", rangeEnd),
         supabase
           .from("job_appointments")
-          .select("id, title, start_time, end_time, job_id, assigned_to, assignee:profiles!assigned_to(full_name), job:jobs(id, title, status, job_number, was_anfrage)")
+          .select("id, title, start_time, end_time, meeting_link, job_id, assigned_to, assignee:profiles!assigned_to(full_name), job:jobs(id, title, status, job_number, was_anfrage)")
           .not("start_time", "is", null)
           .gte("start_time", rangeStart)
           .lte("start_time", rangeEnd),
@@ -227,6 +228,7 @@ export default function KalenderPage() {
               ? `/auftraege/vermietentwurf/${a.job_id}`
               : `/auftraege/${a.job_id}`
             : null,
+          meetingLink: a.meeting_link ?? null,
         });
       }
 

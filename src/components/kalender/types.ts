@@ -43,6 +43,9 @@ export interface CalendarShift {
   /** Falls dem Termin ein Job zugeordnet ist, fuehrt der Klick auf den
    *  Termin zur Auftrag-Detail-Page; ohne Job nicht klickbar. */
   href: string | null;
+  /** Optionaler Teams/Zoom/Meet-Link. Wird in der Detail-Seitenleiste
+   *  als kleines Video-Icon angezeigt — direkter Join-Button. */
+  meetingLink: string | null;
 }
 
 /** BVG-Forecast pro Person fuer den aktuell sichtbaren Monat (Schichtplan). */

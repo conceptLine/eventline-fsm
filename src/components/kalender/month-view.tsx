@@ -21,7 +21,7 @@
 
 import Link from "next/link";
 import { useMemo, Fragment } from "react";
-import { MapPin, ExternalLink, Clock, User, Plane } from "lucide-react";
+import { MapPin, ExternalLink, Clock, User, Plane, Video } from "lucide-react";
 import type { CalendarItem, CalendarShift, CalendarTimeOff } from "./types";
 
 const TIME_OFF_LABEL: Record<CalendarTimeOff["type"], string> = {
@@ -625,17 +625,44 @@ export function MonthView({ year, month, items, shifts, timeOffs, selectedDay, o
                 const sty = sh.jobType ? TYPE_STYLE[sh.jobType] : SHIFT_NEUTRAL;
                 const startStr = fmtShiftTime(sh.date);
                 const endStr = sh.endDate ? fmtShiftTime(sh.endDate) : null;
+                // Direkt-Join-Klick — laeuft als <span role=button> weil das
+                // ganze renderShift in einem <Link>/<button> Wrapper sitzt;
+                // verschachtelte interaktive Elemente sind invalid. Open
+                // ueber window.open + stopPropagation damit der Parent
+                // (Detail-Navigate / Edit-Modal) nicht mit ausloest.
+                const onMeetingClick = (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (sh.meetingLink) {
+                    window.open(sh.meetingLink, "_blank", "noopener,noreferrer");
+                  }
+                };
                 const inner = (
                   <>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <span className="text-[11px] font-semibold tabular-nums">
                         {startStr}{endStr ? `–${endStr}` : ""}
                       </span>
-                      {showJobNr && sh.jobNumber && (
-                        <span className="text-[10px] font-mono font-bold opacity-70 shrink-0">
-                          INT-{sh.jobNumber}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {sh.meetingLink && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={onMeetingClick}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onMeetingClick(e as unknown as React.MouseEvent); }}
+                            className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-600 hover:scale-110 transition-all cursor-pointer"
+                            data-tooltip="Meeting beitreten"
+                            aria-label="Meeting beitreten"
+                          >
+                            <Video className="h-2.5 w-2.5 text-white" />
+                          </span>
+                        )}
+                        {showJobNr && sh.jobNumber && (
+                          <span className="text-[10px] font-mono font-bold opacity-70">
+                            INT-{sh.jobNumber}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-sm font-medium truncate">{sh.title}</div>
                     {sh.assigneeName && (
