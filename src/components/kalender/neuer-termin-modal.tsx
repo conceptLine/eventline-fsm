@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { logError } from "@/lib/log";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Video } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST } from "@/lib/messages";
 import type { Profile, TimeOffType } from "@/types";
@@ -78,6 +78,7 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
   const [endTime, setEndTime] = useState("17:00");
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [description, setDescription] = useState("");
+  const [meetingLink, setMeetingLink] = useState("");
 
   // Profiles lazy laden — erst wenn Modal geoeffnet wird, einmalig.
   useEffect(() => {
@@ -174,6 +175,7 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
     setEndTime("17:00");
     setAssignedTo([]);
     setDescription("");
+    setMeetingLink("");
   }
 
   const filteredJobs = useMemo(() => {
@@ -195,6 +197,13 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
       toast.error("Bitte Auftrag wählen oder „Nicht Auftrag bezogen“");
       return;
     }
+    // Meeting-Link, wenn gesetzt, muss http(s) sein — sonst landet ein
+    // relativer Link spaeter im UI/Mails.
+    const meetingLinkClean = meetingLink.trim();
+    if (meetingLinkClean && !/^https?:\/\//i.test(meetingLinkClean)) {
+      toast.error("Meeting-Link muss mit https:// oder http:// beginnen");
+      return;
+    }
     setSubmitting(true);
     try {
       const startISO = toLocalIsoString(date, startTime || "00:00");
@@ -212,6 +221,7 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
         end_time: endISO,
         assigned_to: personId,
         description: description.trim() || null,
+        meeting_link: meetingLinkClean || null,
       }));
       const { error } = await supabase.from("job_appointments").insert(rows);
       if (error) throw error;
@@ -380,6 +390,17 @@ export function NeuerTerminModal({ open, onClose, onCreated, initialDate }: Prop
           className="w-full px-3 py-2 text-sm rounded-lg border bg-card resize-none"
           rows={2}
         />
+
+        <div className="relative">
+          <Video className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            type="url"
+            placeholder="Meeting-Link (optional) — z.B. https://teams.microsoft.com/..."
+            value={meetingLink}
+            onChange={(e) => setMeetingLink(e.target.value)}
+            className="pl-9"
+          />
+        </div>
 
         <div className="flex gap-2 pt-2">
           <button
